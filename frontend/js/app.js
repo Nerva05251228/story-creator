@@ -23930,7 +23930,7 @@ async function showCopyScriptModal(scriptId) {
 
     try {
 
-        const response = await apiRequest('/api/admin/users');
+        const response = await apiRequest('/api/public/users');
 
 
 
@@ -23950,7 +23950,7 @@ async function showCopyScriptModal(scriptId) {
 
         const currentUser = APP_STATE.currentUser;
 
-        const hiddenUsernames = new Set(['qiu', '9f3a7c2e4b6d8a1c']);
+        const hiddenUsernames = new Set(['test', 'qiu', '9f3a7c2e4b6d8a1c']);
 
         const otherUsers = users.filter(u => {
 

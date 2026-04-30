@@ -56,6 +56,8 @@ class RelayAiConfigTests(unittest.TestCase):
 
 
 class RelayModelConfigTests(unittest.TestCase):
+    ADMIN_PASSWORD = "test-admin-password"
+
     def setUp(self):
         self.engine = create_engine(
             "sqlite:///:memory:",
@@ -94,7 +96,13 @@ class RelayModelConfigTests(unittest.TestCase):
             db.commit()
 
             main._ensure_function_model_configs(db)
-            payload = asyncio.run(main.get_model_configs(db=db))
+            with patch.object(main, "ADMIN_PANEL_PASSWORD", self.ADMIN_PASSWORD):
+                payload = asyncio.run(
+                    main.get_model_configs(
+                        x_admin_password=self.ADMIN_PASSWORD,
+                        db=db,
+                    )
+                )
 
             rows = {
                 row.function_key: row
@@ -127,7 +135,13 @@ class RelayModelConfigTests(unittest.TestCase):
             db.commit()
 
             main._ensure_function_model_configs(db)
-            payload = asyncio.run(main.get_model_configs(db=db))
+            with patch.object(main, "ADMIN_PANEL_PASSWORD", self.ADMIN_PASSWORD):
+                payload = asyncio.run(
+                    main.get_model_configs(
+                        x_admin_password=self.ADMIN_PASSWORD,
+                        db=db,
+                    )
+                )
 
             rows = db.query(models.FunctionModelConfig).all()
             self.assertNotIn(

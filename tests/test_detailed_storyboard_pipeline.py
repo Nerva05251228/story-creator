@@ -45,6 +45,8 @@ class RelayAiConfigDefaultsTests(unittest.TestCase):
 
 
 class ModelConfigPersistenceTests(unittest.TestCase):
+    ADMIN_PASSWORD = "test-admin-password"
+
     def setUp(self):
         self.engine = create_engine(
             "sqlite:///:memory:",
@@ -61,15 +63,22 @@ class ModelConfigPersistenceTests(unittest.TestCase):
 
     def test_explicit_relay_selection_persists_after_reloading_configs(self):
         with self.Session() as db:
-            asyncio.run(main.update_model_config(
-                "video_prompt",
-                main.UpdateModelConfigRequest(
-                    model_id="gemini-3.1-pro",
-                ),
-                db=db,
-            ))
+            with patch.object(main, "ADMIN_PANEL_PASSWORD", self.ADMIN_PASSWORD):
+                asyncio.run(main.update_model_config(
+                    "video_prompt",
+                    main.UpdateModelConfigRequest(
+                        model_id="gemini-3.1-pro",
+                    ),
+                    x_admin_password=self.ADMIN_PASSWORD,
+                    db=db,
+                ))
 
-            payload = asyncio.run(main.get_model_configs(db=db))
+                payload = asyncio.run(
+                    main.get_model_configs(
+                        x_admin_password=self.ADMIN_PASSWORD,
+                        db=db,
+                    )
+                )
             config = next(item for item in payload["configs"] if item["function_key"] == "video_prompt")
 
             self.assertNotIn("provider_key", config)

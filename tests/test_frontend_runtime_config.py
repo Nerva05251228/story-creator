@@ -13,6 +13,17 @@ class FrontendRuntimeConfigTests(unittest.TestCase):
         self.assertNotIn("api_sora/" + "stats/providers", source)
         self.assertNotRegex(source, r"Bearer\s+sk-[A-Za-z0-9_-]{16,}")
 
+    def test_copy_script_user_selection_uses_public_users_endpoint(self):
+        source = (ROOT_DIR / "frontend" / "js" / "app.js").read_text(encoding="utf-8")
+        start = source.index("async function showCopyScriptModal(scriptId)")
+        end = source.index("function selectAllCopyUsers", start)
+        copy_modal_source = source[start:end]
+
+        self.assertIn("apiRequest('/api/public/users')", copy_modal_source)
+        self.assertNotIn("/api/admin/users", copy_modal_source)
+        self.assertIn("'test'", copy_modal_source)
+        self.assertIn("'9f3a7c2e4b6d8a1c'", copy_modal_source)
+
     def test_admin_pages_do_not_embed_admin_password(self):
         for relative_path in (
             "frontend/admin.html",

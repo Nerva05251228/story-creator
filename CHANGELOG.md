@@ -25,6 +25,7 @@ This project uses a lightweight `Added`, `Changed`, `Fixed`, `Security`, and `Mi
 - Moved admin panel, master password, and Nerva password defaults out of source and into local environment configuration.
 - Rejected placeholder relay and video API configuration values before network requests are sent.
 - Restricted `/files/{filename}` serving to resolved files inside approved upload/video roots and added traversal regression tests.
+- Required the admin password header on all `/api/admin/*` route contracts and moved ordinary copy-script user selection to the public users endpoint.
 
 ### Fixed
 
@@ -35,6 +36,7 @@ This project uses a lightweight `Added`, `Changed`, `Fixed`, `Security`, and `Mi
 - Reduced local UI stalls by deferring startup video metadata polling, making new-script selector loading asynchronous, rendering shot selection from local state before background refresh, and moving Sora video URL refresh to the background.
 - Repaired malformed admin page markup that could corrupt toolbar, modal, and table controls.
 - Removed unreachable duplicate script copy and episode route handlers so FastAPI route registration is unambiguous.
+- Sent the saved admin password header from the model selection page when reading, syncing, or saving model configuration.
 
 ### Removed
 

@@ -8146,8 +8146,12 @@ def _get_today_video_counts_by_user(db: Session) -> Dict[int, int]:
     return counts
 
 @app.get("/api/admin/users")
-async def get_all_users_admin(db: Session = Depends(get_db)):
+async def get_all_users_admin(
+    x_admin_password: Optional[str] = Header(None, alias="X-Admin-Password"),
+    db: Session = Depends(get_db),
+):
     """获取所有用户（管理用，隐藏保留账号）"""
+    _verify_admin_panel_password(x_admin_password)
     users = db.query(models.User).order_by(models.User.created_at.desc()).all()
     today_video_counts = _get_today_video_counts_by_user(db)
     return [{
@@ -8528,8 +8532,12 @@ def _serialize_function_model_config(row: models.FunctionModelConfig, db: Sessio
 
 
 @app.get("/api/admin/model-configs")
-async def get_model_configs(db: Session = Depends(get_db)):
+async def get_model_configs(
+    x_admin_password: Optional[str] = Header(None, alias="X-Admin-Password"),
+    db: Session = Depends(get_db),
+):
     """返回模型选择页需要的缓存模型与功能分配。"""
+    _verify_admin_panel_password(x_admin_password)
     _ensure_function_model_configs(db)
     rows = db.query(models.FunctionModelConfig).order_by(
         models.FunctionModelConfig.id.asc()
@@ -8551,7 +8559,11 @@ class UpdateModelConfigRequest(BaseModel):
 
 
 @app.post("/api/admin/model-configs/sync-models")
-async def sync_model_cache(db: Session = Depends(get_db)):
+async def sync_model_cache(
+    x_admin_password: Optional[str] = Header(None, alias="X-Admin-Password"),
+    db: Session = Depends(get_db),
+):
+    _verify_admin_panel_password(x_admin_password)
     sync_result = sync_models_from_upstream(db)
     db.commit()
     cache_payload = get_cached_models_payload(db)
@@ -8590,8 +8602,14 @@ class BillingPriceRuleRequest(BaseModel):
 
 
 @app.put("/api/admin/model-config/{function_key}")
-async def update_model_config(function_key: str, request: UpdateModelConfigRequest, db: Session = Depends(get_db)):
+async def update_model_config(
+    function_key: str,
+    request: UpdateModelConfigRequest,
+    x_admin_password: Optional[str] = Header(None, alias="X-Admin-Password"),
+    db: Session = Depends(get_db),
+):
     """更新某功能的 model 分配。"""
+    _verify_admin_panel_password(x_admin_password)
     _ensure_function_model_configs(db)
     row = db.query(models.FunctionModelConfig).filter(
         models.FunctionModelConfig.function_key == function_key
