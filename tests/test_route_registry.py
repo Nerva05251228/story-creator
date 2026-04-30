@@ -115,6 +115,12 @@ class RouteRegistryTests(unittest.TestCase):
             "api.routers.video.get_video_quota",
         )
 
+    def test_video_model_pricing_route_is_owned_by_video_router(self):
+        self._assert_get_route_owned_by(
+            "/api/video-model-pricing",
+            "api.routers.video.get_video_model_pricing",
+        )
+
     def _assert_get_route_owned_by(self, path, expected_qualified_name):
         for route in main.app.routes:
             methods = getattr(route, "methods", set()) or set()

@@ -8769,55 +8769,6 @@ async def update_video_generation_rules(request: dict, db: Session = Depends(get
         "grok_rule": grok_rule
     }
 
-@app.get("/api/video-model-pricing")
-async def get_video_model_pricing(provider: str = "yijia", db: Session = Depends(get_db)):
-    """Get video model pricing from database.
-
-    Returns pricing grouped by front-end model name.
-    sora-2-pro prices are merged into sora-2 (since 25s auto-maps to sora-2-pro).
-    """
-    try:
-        pricing_records = db.query(models.VideoModelPricing).filter(
-            models.VideoModelPricing.provider == provider
-        ).all()
-
-        # Group by front-end model name
-        # sora-2-pro -> merge into sora-2 (front-end only knows sora-2)
-        pricing_map = {}
-        updated_at = None
-
-        for record in pricing_records:
-            # Map sora-2-pro back to sora-2 for front-end display
-            display_model = record.model_name
-            if display_model == "sora-2-pro":
-                display_model = "sora-2"
-
-            if display_model not in pricing_map:
-                pricing_map[display_model] = {}
-
-            key = f"{record.duration}_{record.aspect_ratio}"
-            pricing_map[display_model][key] = {
-                "duration": record.duration,
-                "aspect_ratio": record.aspect_ratio,
-                "price_yuan": record.price_yuan
-            }
-
-            if record.updated_at:
-                updated_at = record.updated_at
-
-        return {
-            "pricing": pricing_map,
-            "provider": provider,
-            "last_updated": updated_at.isoformat() if updated_at else None
-        }
-    except Exception as e:
-        return {
-            "pricing": {},
-            "last_updated": None,
-            "error": str(e)
-        }
-
-
 # ==================== 兼容旧版本 Sora准则 API ====================
 
 @app.get("/api/sora-rule")
