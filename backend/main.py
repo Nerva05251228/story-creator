@@ -25,7 +25,7 @@ from datetime import timedelta
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import quote, urlparse
 
-from api.routers import media, pages, public
+from api.routers import image_generation, media, pages, public
 from env_config import get_env, is_placeholder_env_value, load_app_env
 
 
@@ -4111,6 +4111,7 @@ app.mount("/static", StaticFiles(directory="../frontend"), name="static")
 app.include_router(pages.router)
 app.include_router(media.router)
 app.include_router(public.router)
+app.include_router(image_generation.router)
 
 # AI调试信息保存函数
 def save_ai_debug(
@@ -7280,12 +7281,6 @@ async def delete_card_audio(
     return {"message": "Audio deleted successfully"}
 
 # ==================== AI生成图片API ====================
-
-# 获取模型配置
-@app.get("/api/image-generation/models")
-async def get_image_models():
-    """获取可用的图片生成模型及其配置"""
-    return {"models": image_platform_client.get_image_model_catalog_public()}
 
 # 生成图片
 class ImageGenerationRequest(BaseModel):

@@ -81,6 +81,14 @@ class RouteRegistryTests(unittest.TestCase):
 
         self.assertEqual(registered[("GET", "/api/public/users")], ["get_all_users"])
 
+    def test_image_generation_models_route_is_registered_once(self):
+        registered = _registered_method_paths()
+
+        self.assertEqual(
+            registered[("GET", "/api/image-generation/models")],
+            ["get_image_models"],
+        )
+
     def test_admin_routes_verify_admin_password_header(self):
         missing = []
         for route in main.app.routes:
