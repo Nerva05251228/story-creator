@@ -25,7 +25,7 @@ from datetime import timedelta
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import quote, urlparse
 
-from api.routers import image_generation, media, pages, public
+from api.routers import image_generation, media, pages, public, video
 from api.schemas.story_library import StoryLibraryCreate, StoryLibraryResponse
 from env_config import get_env, is_placeholder_env_value, load_app_env
 
@@ -111,9 +111,6 @@ from video_api_config import (
     get_video_task_create_url,
     get_video_task_status_url,
     get_video_tasks_cancel_url,
-)
-from video_provider_accounts import (
-    get_cached_video_provider_accounts,
 )
 from image_generation_service import (
     image_poller, MODEL_CONFIGS, submit_image_generation,
@@ -4113,6 +4110,7 @@ app.include_router(pages.router)
 app.include_router(media.router)
 app.include_router(public.router)
 app.include_router(image_generation.router)
+app.include_router(video.router)
 
 # AI调试信息保存函数
 def save_ai_debug(
@@ -8820,18 +8818,6 @@ async def get_video_model_pricing(provider: str = "yijia", db: Session = Depends
             "last_updated": None,
             "error": str(e)
         }
-
-
-@app.get("/api/video/providers/{provider}/accounts")
-async def get_video_provider_accounts(
-    provider: str,
-    user: models.User = Depends(get_current_user),
-):
-    _ = user
-    normalized_provider = str(provider or "").strip().lower()
-    if normalized_provider != "moti":
-        raise HTTPException(status_code=404, detail="不支持该视频服务商账号列表")
-    return get_cached_video_provider_accounts(normalized_provider)
 
 
 @app.get("/api/video/provider-stats")

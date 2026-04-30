@@ -20,6 +20,7 @@ This project uses a lightweight `Added`, `Changed`, `Fixed`, `Security`, and `Mi
 - Added a dedicated media router for `/files/{filename:path}` while preserving traversal protections.
 - Added a dedicated public API router for `GET /api/public/users` with backend route ownership coverage.
 - Added a dedicated image generation router for `GET /api/image-generation/models` with route ownership coverage.
+- Added a dedicated video router for `GET /api/video/providers/{provider}/accounts` with route ownership and behavior coverage.
 
 ### Changed
 

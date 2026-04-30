@@ -97,6 +97,26 @@ class RouteRegistryTests(unittest.TestCase):
             ["get_image_models"],
         )
 
+    def test_video_provider_accounts_route_is_owned_by_video_router(self):
+        for route in main.app.routes:
+            methods = getattr(route, "methods", set()) or set()
+            if (
+                getattr(route, "path", None) == "/api/video/providers/{provider}/accounts"
+                and "GET" in methods
+            ):
+                endpoint = getattr(route, "endpoint", None)
+                qualified_name = (
+                    f"{getattr(endpoint, '__module__', '')}."
+                    f"{getattr(endpoint, '__name__', '')}"
+                )
+                self.assertEqual(
+                    qualified_name,
+                    "api.routers.video.get_video_provider_accounts",
+                )
+                return
+
+        self.fail("GET /api/video/providers/{provider}/accounts is not registered")
+
     def test_admin_routes_verify_admin_password_header(self):
         missing = []
         for route in main.app.routes:

@@ -1,6 +1,11 @@
 import sys
+import asyncio
+import importlib
 import unittest
 from pathlib import Path
+from unittest.mock import patch
+
+from fastapi import HTTPException
 
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
@@ -18,6 +23,15 @@ if str(BACKEND_DIR) not in sys.path:
 
 import video_api_config  # noqa: E402
 import video_provider_accounts  # noqa: E402
+
+
+def _load_video_router_module(test_case):
+    try:
+        return importlib.import_module("api.routers.video")
+    except ModuleNotFoundError as exc:
+        if exc.name == "api.routers.video":
+            test_case.fail("api.routers.video router module is missing")
+        raise
 
 
 class FakeResponse:
@@ -82,6 +96,32 @@ class VideoProviderAccountsTests(unittest.TestCase):
         self.assertEqual(refreshed["total"], 0)
         self.assertEqual(refreshed["records"], [])
         self.assertIn("error", refreshed)
+
+    def test_route_returns_cached_accounts_for_normalized_moti_provider(self):
+        video_router = _load_video_router_module(self)
+        expected_payload = {"total": 1, "records": [{"account_id": "acct-1"}]}
+
+        with patch(
+            "api.routers.video.get_cached_video_provider_accounts",
+            return_value=expected_payload,
+        ) as get_cached_accounts:
+            result = asyncio.run(
+                video_router.get_video_provider_accounts(" MoTi ", user=object())
+            )
+
+        self.assertEqual(result, expected_payload)
+        get_cached_accounts.assert_called_once_with("moti")
+
+    def test_route_rejects_non_moti_provider(self):
+        video_router = _load_video_router_module(self)
+
+        with self.assertRaises(HTTPException) as raised:
+            asyncio.run(
+                video_router.get_video_provider_accounts("seedance", user=object())
+            )
+
+        self.assertEqual(raised.exception.status_code, 404)
+        self.assertEqual(raised.exception.detail, "不支持该视频服务商账号列表")
 
 
 if __name__ == "__main__":
