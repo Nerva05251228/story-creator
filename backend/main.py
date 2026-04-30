@@ -25,8 +25,7 @@ from datetime import timedelta
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlparse
 
-from api.routers import image_generation, media, pages, public, video
-from api.schemas.story_library import StoryLibraryCreate, StoryLibraryResponse
+from api.routers import image_generation, libraries, media, pages, public, video
 from env_config import get_env, is_placeholder_env_value, load_app_env
 
 
@@ -4109,6 +4108,7 @@ app.include_router(media.router)
 app.include_router(public.router)
 app.include_router(image_generation.router)
 app.include_router(video.router)
+app.include_router(libraries.router)
 
 # AI调试信息保存函数
 def save_ai_debug(
@@ -6453,90 +6453,6 @@ async def verify_nerva_password(request: PasswordVerifyRequest):
         return {"success": True}
     else:
         raise HTTPException(status_code=401, detail="密码错误")
-
-# ==================== 角色库API ====================
-
-@app.post("/api/libraries", response_model=StoryLibraryResponse)
-async def create_library(
-    library: StoryLibraryCreate,
-    user: models.User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """创建角色库"""
-    new_library = models.StoryLibrary(
-        user_id=user.id,
-        name=library.name,
-        description=library.description
-    )
-    db.add(new_library)
-    db.commit()
-    db.refresh(new_library)
-    return new_library
-
-@app.get("/api/libraries/my", response_model=List[StoryLibraryResponse])
-async def get_my_libraries(
-    user: models.User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """获取当前用户的所有角色库"""
-    libraries = db.query(models.StoryLibrary).filter(
-        models.StoryLibrary.user_id == user.id
-    ).order_by(models.StoryLibrary.created_at.desc()).all()
-    return libraries
-
-@app.get("/api/libraries/{library_id}", response_model=StoryLibraryResponse)
-async def get_library(
-    library_id: int,
-    db: Session = Depends(get_db)
-):
-    """获取指定角色库（公开，任何人可查看）"""
-    library = db.query(models.StoryLibrary).filter(
-        models.StoryLibrary.id == library_id
-    ).first()
-
-    if not library:
-        raise HTTPException(status_code=404, detail="Library not found")
-
-    return library
-
-@app.put("/api/libraries/{library_id}", response_model=StoryLibraryResponse)
-async def update_library(
-    library_id: int,
-    library_data: StoryLibraryCreate,
-    user: models.User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """更新角色库"""
-    library = verify_library_owner(library_id, user, db)
-
-    if card.card_type not in ALLOWED_CARD_TYPES:
-        raise HTTPException(status_code=400, detail="????????????")
-
-    library.name = library_data.name
-    library.description = library_data.description
-
-    db.commit()
-    db.refresh(library)
-    return library
-
-@app.delete("/api/libraries/{library_id}")
-async def delete_library(
-    library_id: int,
-    user: models.User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """删除角色库"""
-    library = verify_library_owner(library_id, user, db)
-
-    # 删除所有相关的图片文件
-    for card in library.subject_cards:
-        for image in card.images:
-            if os.path.exists(image.image_path):
-                os.remove(image.image_path)
-
-    db.delete(library)
-    db.commit()
-    return {"message": "Library deleted successfully"}
 
 # ==================== 主体卡片API ====================
 

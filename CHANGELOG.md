@@ -22,12 +22,14 @@ This project uses a lightweight `Added`, `Changed`, `Fixed`, `Security`, and `Mi
 - Added a dedicated image generation router for `GET /api/image-generation/models` with route ownership coverage.
 - Added a dedicated video router for `GET /api/video/providers/{provider}/accounts` with route ownership and behavior coverage.
 - Added route ownership and behavior coverage for `GET /api/video-model-pricing`.
+- Added story library CRUD route behavior and ownership coverage.
 
 ### Changed
 
 - Moved the backend video provider stats and quota proxy routes into the dedicated video router.
 - Moved `GET /api/video-model-pricing` into the dedicated video router while preserving its pricing response shape.
 - Extracted story library response/create schemas into `backend/api/schemas/story_library.py` and moved `GET /api/public/users/{user_id}/libraries` into the public API router.
+- Moved the five story library CRUD routes into a dedicated library router while preserving their existing paths.
 
 ### Security
 
@@ -50,6 +52,7 @@ This project uses a lightweight `Added`, `Changed`, `Fixed`, `Security`, and `Mi
 - Repaired malformed admin page markup that could corrupt toolbar, modal, and table controls.
 - Removed unreachable duplicate script copy and episode route handlers so FastAPI route registration is unambiguous.
 - Sent the saved admin password header from the model selection page when reading, syncing, or saving model configuration.
+- Fixed story library updates failing with an undefined `card` reference.
 
 ### Removed
 

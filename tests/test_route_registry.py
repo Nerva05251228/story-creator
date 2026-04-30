@@ -121,10 +121,48 @@ class RouteRegistryTests(unittest.TestCase):
             "api.routers.video.get_video_model_pricing",
         )
 
+    def test_story_library_create_route_is_owned_by_libraries_router(self):
+        self._assert_route_owned_by(
+            "POST",
+            "/api/libraries",
+            "api.routers.libraries.create_library",
+        )
+
+    def test_story_library_my_route_is_owned_by_libraries_router(self):
+        self._assert_route_owned_by(
+            "GET",
+            "/api/libraries/my",
+            "api.routers.libraries.get_my_libraries",
+        )
+
+    def test_story_library_get_route_is_owned_by_libraries_router(self):
+        self._assert_route_owned_by(
+            "GET",
+            "/api/libraries/{library_id}",
+            "api.routers.libraries.get_library",
+        )
+
+    def test_story_library_update_route_is_owned_by_libraries_router(self):
+        self._assert_route_owned_by(
+            "PUT",
+            "/api/libraries/{library_id}",
+            "api.routers.libraries.update_library",
+        )
+
+    def test_story_library_delete_route_is_owned_by_libraries_router(self):
+        self._assert_route_owned_by(
+            "DELETE",
+            "/api/libraries/{library_id}",
+            "api.routers.libraries.delete_library",
+        )
+
     def _assert_get_route_owned_by(self, path, expected_qualified_name):
+        self._assert_route_owned_by("GET", path, expected_qualified_name)
+
+    def _assert_route_owned_by(self, method, path, expected_qualified_name):
         for route in main.app.routes:
             methods = getattr(route, "methods", set()) or set()
-            if getattr(route, "path", None) == path and "GET" in methods:
+            if getattr(route, "path", None) == path and method in methods:
                 endpoint = getattr(route, "endpoint", None)
                 qualified_name = (
                     f"{getattr(endpoint, '__module__', '')}."
@@ -133,7 +171,8 @@ class RouteRegistryTests(unittest.TestCase):
                 self.assertEqual(qualified_name, expected_qualified_name)
                 return
 
-        self.fail(f"GET {path} is not registered")
+        self.fail(f"{method} {path} is not registered")
+
 
     def test_admin_routes_verify_admin_password_header(self):
         missing = []
