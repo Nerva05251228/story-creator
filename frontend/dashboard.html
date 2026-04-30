@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Task Dashboard</title>
+  <style>
+    :root{--bg:#0d0d0d;--panel:#161616;--panel2:#1e1e1e;--panel3:#242424;--border:#2a2a2a;--border2:#333;--text:#f0f0f0;--muted:#888;--accent:#2563eb;--accent2:#3b82f6;--danger:#f87171;--danger-bg:rgba(248,113,113,.12);--ok:#34d399;--run:#60a5fa;--wait:#fbbf24;--shadow:0 4px 24px rgba(0,0,0,.5)}
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:var(--text);font-family:"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;font-size:14px;line-height:1.6}
+    .topbar{position:sticky;top:0;z-index:20;display:flex;align-items:center;justify-content:space-between;padding:14px 24px;border-bottom:1px solid var(--border);background:rgba(13,13,13,.95);backdrop-filter:blur(16px)}
+    .title{display:flex;align-items:center;gap:14px}
+    .title h1{margin:0;font-size:20px;font-weight:600;letter-spacing:-.3px}
+    .wrap{padding:20px 24px 32px}
+    .panel{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:20px;box-shadow:var(--shadow)}
+    .filters{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:12px;margin-bottom:16px}
+    .field{display:flex;flex-direction:column;gap:5px}
+    .field label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;font-weight:500}
+    input,select,textarea,button{font:inherit}
+    input,select,textarea{width:100%;padding:9px 12px;background:var(--panel2);color:var(--text);border:1px solid var(--border);border-radius:7px;transition:border-color .15s,box-shadow .15s;outline:none}
+    input:focus,select:focus,textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(37,99,235,.15)}
+    button{padding:8px 16px;border-radius:7px;border:1px solid var(--border2);background:var(--panel2);color:var(--text);cursor:pointer;font-size:13px;font-weight:500;transition:background .15s,border-color .15s,box-shadow .15s;white-space:nowrap}
+    button:hover:not(:disabled){background:var(--panel3);border-color:var(--border2)}
+    button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+    button.primary:hover:not(:disabled){background:var(--accent2);border-color:var(--accent2);box-shadow:0 0 0 3px rgba(37,99,235,.2)}
+    button.danger{color:var(--danger);border-color:rgba(248,113,113,.3);background:transparent}
+    button.danger:hover:not(:disabled){background:var(--danger-bg);border-color:rgba(248,113,113,.5)}
+    button:disabled{opacity:.45;cursor:not-allowed}
+    .row{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+    .btns{display:flex;gap:8px;flex-wrap:wrap}
+    .meta{font-size:12px;color:var(--muted)}
+    .table-wrap{margin-top:16px;overflow:auto;border:1px solid var(--border);border-radius:10px}
+    table{width:100%;min-width:1560px;border-collapse:collapse}
+    th,td{padding:11px 14px;border-bottom:1px solid var(--border);text-align:left;vertical-align:top;font-size:13px}
+    thead th{position:sticky;top:0;background:#111;z-index:5;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);font-weight:600}
+    tbody tr:hover{background:rgba(255,255,255,.025)}
+    .pre{white-space:pre-wrap;word-break:break-word;line-height:1.5}
+    .empty{text-align:center;padding:48px;color:var(--muted)}
+    .badge{display:inline-flex;align-items:center;padding:3px 9px;border-radius:5px;border:1px solid transparent;font-size:11px;font-weight:600;letter-spacing:.3px}
+    .status-submitting{color:var(--wait);background:rgba(251,191,36,.1);border-color:rgba(251,191,36,.25)}
+    .status-processing{color:var(--run);background:rgba(96,165,250,.1);border-color:rgba(96,165,250,.25)}
+    .status-completed{color:var(--ok);background:rgba(52,211,153,.1);border-color:rgba(52,211,153,.25)}
+    .status-failed,.status-cancelled{color:var(--danger);background:rgba(248,113,113,.1);border-color:rgba(248,113,113,.25)}
+    .small{display:flex;gap:6px;flex-wrap:wrap}
+    .small button{padding:5px 10px;font-size:12px}
+    .modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;padding:24px;background:rgba(0,0,0,.75);z-index:60;backdrop-filter:blur(4px)}
+    .modal.active{display:flex}
+    .modal-content{width:min(1100px,calc(100vw - 48px));max-height:calc(100vh - 48px);overflow:auto;background:var(--panel);border:1px solid var(--border2);border-radius:12px;box-shadow:0 24px 64px rgba(0,0,0,.7)}
+    .modal-header{position:sticky;top:0;z-index:2;display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border);background:var(--panel)}
+    .modal-header h3{margin:0;font-size:16px;font-weight:600}
+    .modal-body{padding:20px}
+    .grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+    .card{background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:12px}
+    .card h4{margin:0 0 6px;font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.4px}
+    .json{margin-top:16px}
+    .json h4{margin:0 0 8px;font-size:13px;font-weight:600;color:var(--muted)}
+    .block{max-height:320px;overflow:auto;padding:14px;background:#0a0a0a;border:1px solid var(--border);border-radius:8px;white-space:pre-wrap;word-break:break-word;font-size:12px;line-height:1.6;font-family:"Cascadia Code","Fira Code",Consolas,monospace}
+    .auth-error{font-size:12px;color:var(--danger);margin-top:4px}
+    @media (max-width:1200px){.filters{grid-template-columns:repeat(3,minmax(0,1fr))}.grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+    @media (max-width:720px){.wrap{padding:14px}.filters,.grid{grid-template-columns:1fr}.topbar{padding:14px}}
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="title">
+      <button onclick="returnToApp()">Back</button>
+      <h1>Task Dashboard</h1>
+    </div>
+    <div class="meta" id="summaryText">Loading...</div>
+  </div>
+
+  <div class="wrap">
+    <div class="panel">
+      <div class="filters">
+        <div class="field"><label>Keyword</label><input id="keywordInput" type="text" placeholder="Title / Error / API URL"></div>
+        <div class="field"><label>Task Type</label><select id="taskTypeSelect"><option value="">All</option></select></div>
+        <div class="field"><label>Status</label><select id="statusSelect"><option value="">All</option></select></div>
+        <div class="field"><label>Creator</label><input id="creatorInput" type="text" placeholder="Username"></div>
+        <div class="field"><label>Date From</label><input id="dateFromInput" type="date"></div>
+        <div class="field"><label>Date To</label><input id="dateToInput" type="date"></div>
+        <div class="field"><label>Page Size</label><select id="pageSizeSelect"><option value="50">50</option><option value="100" selected>100</option><option value="200">200</option></select></div>
+      </div>
+
+      <div class="row">
+        <div class="btns">
+          <button class="primary" onclick="loadTasks(1)">Search</button>
+          <button onclick="resetFilters()">Reset</button>
+          <button class="danger" onclick="deleteSelectedTasks()">Delete Selected</button>
+          <button class="danger" onclick="deleteFilteredTasks()">Delete Filtered</button>
+        </div>
+        <div class="meta" id="selectionText">No rows selected</div>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:44px"><input id="selectAllCheckbox" type="checkbox" onchange="toggleSelectAll(this)"></th>
+              <th style="width:172px">Created At</th>
+              <th style="width:148px">Task Type</th>
+              <th style="width:110px">Status</th>
+              <th style="width:112px">Creator</th>
+              <th style="width:300px">Object</th>
+              <th style="width:260px">API / Model</th>
+              <th style="width:220px">Task ID</th>
+              <th style="width:320px">Result / Error</th>
+              <th style="width:150px">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="tasksTableBody">
+            <tr><td colspan="10" class="empty">Loading...</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="row" style="margin-top:14px">
+        <div class="meta" id="pageInfoText">-</div>
+        <div class="btns">
+          <button onclick="changePage(-1)">Prev</button>
+          <button onclick="changePage(1)">Next</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="adminAuthModal">
+    <div class="modal-content" style="width:min(420px,calc(100vw - 48px))">
+      <div class="modal-header"><h3>Dashboard Access</h3></div>
+      <div class="modal-body">
+        <div class="field">
+          <label>Password</label>
+          <input type="password" id="adminPasswordInput" placeholder="Enter admin password">
+          <div id="adminAuthError" class="auth-error" style="display:none">Wrong password</div>
+        </div>
+        <div class="row" style="margin-top:18px">
+          <div></div>
+          <button class="primary" onclick="confirmAdminPassword()">Enter</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="taskDetailModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="taskDetailTitle">Task Detail</h3>
+        <button onclick="closeTaskDetailModal()">Close</button>
+      </div>
+      <div class="modal-body">
+        <div class="grid" id="taskDetailMeta"></div>
+        <div class="json"><h4>Batch Progress</h4><div class="block" id="taskBatchBlock"></div></div>
+        <div class="json"><h4>Error</h4><div class="block" id="taskErrorBlock"></div></div>
+        <div class="json"><h4>Result</h4><div class="block" id="taskResultBlock"></div></div>
+        <div class="json"><h4>Input</h4><div class="block" id="taskInputBlock"></div></div>
+        <div class="json"><h4>Output</h4><div class="block" id="taskOutputBlock"></div></div>
+        <div class="json"><h4>Raw Response</h4><div class="block" id="taskRawBlock"></div></div>
+        <div class="json"><h4>Events</h4><div class="block" id="taskEventsBlock"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="taskQueryModal">
+    <div class="modal-content" style="width:min(900px,calc(100vw - 48px))">
+      <div class="modal-header">
+        <h3 id="taskQueryTitle">Task Query</h3>
+        <button onclick="closeTaskQueryModal()">Close</button>
+      </div>
+      <div class="modal-body">
+        <div class="grid" id="taskQueryMeta"></div>
+        <div class="json"><h4>Query Result</h4><div class="block" id="taskQueryResultBlock"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const ADMIN_AUTH_STORAGE_KEY='ui_admin_auth_v1';
+    const ADMIN_AUTH_PASSWORD_KEY='ui_admin_password_v1';
+    let adminAuthed=false;
+    let currentPage=1;
+    let currentSize=100;
+    let currentTotal=0;
+    let currentItems=[];
+    let selectedTaskIds=new Set();
+    let taskTypeLabels={};
+    let statusLabels={};
+
+    function persistAdminAuth(password){localStorage.setItem(ADMIN_AUTH_STORAGE_KEY,'1');localStorage.setItem(ADMIN_AUTH_PASSWORD_KEY,password)}
+    function clearAdminAuth(){adminAuthed=false;localStorage.removeItem(ADMIN_AUTH_STORAGE_KEY);localStorage.removeItem(ADMIN_AUTH_PASSWORD_KEY)}
+    function restoreAdminAuth(){const unlocked=localStorage.getItem(ADMIN_AUTH_STORAGE_KEY)==='1';const password=localStorage.getItem(ADMIN_AUTH_PASSWORD_KEY)||'';if(unlocked && password){adminAuthed=true;return true}clearAdminAuth();return false}
+    function showAdminAuthModal(){document.getElementById('adminAuthModal').classList.add('active');const input=document.getElementById('adminPasswordInput');document.getElementById('adminAuthError').style.display='none';input.value='';setTimeout(()=>input.focus(),0)}
+    function hideAdminAuthModal(){document.getElementById('adminAuthModal').classList.remove('active')}
+    function handleAdminAuthFailure(){clearAdminAuth();showAdminAuthModal();document.getElementById('adminAuthError').style.display='block'}
+    function confirmAdminPassword(){const input=document.getElementById('adminPasswordInput');const value=(input.value||'').trim();if(value){adminAuthed=true;persistAdminAuth(value);hideAdminAuthModal();loadTasks(1);return}clearAdminAuth();document.getElementById('adminAuthError').style.display='block';input.value='';input.focus()}
+    function ensureAdminAuth(){if(adminAuthed||restoreAdminAuth())return true;showAdminAuthModal();return false}
+    function getAdminAuthHeaders(extraHeaders={}){const token=localStorage.getItem('authToken');const adminPassword=localStorage.getItem(ADMIN_AUTH_PASSWORD_KEY);return {...extraHeaders,...(token?{'Authorization':`Bearer ${token}`}:{}) ,...(adminPassword?{'X-Admin-Password':adminPassword}:{})}}
+    function returnToApp(){window.location.href=`${window.location.origin}/`}
+    function escapeHtml(v){const d=document.createElement('div');d.textContent=v==null?'':String(v);return d.innerHTML}
+    function formatDateTime(v){if(!v)return '-';const s=/Z|[+-]\d{2}:?\d{2}$/.test(v)?v:v+'Z';const d=new Date(s);return Number.isNaN(d.getTime())?v:d.toLocaleString()}
+    function formatJson(v){if(v==null||v==='')return '-';if(typeof v==='string')return v;try{return JSON.stringify(v,null,2)}catch(e){return String(v)}}
+    function getStatusBadge(status,label){return `<span class="badge status-${escapeHtml(status||'submitting')}">${escapeHtml(label||status||'-')}</span>`}
+    function getFilters(){return{keyword:document.getElementById('keywordInput').value.trim(),task_type:document.getElementById('taskTypeSelect').value,status:document.getElementById('statusSelect').value,creator_username:document.getElementById('creatorInput').value.trim(),date_from:document.getElementById('dateFromInput').value,date_to:document.getElementById('dateToInput').value}}
+    function populateSelect(selectId,options,labels,currentValue){const select=document.getElementById(selectId),oldValue=currentValue!==undefined?currentValue:select.value;select.innerHTML='<option value="">All</option>'+(options||[]).map(item=>`<option value="${escapeHtml(item)}">${escapeHtml((labels||{})[item]||item)}</option>`).join('');if(oldValue)select.value=oldValue}
+    function updateSummary(){document.getElementById('summaryText').textContent=`Total ${currentTotal} tasks`;document.getElementById('selectionText').textContent=selectedTaskIds.size>0?`${selectedTaskIds.size} selected`:'No rows selected';document.getElementById('pageInfoText').textContent=`Page ${currentPage} / ${Math.max(1,Math.ceil(currentTotal/currentSize))}`}
+    function buildTaskActions(item){const buttons=[`<button onclick="openTaskDetail(${item.id})">Detail</button>`];if(item.query_supported){buttons.push(`<button onclick="queryTaskStatus(${item.id})">Query</button>`)}buttons.push(`<button class="danger" onclick="deleteTask(${item.id})">Delete</button>`);return `<div class="small">${buttons.join('')}</div>`}
+    function renderTable(items){const tbody=document.getElementById('tasksTableBody');if(!Array.isArray(items)||items.length===0){tbody.innerHTML='<tr><td colspan="10" class="empty">No records</td></tr>';return}tbody.innerHTML=items.map(item=>{const checked=selectedTaskIds.has(item.id)?'checked':'';const objectText=[item.script_name?`Script: ${item.script_name}`:'',item.episode_name?`Episode: ${item.episode_name}`:'',item.shot_number!=null?`Shot: ${item.shot_number}`:(item.shot_id?`ID: ${item.shot_id}`:'')].filter(Boolean).join('\n');const apiText=[item.provider,item.model_name,item.api_url].filter(Boolean).join('\n');const resultText=item.batch_summary_text||item.error_message||item.result_summary||'-';return `<tr><td><input type="checkbox" ${checked} onchange="toggleTaskSelection(${item.id},this.checked)"></td><td>${escapeHtml(formatDateTime(item.created_at))}</td><td>${escapeHtml(item.task_type_label||item.task_type||'-')}</td><td>${getStatusBadge(item.status,item.status_label)}</td><td>${escapeHtml(item.creator_username||'-')}</td><td class="pre">${escapeHtml(objectText||'-')}</td><td class="pre">${escapeHtml(apiText||'-')}</td><td class="pre">${escapeHtml(item.external_task_id||'-')}</td><td class="pre">${escapeHtml(resultText)}</td><td>${buildTaskActions(item)}</td></tr>`}).join('')}
+    async function loadTasks(page=currentPage){if(!ensureAdminAuth())return;currentPage=Math.max(1,page);currentSize=Number(document.getElementById('pageSizeSelect').value||100);const filters=getFilters();const params=new URLSearchParams({page:String(currentPage),size:String(currentSize)});Object.entries(filters).forEach(([k,v])=>{if(v)params.set(k,v)});try{const response=await fetch(`/api/dashboard/tasks?${params.toString()}`,{headers:getAdminAuthHeaders()});const payload=await response.json().catch(()=>({}));if(response.status===403){handleAdminAuthFailure();throw new Error(payload.detail||'Wrong password')}if(!response.ok)throw new Error(payload.detail||`Load failed (${response.status})`);currentItems=Array.isArray(payload.items)?payload.items:[];currentTotal=Number(payload.total||0);taskTypeLabels=payload.task_type_labels||{};statusLabels=payload.status_labels||{};populateSelect('taskTypeSelect',payload.task_type_options||[],taskTypeLabels,filters.task_type);populateSelect('statusSelect',payload.status_options||[],statusLabels,filters.status);renderTable(currentItems);updateSummary();document.getElementById('selectAllCheckbox').checked=currentItems.length>0&&currentItems.every(item=>selectedTaskIds.has(item.id))}catch(error){console.error('Failed to load dashboard tasks:',error);document.getElementById('tasksTableBody').innerHTML=`<tr><td colspan="10" class="empty">${escapeHtml(error.message||'Load failed')}</td></tr>`;currentItems=[];currentTotal=0;updateSummary()}}
+    function toggleTaskSelection(taskId,checked){if(checked)selectedTaskIds.add(taskId);else selectedTaskIds.delete(taskId);updateSummary();document.getElementById('selectAllCheckbox').checked=currentItems.length>0&&currentItems.every(item=>selectedTaskIds.has(item.id))}
+    function toggleSelectAll(checkbox){if(checkbox.checked)currentItems.forEach(item=>selectedTaskIds.add(item.id));else currentItems.forEach(item=>selectedTaskIds.delete(item.id));renderTable(currentItems);updateSummary()}
+    function resetFilters(){document.getElementById('keywordInput').value='';document.getElementById('taskTypeSelect').value='';document.getElementById('statusSelect').value='';document.getElementById('creatorInput').value='';document.getElementById('dateFromInput').value='';document.getElementById('dateToInput').value='';document.getElementById('pageSizeSelect').value='100';loadTasks(1)}
+    function changePage(step){const next=currentPage+step,max=Math.max(1,Math.ceil(currentTotal/currentSize));if(next<1||next>max)return;loadTasks(next)}
+    async function openTaskDetail(taskId){if(!ensureAdminAuth())return;try{const response=await fetch(`/api/dashboard/tasks/${taskId}`,{headers:getAdminAuthHeaders()});const payload=await response.json().catch(()=>({}));if(response.status===403){handleAdminAuthFailure();throw new Error(payload.detail||'Wrong password')}if(!response.ok)throw new Error(payload.detail||`Load detail failed (${response.status})`);document.getElementById('taskDetailTitle').textContent=payload.title||`Task ${payload.id}`;const meta=[['Task Type',payload.task_type_label||payload.task_type||'-'],['Status',payload.status_label||payload.status||'-'],['Stored Status',payload.stored_status_label||payload.stored_status||'-'],['Creator',payload.creator_username||'-'],['Script',payload.script_name||'-'],['Episode',payload.episode_name||'-'],['Shot',payload.shot_number!=null?String(payload.shot_number):(payload.shot_id?String(payload.shot_id):'-')],['Provider',payload.provider||'-'],['Model',payload.model_name||'-'],['API URL',payload.api_url||'-'],['Status Query URL',payload.status_api_url||'-'],['Task ID',payload.external_task_id||'-'],['Created At',formatDateTime(payload.created_at)]];document.getElementById('taskDetailMeta').innerHTML=meta.map(([label,value])=>`<div class="card"><h4>${escapeHtml(label)}</h4><div class="pre">${escapeHtml(value||'-')}</div></div>`).join('');document.getElementById('taskBatchBlock').textContent=formatJson(payload.batch_summary_text||payload.batch_summary||'-');document.getElementById('taskErrorBlock').textContent=formatJson(payload.error_message||'-');document.getElementById('taskResultBlock').textContent=formatJson(payload.result_payload||payload.result_summary||'-');document.getElementById('taskInputBlock').textContent=formatJson(payload.input_payload);document.getElementById('taskOutputBlock').textContent=formatJson(payload.output_payload);document.getElementById('taskRawBlock').textContent=formatJson(payload.raw_response_payload);document.getElementById('taskEventsBlock').textContent=formatJson(payload.events);document.getElementById('taskDetailModal').classList.add('active')}catch(error){console.error('Failed to load task detail:',error);alert(error.message||'Load detail failed')}}
+    function closeTaskDetailModal(){document.getElementById('taskDetailModal').classList.remove('active')}
+    async function queryTaskStatus(taskId){if(!ensureAdminAuth())return;try{const response=await fetch(`/api/dashboard/tasks/${taskId}/query-status`,{method:'POST',headers:getAdminAuthHeaders()});const payload=await response.json().catch(()=>({}));if(response.status===403){handleAdminAuthFailure();throw new Error(payload.detail||'Wrong password')}if(!response.ok)throw new Error(payload.detail||`Query failed (${response.status})`);document.getElementById('taskQueryTitle').textContent=`Task Query #${taskId}`;const meta=[['Query Kind',payload.query_kind||'-'],['Provider',payload.provider||'-'],['Model',payload.model_name||'-'],['Task ID',payload.external_task_id||'-'],['API URL',payload.api_url||'-'],['Status Query URL',payload.status_api_url||'-']];document.getElementById('taskQueryMeta').innerHTML=meta.map(([label,value])=>`<div class="card"><h4>${escapeHtml(label)}</h4><div class="pre">${escapeHtml(value||'-')}</div></div>`).join('');document.getElementById('taskQueryResultBlock').textContent=formatJson(payload.query_result);document.getElementById('taskQueryModal').classList.add('active')}catch(error){console.error('Failed to query task status:',error);alert(error.message||'Query failed')}}
+    function closeTaskQueryModal(){document.getElementById('taskQueryModal').classList.remove('active')}
+    async function deleteTask(taskId){if(!ensureAdminAuth())return;if(!confirm(`Delete task #${taskId}? This cannot be undone.`))return;try{const response=await fetch(`/api/dashboard/tasks/${taskId}`,{method:'DELETE',headers:getAdminAuthHeaders()});const payload=await response.json().catch(()=>({}));if(response.status===403){handleAdminAuthFailure();throw new Error(payload.detail||'Wrong password')}if(!response.ok)throw new Error(payload.detail||'Delete failed');selectedTaskIds.delete(taskId);loadTasks(currentPage)}catch(error){console.error('Failed to delete task:',error);alert(error.message||'Delete failed')}}
+    async function bulkDelete(payload){try{const response=await fetch('/api/dashboard/tasks/bulk-delete',{method:'POST',headers:getAdminAuthHeaders({'Content-Type':'application/json'}),body:JSON.stringify(payload)});const result=await response.json().catch(()=>({}));if(response.status===403){handleAdminAuthFailure();throw new Error(result.detail||'Wrong password')}if(!response.ok)throw new Error(result.detail||'Delete failed');selectedTaskIds.clear();loadTasks(1)}catch(error){console.error('Failed to bulk delete tasks:',error);alert(error.message||'Delete failed')}}
+    async function deleteSelectedTasks(){if(!ensureAdminAuth())return;const ids=Array.from(selectedTaskIds);if(ids.length===0){alert('Select tasks first');return}if(!confirm(`Delete ${ids.length} selected task rows?`))return;await bulkDelete({ids})}
+    async function deleteFilteredTasks(){if(!ensureAdminAuth())return;const filters=getFilters(),hasFilters=Object.values(filters).some(Boolean);const confirmText=hasFilters?'Delete all currently filtered rows?':'No filters are set. Delete all rows?';if(!confirm(confirmText))return;await bulkDelete({...filters,delete_all:!hasFilters})}
+    document.getElementById('keywordInput').addEventListener('keydown',e=>{if(e.key==='Enter')loadTasks(1)});
+    document.getElementById('taskDetailModal').addEventListener('click',e=>{if(e.target.id==='taskDetailModal')closeTaskDetailModal()});
+    document.getElementById('taskQueryModal').addEventListener('click',e=>{if(e.target.id==='taskQueryModal')closeTaskQueryModal()});
+    window.addEventListener('DOMContentLoaded',()=>{if(restoreAdminAuth()){hideAdminAuthModal();loadTasks(1);return}showAdminAuthModal()});
+</script>
+</body>
+</html>
