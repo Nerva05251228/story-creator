@@ -14,6 +14,7 @@ This project uses a lightweight `Added`, `Changed`, `Fixed`, `Security`, and `Mi
 - Added `.env.example` and shared startup environment loading for the Phase 1A configuration migration.
 - Added backend video provider stats and quota proxy endpoints so the browser no longer calls private upstream video APIs directly.
 - Added environment validation tests for local `.env` loading, placeholder rejection, admin password handling, and frontend runtime configuration.
+- Added a route registry baseline test that records the current duplicate route set and fails on new unexpected duplicates.
 
 ### Security
 
