@@ -18,6 +18,7 @@ This project uses a lightweight `Added`, `Changed`, `Fixed`, `Security`, and `Mi
 - Added a route registry test that fails on duplicate FastAPI method/path registrations.
 - Added startup/preflight boundary contract tests before the app factory and router refactor.
 - Added a dedicated media router for `/files/{filename:path}` while preserving traversal protections.
+- Added a dedicated public API router for `GET /api/public/users` with backend route ownership coverage.
 
 ### Security
 

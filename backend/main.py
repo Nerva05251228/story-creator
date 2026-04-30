@@ -25,7 +25,7 @@ from datetime import timedelta
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import quote, urlparse
 
-from api.routers import media, pages
+from api.routers import media, pages, public
 from env_config import get_env, is_placeholder_env_value, load_app_env
 
 
@@ -4110,6 +4110,7 @@ app.mount("/videos", StaticFiles(directory="videos"), name="videos")
 app.mount("/static", StaticFiles(directory="../frontend"), name="static")
 app.include_router(pages.router)
 app.include_router(media.router)
+app.include_router(public.router)
 
 # AI调试信息保存函数
 def save_ai_debug(
@@ -7746,30 +7747,6 @@ async def delete_generated_image(
     return {"message": "Generated image deleted successfully"}
 
 # ==================== 公开角色库API ====================
-
-@app.get("/api/public/users")
-async def get_all_users(db: Session = Depends(get_db)):
-    """获取所有用户列表（用于公开角色库浏览）"""
-    users = db.query(models.User).all()
-
-    result = []
-    for user in users:
-        library_count = db.query(models.StoryLibrary).filter(
-            models.StoryLibrary.user_id == user.id
-        ).count()
-
-        total_cards = db.query(models.SubjectCard).join(models.StoryLibrary).filter(
-            models.StoryLibrary.user_id == user.id
-        ).count()
-
-        result.append({
-            "id": user.id,
-            "username": user.username,
-            "library_count": library_count,
-            "total_cards": total_cards
-        })
-
-    return result
 
 @app.get("/api/public/users/{user_id}/libraries", response_model=List[StoryLibraryResponse])
 async def get_user_libraries(
