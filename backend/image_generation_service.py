@@ -299,6 +299,8 @@ def _submit_platform_image_task(
     route_model = normalize_image_model_key(requested_model)
     normalized_provider = _normalize_image_provider(provider) or None
     route = image_platform_client.resolve_image_route(requested_model or route_model, provider=normalized_provider)
+    resolved_provider = str(route.get("provider") or normalized_provider or "")
+    submit_resolution = None if resolved_provider.strip().lower() == "jimeng" else resolution
     normalized_reference_images = _normalize_reference_image_urls(reference_images)
     supports_reference = bool(route.get("supports_reference", True))
     action = "image2image" if normalized_reference_images and supports_reference else "text2image"
@@ -306,10 +308,10 @@ def _submit_platform_image_task(
         prompt=prompt,
         model=str(route.get("model") or requested_model or route_model),
         username=IMAGE_PLATFORM_USERNAME,
-        provider=str(route.get("provider") or normalized_provider or ""),
+        provider=resolved_provider,
         action=action,
         ratio=size,
-        resolution=resolution,
+        resolution=submit_resolution,
         reference_images=normalized_reference_images if normalized_reference_images and supports_reference else None,
         extra={"n": max(1, int(n or 1))},
         metadata={

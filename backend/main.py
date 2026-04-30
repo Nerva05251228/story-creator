@@ -19696,7 +19696,7 @@ def _build_image_generation_request_payload(
             "cw": _normalize_storyboard2_image_cw(cw, default_value=50),
         },
     }
-    if resolution:
+    if resolution and normalized_provider != "jimeng":
         payload["resolution"] = resolution
     return payload
 

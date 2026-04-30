@@ -26362,7 +26362,7 @@ function openDashboardPanel() {
 }
 
 function openJimengDashboard() {
-    window.open('https://ne.mocatter.cn/api_sora/dashboard', '_blank');
+    window.open('https://ne.mocatter.cn/video/dashboard', '_blank');
 }
 
 
