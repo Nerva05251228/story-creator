@@ -1,0 +1,48 @@
+# Python/runtime caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local virtual environments
+venv/
+.venv/
+env/
+
+# Project runtime data and generated media
+uploads/
+videos/
+backend/uploads/
+backend/videos/
+backend/stitched_images/
+backend/exports/
+backend/ai_debug/
+ai_debug/
+
+# Databases and generated migration state/reports
+*.db
+*.sqlite
+*.sqlite3
+*.db-*
+*.sqlite-*
+*.sqlite3-*
+backend/migration_backups/
+backend/migration_reports/
+backend/.startup_bootstrap.lock
+backend/managed_tasks_by_user_*.json
+
+# Logs and temporary files
+*.log
+*.tmp
+*.bak
+*.swp
+Thumbs.db
+.DS_Store
+
+# Local assistant/editor state
+.claude/
+backend/.claude/
+.idea/
+.vscode/

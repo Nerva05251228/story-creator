@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>模型分配</title>
+  <style>
+    :root{--bg:#0a0f16;--panel:#121a25;--panel2:#182334;--border:#273449;--text:#eef4fb;--muted:#8ea0b7;--accent:#2f7cf6;--ok:#33c18a}
+    *{box-sizing:border-box;margin:0;padding:0}body{font-family:"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;background:linear-gradient(180deg,#0b1119 0%,#080c13 100%);color:var(--text);padding:28px}
+    .wrap{max-width:1180px;margin:0 auto}.head,.section-head{display:flex;justify-content:space-between;gap:14px;align-items:flex-start}.head{margin-bottom:24px;padding-bottom:18px;border-bottom:1px solid var(--border)}
+    .title{font-size:28px;font-weight:650}.sub{margin-top:8px;color:var(--muted);font-size:14px}.panel{background:var(--panel);border:1px solid var(--border);border-radius:18px;padding:22px;margin-bottom:22px}.section-title{font-size:18px;font-weight:600}.section-meta{margin-top:6px;color:var(--muted);font-size:12px}
+    .toolbar{display:flex;justify-content:space-between;gap:14px;align-items:center;flex-wrap:wrap;margin:16px 0}.muted{color:var(--muted)}.btn{padding:10px 16px;border:1px solid var(--border);border-radius:12px;background:var(--panel2);color:var(--text);cursor:pointer}.btn.primary{background:rgba(47,124,246,.14);border-color:rgba(47,124,246,.35);color:#b7d5ff}.btn.save{background:rgba(51,193,138,.12);border-color:rgba(51,193,138,.35);color:#9be1bf}
+    .select{width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:12px;background:var(--panel2);color:var(--text);outline:none}
+    .table{border:1px solid var(--border);border-radius:14px;overflow:auto}table{width:100%;border-collapse:collapse;min-width:820px}th,td{padding:13px 14px;border-bottom:1px solid rgba(39,52,73,.8);text-align:left;vertical-align:top;font-size:13px}thead th{background:#141d29;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.05em}tbody tr:last-child td{border-bottom:none}.empty{text-align:center;padding:34px 18px;color:var(--muted)}
+    .mono{font-family:Consolas,monospace;color:#b8d9ff;word-break:break-all}.function-name{font-size:14px;font-weight:600}.function-key{margin-top:4px;font-size:11px;color:var(--muted);font-family:Consolas,monospace}.resolved{margin-top:8px;color:var(--muted);font-size:12px;line-height:1.5}
+    .toast{position:fixed;right:22px;bottom:22px;min-width:180px;max-width:360px;padding:13px 15px;border-radius:12px;background:#162030;border:1px solid var(--border);opacity:0;transform:translateY(10px);transition:.18s}.toast.show{opacity:1;transform:translateY(0)}.toast.success{border-color:rgba(51,193,138,.35);color:#9be1bf}.toast.error{border-color:rgba(239,115,115,.35);color:#ffb9b9}
+    .spinner{display:inline-block;width:14px;height:14px;border-radius:50%;border:2px solid rgba(255,255,255,.28);border-top-color:#fff;animation:spin .7s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
+    @media (max-width:900px){body{padding:16px}.head,.section-head,.toolbar{flex-direction:column;align-items:flex-start}.panel{padding:18px}}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="head">
+      <div>
+        <div class="title">模型分配</div>
+        <div class="sub">页面默认只读取本地缓存。点击“同步模型”时才会从 LLM Relay 拉取最新模型列表。</div>
+      </div>
+      <button class="btn" onclick="window.location.href=`${window.location.origin}/`">返回主页</button>
+    </div>
+
+    <section class="panel">
+      <div class="section-head">
+        <div>
+          <div class="section-title">文本模型</div>
+          <div class="section-meta" id="syncMeta">正在读取本地缓存...</div>
+        </div>
+        <button class="btn primary" id="syncBtn" onclick="syncModels()">同步模型</button>
+      </div>
+      <div class="table">
+        <table>
+          <thead><tr><th style="width:38%">功能</th><th style="width:44%">模型</th><th style="width:18%">操作</th></tr></thead>
+          <tbody id="configTbody"><tr><td colspan="3" class="empty">正在加载...</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+  <div id="toast" class="toast"></div>
+  <script>
+    let models=[];let configs=[];let drafts={};let toastTimer=null;let lastSyncedAt=null;
+    function escHtml(value){return String(value||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+    function showToast(message,type=''){const toast=document.getElementById('toast');toast.textContent=message;toast.className='toast show'+(type?` ${type}`:'');if(toastTimer)clearTimeout(toastTimer);toastTimer=setTimeout(()=>toast.className='toast',2600)}
+    function ensureDrafts(){drafts={};for(const cfg of configs){drafts[cfg.function_key]={model_id:cfg.model_id||cfg.resolved_model_id||''}}}
+    function updateSyncMeta(){const meta=document.getElementById('syncMeta');const count=models.length;const synced=lastSyncedAt?`最近同步：${lastSyncedAt}`:'尚未同步，当前仅显示本地缓存';meta.textContent=`缓存模型数：${count}。${synced}`}
+    function buildModelOptions(currentModelId,resolvedModelId){let html='';const seen=new Set();for(const item of models){const raw=item.raw_metadata||{};const label=item.model_id||raw.id||'';if(!label||seen.has(label))continue;seen.add(label);html+=`<option value="${escHtml(label)}" ${label===currentModelId?'selected':''}>${escHtml(label)}</option>`}const fallback=currentModelId||resolvedModelId||'';if(fallback&&!seen.has(fallback)){html+=`<option value="${escHtml(fallback)}" selected>${escHtml(fallback)}</option>`}return html||`<option value="${escHtml(currentModelId||resolvedModelId||'gemini-3.1-pro')}">${escHtml(currentModelId||resolvedModelId||'gemini-3.1-pro')}</option>`}
+    function renderConfigs(){const tbody=document.getElementById('configTbody');if(!configs.length){tbody.innerHTML='<tr><td colspan="3" class="empty">暂无功能配置。</td></tr>';return}tbody.innerHTML=configs.map(cfg=>{const draft=drafts[cfg.function_key]||{model_id:cfg.model_id||cfg.resolved_model_id||''};return `<tr id="cfg-${escHtml(cfg.function_key)}"><td><div class="function-name">${escHtml(cfg.function_name)}</div><div class="function-key">${escHtml(cfg.function_key)}</div><div class="resolved">当前生效：${escHtml(cfg.resolved_model_label||cfg.resolved_model_id||cfg.model_id||'')}</div></td><td><select class="select" id="model-${escHtml(cfg.function_key)}" onchange="handleModelChange('${escHtml(cfg.function_key)}',this.value)">${buildModelOptions(draft.model_id,cfg.resolved_model_id)}</select></td><td><button class="btn save" onclick="saveConfig('${escHtml(cfg.function_key)}')">保存</button></td></tr>`}).join('')}
+    function handleModelChange(functionKey,modelId){if(!drafts[functionKey])drafts[functionKey]={model_id:''};drafts[functionKey].model_id=modelId||''}
+    async function saveConfig(functionKey){const row=document.getElementById(`cfg-${functionKey}`);const select=document.getElementById(`model-${functionKey}`);if(!row||!select)return;const btn=row.querySelector('button');btn.disabled=true;btn.innerHTML='<span class="spinner"></span>';try{const response=await fetch(`/api/admin/model-config/${encodeURIComponent(functionKey)}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({model_id:select.value})});const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.detail||'保存失败');const index=configs.findIndex(item=>item.function_key===functionKey);if(index!==-1)configs[index]=data;ensureDrafts();renderConfigs();showToast('模型配置已保存','success')}catch(error){showToast(`保存失败：${error.message}`,'error')}finally{btn.disabled=false;btn.textContent='保存'}}
+    async function loadPageData(){const response=await fetch('/api/admin/model-configs');const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.detail||'加载模型配置失败');models=data.models||[];configs=data.configs||[];lastSyncedAt=data.last_synced_at||null;ensureDrafts();updateSyncMeta();renderConfigs()}
+    async function syncModels(){const btn=document.getElementById('syncBtn');btn.disabled=true;btn.innerHTML='<span class="spinner"></span>';try{const response=await fetch('/api/admin/model-configs/sync-models',{method:'POST'});const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.detail||'同步失败');models=data.models||[];lastSyncedAt=data.last_synced_at||null;updateSyncMeta();renderConfigs();showToast(`已同步 ${models.length} 个模型`,'success')}catch(error){showToast(`同步失败：${error.message}`,'error')}finally{btn.disabled=false;btn.textContent='同步模型'}}
+    loadPageData().catch(error=>{showToast(`加载失败：${error.message}`,'error');document.getElementById('configTbody').innerHTML='<tr><td colspan="3" class="empty">加载失败。</td></tr>';document.getElementById('syncMeta').textContent='加载失败'})
+  </script>
+</body>
+</html>

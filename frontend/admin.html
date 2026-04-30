@@ -1,0 +1,1021 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin - User Management</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: #0a0a0a;
+            color: #e0e0e0;
+            padding: 30px;
+        }
+
+        .admin-container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        .admin-header {
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid #2a2a2a;
+        }
+
+        .admin-title {
+            font-size: 24px;
+            font-weight: 500;
+            color: #fff;
+            margin-bottom: 8px;
+        }
+
+        .admin-subtitle {
+            font-size: 13px;
+            color: #666;
+        }
+
+        .action-bar {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 30px;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border-radius: 4px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: none;
+        }
+
+        .btn-primary {
+            background: #fff;
+            color: #000;
+        }
+
+        .btn-primary:hover {
+            background: #e0e0e0;
+        }
+
+        .btn-secondary {
+            background: transparent;
+            color: #fff;
+            border: 1px solid #3a3a3a;
+        }
+
+        .btn-secondary:hover {
+            border-color: #fff;
+        }
+
+        .users-table {
+            background: #1a1a1a;
+            border: 1px solid #2a2a2a;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        thead {
+            background: #222;
+        }
+
+        th {
+            padding: 15px;
+            text-align: left;
+            font-size: 12px;
+            font-weight: 500;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        td {
+            padding: 15px;
+            border-top: 1px solid #2a2a2a;
+            font-size: 13px;
+        }
+
+        tbody tr:hover {
+            background: #222;
+        }
+
+        .action-buttons {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .user-login-link {
+            color: #fff;
+            cursor: pointer;
+            text-decoration: none;
+            border-bottom: 1px dashed transparent;
+            transition: color 0.2s, border-color 0.2s;
+        }
+
+        .user-login-link:hover {
+            color: #d5d5d5;
+            border-color: #666;
+        }
+
+        .today-count-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 42px;
+            padding: 5px 10px;
+            border-radius: 999px;
+            border: 1px solid #3a3a3a;
+            background: #101010;
+            color: #fff;
+            font-size: 12px;
+        }
+
+        .btn-small {
+            padding: 6px 12px;
+            font-size: 11px;
+            border-radius: 2px;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: none;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            background: transparent;
+            color: #fff;
+            border: 1px solid #3a3a3a;
+        }
+
+        .btn-small:hover {
+            border-color: #fff;
+        }
+
+        .btn-delete:hover {
+            background: #1a1a1a;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #555;
+        }
+
+        /* 模态框 */
+        .modal {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 2000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: #1a1a1a;
+            border: 1px solid #2a2a2a;
+            border-radius: 4px;
+            width: 500px;
+            max-width: 90vw;
+        }
+
+        .modal-header {
+            padding: 20px;
+            border-bottom: 1px solid #2a2a2a;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-header h3 {
+            font-size: 16px;
+            color: #fff;
+            font-weight: 500;
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            color: #666;
+            font-size: 24px;
+            cursor: pointer;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 2px;
+        }
+
+        .modal-close:hover {
+            background: #2a2a2a;
+            color: #fff;
+        }
+
+        .modal-body {
+            padding: 30px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-label {
+            display: block;
+            margin-bottom: 8px;
+            color: #888;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 10px 12px;
+            background: #0a0a0a;
+            border: 1px solid #2a2a2a;
+            color: #fff;
+            border-radius: 2px;
+            font-size: 14px;
+            font-family: inherit;
+            transition: border-color 0.2s;
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: #fff;
+        }
+
+        .modal-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 30px;
+        }
+
+        .modal-actions button {
+            flex: 1;
+            padding: 10px;
+            border-radius: 4px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: none;
+        }
+
+        .success-message {
+            background: #2a2a2a;
+            color: #fff;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            font-size: 13px;
+        }
+
+        .auth-error {
+            margin-top: 10px;
+            color: #ff6b6b;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="admin-container">
+        <div class="admin-header">
+            <h1 class="admin-title">User Management</h1>
+            <p class="admin-subtitle">管理用户账号</p>
+        </div>
+
+        <div class="action-bar">
+            <button class="btn btn-primary" onclick="openCreateModal()">创建新用户</button>
+            <button class="btn btn-secondary" onclick="loadUsers()">刷新</button>
+            <button class="btn btn-secondary" onclick="returnToApp()">返回主页</button>
+        </div>
+
+        <div class="users-table">
+            <table>
+                <thead>
+                    <tr>
+                        <th>今日视频</th>
+                        <th>用户名</th>
+                        <th>密码</th>
+                        <th>创建时间</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="usersTableBody">
+                    <tr>
+                        <td colspan="4" style="text-align: center; padding: 40px; color: #666;">加载中...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Admin Password Modal -->
+    <div class="modal" id="adminAuthModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Admin Access</h3>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">Password</label>
+                    <input type="password" class="form-input" id="adminPasswordInput" placeholder="Enter admin password">
+                    <div id="adminAuthError" class="auth-error" style="display: none;">Incorrect password</div>
+                </div>
+                <div class="modal-actions">
+                    <button class="btn btn-primary" onclick="confirmAdminPassword()">Unlock</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create User Modal -->
+    <div class="modal" id="createModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>创建新用户</h3>
+                <button class="modal-close" onclick="closeCreateModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="successMessage" style="display: none;" class="success-message"></div>
+                <div class="form-group">
+                    <label class="form-label">用户名</label>
+                    <input type="text" class="form-input" id="usernameInput" placeholder="输入用户名">
+                </div>
+                <div class="modal-actions">
+                    <button class="btn btn-secondary" onclick="closeCreateModal()">取消</button>
+                    <button class="btn btn-primary" onclick="createUser()">创建</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 确认删除模态框 -->
+    <div class="modal" id="confirmModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>确认删除</h3>
+                <button class="modal-close" onclick="closeConfirmModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="color: #fff; margin-bottom: 20px;" id="confirmMessage"></p>
+                <div class="modal-actions">
+                    <button class="btn btn-secondary" onclick="closeConfirmModal()">取消</button>
+                    <button class="btn btn-primary" id="confirmButton">确定</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const ADMIN_PASSWORD = 'admin1024';
+        const ADMIN_AUTH_STORAGE_KEY = 'ui_admin_auth_v1';
+        const ADMIN_AUTH_PASSWORD_KEY = 'ui_admin_password_v1';
+        let adminAuthed = false;
+        let deleteUserId = null;
+
+        function persistAdminAuth(password) {
+            localStorage.setItem(ADMIN_AUTH_STORAGE_KEY, '1');
+            localStorage.setItem(ADMIN_AUTH_PASSWORD_KEY, password);
+        }
+
+        function clearAdminAuth() {
+            adminAuthed = false;
+            localStorage.removeItem(ADMIN_AUTH_STORAGE_KEY);
+            localStorage.removeItem(ADMIN_AUTH_PASSWORD_KEY);
+        }
+
+        function restoreAdminAuth() {
+            const unlocked = localStorage.getItem(ADMIN_AUTH_STORAGE_KEY) === '1';
+            const password = localStorage.getItem(ADMIN_AUTH_PASSWORD_KEY) || '';
+            if (unlocked && password === ADMIN_PASSWORD) {
+                adminAuthed = true;
+                return true;
+            }
+            clearAdminAuth();
+            return false;
+        }
+
+        function showAdminAuthModal() {
+            const modal = document.getElementById('adminAuthModal');
+            const input = document.getElementById('adminPasswordInput');
+            const error = document.getElementById('adminAuthError');
+            if (error) error.style.display = 'none';
+            if (modal) modal.classList.add('active');
+            if (input) {
+                input.value = '';
+                setTimeout(() => input.focus(), 0);
+            }
+        }
+
+        function hideAdminAuthModal() {
+            const modal = document.getElementById('adminAuthModal');
+            if (modal) modal.classList.remove('active');
+        }
+
+        function confirmAdminPassword() {
+            const input = document.getElementById('adminPasswordInput');
+            const error = document.getElementById('adminAuthError');
+            const value = input ? input.value.trim() : '';
+            if (value === ADMIN_PASSWORD) {
+                adminAuthed = true;
+                persistAdminAuth(value);
+                hideAdminAuthModal();
+                loadUsers();
+                return;
+            }
+            clearAdminAuth();
+            if (error) error.style.display = 'block';
+            if (input) { input.value = ''; input.focus(); }
+        }
+
+        function ensureAdminAuth() {
+            if (adminAuthed || restoreAdminAuth()) return true;
+            showAdminAuthModal();
+            return false;
+        }
+
+        function getAdminHomeUrl() {
+            return `${window.location.origin}/`;
+        }
+
+        function returnToApp() {
+            window.location.href = getAdminHomeUrl();
+        }
+
+        function initAdmin() {
+            if (restoreAdminAuth()) {
+                hideAdminAuthModal();
+                loadUsers();
+                return;
+            }
+            showAdminAuthModal();
+        }
+
+        function getAdminAuthHeaders(extraHeaders = {}) {
+            const token = localStorage.getItem('authToken');
+            const adminPassword = localStorage.getItem(ADMIN_AUTH_PASSWORD_KEY);
+            return {
+                ...extraHeaders,
+                ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+                ...(adminPassword ? { 'X-Admin-Password': adminPassword } : {})
+            };
+        }
+
+        // 加载用户列表
+        async function loadUsers() {
+            if (!ensureAdminAuth()) return;
+            try {
+                const response = await fetch('/api/admin/users');
+                const users = await response.json();
+
+                const tbody = document.getElementById('usersTableBody');
+
+                if (users.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="4" class="empty-state">暂无用户</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = users.map(user => `
+                    <tr>
+                        <td>${escapeHtml(user.username)}</td>
+                        <td>${escapeHtml(user.password || '')}</td>
+                        <td>${new Date(user.created_at).toLocaleString()}</td>
+                        <td>
+                            <div class="action-buttons">
+                                <button class="btn-small" onclick="confirmResetPassword(${user.id}, '${escapeHtml(user.username)}')">重置密码</button>
+                                <button class="btn-small btn-delete" onclick="confirmDelete(${user.id}, '${escapeHtml(user.username)}')">删除</button>
+                            </div>
+                        </td>
+                    </tr>
+                `).join('');
+            } catch (error) {
+                console.error('Failed to load users:', error);
+                document.getElementById('usersTableBody').innerHTML =
+                    '<tr><td colspan="4" style="text-align: center; padding: 40px; color: #666;">加载失败</td></tr>';
+            }
+        }
+
+        // 打开创建模态框
+        function openCreateModal() {
+            if (!ensureAdminAuth()) return;
+            document.getElementById('usernameInput').value = '';
+            document.getElementById('successMessage').style.display = 'none';
+            document.getElementById('createModal').classList.add('active');
+        }
+
+        function closeCreateModal() {
+            document.getElementById('createModal').classList.remove('active');
+        }
+
+        // 创建用户
+        async function createUser() {
+            if (!ensureAdminAuth()) return;
+            const username = document.getElementById('usernameInput').value.trim();
+
+            if (!username) {
+                alert('请输入用户名');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/admin/users', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username })
+                });
+
+                if (response.ok) {
+                    const user = await response.json();
+                    const successMsg = document.getElementById('successMessage');
+                    successMsg.innerHTML = `
+                        用户创建成功！<br><br>
+                        用户名: <strong>${escapeHtml(user.username)}</strong><br>
+                        默认密码: <strong>123456</strong>
+                    `;
+                    successMsg.style.display = 'block';
+                    document.getElementById('usernameInput').value = '';
+                    loadUsers();
+                } else {
+                    const error = await response.json();
+                    alert(error.detail || '创建失败');
+                }
+            } catch (error) {
+                console.error('Failed to create user:', error);
+                alert('创建失败');
+            }
+        }
+
+        // 重置密码确认
+        function confirmResetPassword(userId, username) {
+            if (!ensureAdminAuth()) return;
+            deleteUserId = userId;
+            document.getElementById('confirmMessage').textContent =
+                `确定要将用户 "${username}" 的密码重置为 123456 吗？`;
+            document.getElementById('confirmModal').classList.add('active');
+            document.getElementById('confirmButton').onclick = () => resetPassword(userId);
+        }
+
+        // 执行重置密码
+        async function resetPassword(userId) {
+            if (!ensureAdminAuth()) return;
+            try {
+                const response = await fetch(`/api/admin/users/${userId}/reset-password`, {
+                    method: 'POST'
+                });
+                if (response.ok) {
+                    closeConfirmModal();
+                    alert('密码已重置为 123456');
+                } else {
+                    alert('重置失败');
+                }
+            } catch (error) {
+                console.error('Failed to reset password:', error);
+                alert('重置失败');
+            }
+        }
+
+        // 确认删除
+        function confirmDelete(userId, username) {
+            if (!ensureAdminAuth()) return;
+            deleteUserId = userId;
+            document.getElementById('confirmMessage').textContent =
+                `确定要删除用户 "${username}" 吗？这将同时删除该用户的所有数据！`;
+            document.getElementById('confirmModal').classList.add('active');
+            document.getElementById('confirmButton').onclick = () => deleteUser(userId);
+        }
+
+        function closeConfirmModal() {
+            document.getElementById('confirmModal').classList.remove('active');
+            deleteUserId = null;
+        }
+
+        // 删除用户
+        async function deleteUser(userId) {
+            if (!ensureAdminAuth()) return;
+            try {
+                const response = await fetch(`/api/admin/users/${userId}`, { method: 'DELETE' });
+                if (response.ok) {
+                    closeConfirmModal();
+                    loadUsers();
+                } else {
+                    alert('删除失败');
+                }
+            } catch (error) {
+                console.error('Failed to delete user:', error);
+                alert('删除失败');
+            }
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        async function loadUsers() {
+            if (!ensureAdminAuth()) return;
+            try {
+                const response = await fetch('/api/admin/users', {
+                    headers: getAdminAuthHeaders()
+                });
+                const users = await response.json().catch(() => []);
+                if (!response.ok) {
+                    throw new Error(users.detail || `加载失败 (${response.status})`);
+                }
+
+                const tbody = document.getElementById('usersTableBody');
+                if (!Array.isArray(users) || users.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" class="empty-state">暂无用户</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = users.map(user => `
+                    <tr>
+                        <td><span class="today-count-badge">${Number(user.today_video_count || 0)}</span></td>
+                        <td><span class="user-login-link" onclick="loginAsUser(${user.id}, '${escapeHtml(user.username)}')">${escapeHtml(user.username)}</span></td>
+                        <td>${escapeHtml(user.password || '')}</td>
+                        <td>${new Date(user.created_at).toLocaleString()}</td>
+                        <td>
+                            <div class="action-buttons">
+                                <button class="btn-small" onclick="confirmResetPassword(${user.id}, '${escapeHtml(user.username)}')">重置密码</button>
+                                <button class="btn-small btn-delete" onclick="confirmDelete(${user.id}, '${escapeHtml(user.username)}')">删除</button>
+                            </div>
+                        </td>
+                    </tr>
+                `).join('');
+            } catch (error) {
+                console.error('Failed to load users:', error);
+                document.getElementById('usersTableBody').innerHTML =
+                    '<tr><td colspan="5" style="text-align: center; padding: 40px; color: #666;">加载失败</td></tr>';
+            }
+        }
+
+        async function createUser() {
+            if (!ensureAdminAuth()) return;
+            const username = document.getElementById('usernameInput').value.trim();
+
+            if (!username) {
+                alert('请输入用户名');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/admin/users', {
+                    method: 'POST',
+                    headers: getAdminAuthHeaders({ 'Content-Type': 'application/json' }),
+                    body: JSON.stringify({ username })
+                });
+                const payload = await response.json().catch(() => ({}));
+                if (!response.ok) {
+                    throw new Error(payload.detail || '创建失败');
+                }
+
+                const successMsg = document.getElementById('successMessage');
+                successMsg.innerHTML = `
+                    用户创建成功<br><br>
+                    用户名: <strong>${escapeHtml(payload.username)}</strong><br>
+                    默认密码: <strong>123456</strong>
+                `;
+                successMsg.style.display = 'block';
+                document.getElementById('usernameInput').value = '';
+                loadUsers();
+            } catch (error) {
+                console.error('Failed to create user:', error);
+                alert(error.message || '创建失败');
+            }
+        }
+
+        async function resetPassword(userId) {
+            if (!ensureAdminAuth()) return;
+            try {
+                const response = await fetch(`/api/admin/users/${userId}/reset-password`, {
+                    method: 'POST',
+                    headers: getAdminAuthHeaders()
+                });
+                const payload = await response.json().catch(() => ({}));
+                if (!response.ok) {
+                    throw new Error(payload.detail || '重置失败');
+                }
+                closeConfirmModal();
+                alert('密码已重置为 123456');
+            } catch (error) {
+                console.error('Failed to reset password:', error);
+                alert(error.message || '重置失败');
+            }
+        }
+
+        async function deleteUser(userId) {
+            if (!ensureAdminAuth()) return;
+            try {
+                const response = await fetch(`/api/admin/users/${userId}`, {
+                    method: 'DELETE',
+                    headers: getAdminAuthHeaders()
+                });
+                const payload = await response.json().catch(() => ({}));
+                if (!response.ok) {
+                    throw new Error(payload.detail || '删除失败');
+                }
+                closeConfirmModal();
+                loadUsers();
+            } catch (error) {
+                console.error('Failed to delete user:', error);
+                alert(error.message || '删除失败');
+            }
+        }
+
+        async function loginAsUser(userId, username) {
+            if (!ensureAdminAuth()) return;
+            try {
+                const response = await fetch(`/api/admin/users/${userId}/impersonate`, {
+                    method: 'POST',
+                    headers: getAdminAuthHeaders()
+                });
+                const payload = await response.json().catch(() => ({}));
+                if (!response.ok) {
+                    throw new Error(payload.detail || '免密登录失败');
+                }
+                if (!payload.token) {
+                    throw new Error('未获取到用户 token');
+                }
+                localStorage.setItem('authToken', payload.token);
+                localStorage.setItem('userId', String(payload.id));
+                localStorage.setItem('username', payload.username || username || '');
+                window.location.href = `${window.location.origin}/app`;
+            } catch (error) {
+                console.error('Failed to login as user:', error);
+                alert(error.message || '免密登录失败');
+            }
+        }
+
+        document.getElementById('createModal').addEventListener('click', (e) => {
+            if (e.target.id === 'createModal') closeCreateModal();
+        });
+
+        document.getElementById('confirmModal').addEventListener('click', (e) => {
+            if (e.target.id === 'confirmModal') closeConfirmModal();
+        });
+
+        const adminPasswordInput = document.getElementById('adminPasswordInput');
+        if (adminPasswordInput) {
+            adminPasswordInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') confirmAdminPassword();
+            });
+        }
+
+        const usersLoadingCell = document.querySelector('#usersTableBody td[colspan="4"]');
+        if (usersLoadingCell) {
+            usersLoadingCell.colSpan = 5;
+        }
+
+        document.addEventListener('DOMContentLoaded', initAdmin);
+
+        // ==================== 爆款库管理功能 ====================
+
+        function openHitDramaManagement() {
+            if (!ensureAdminAuth()) return;
+
+            // 创建模态框
+            const modal = document.createElement('div');
+            modal.className = 'modal';
+            modal.style.display = 'flex';
+            modal.id = 'hitDramaManagementModal';
+            modal.innerHTML = `
+                <div class="modal-content" style="max-width: 95vw; max-height: 95vh; width: 1200px;">
+                    <div class="modal-header">
+                        <h3>爆款库管理 - 编辑历史与回退</h3>
+                        <button class="modal-close" onclick="document.getElementById('hitDramaManagementModal').remove()">&times;</button>
+                    </div>
+                    <div class="modal-body" style="overflow-y: auto; max-height: calc(95vh - 120px);">
+                        <div style="display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap;">
+                            <input type="text" id="adminFilterUser" placeholder="按用户筛选" style="flex: 1; min-width: 150px; padding: 8px; background: #0a0a0a; color: #fff; border: 1px solid #2a2a2a; border-radius: 4px;">
+                            <input type="text" id="adminFilterOrganizer" placeholder="按整理人筛选" style="flex: 1; min-width: 150px; padding: 8px; background: #0a0a0a; color: #fff; border: 1px solid #2a2a2a; border-radius: 4px;">
+                            <input type="text" id="adminFilterDramaName" placeholder="按剧名筛选" style="flex: 1; min-width: 150px; padding: 8px; background: #0a0a0a; color: #fff; border: 1px solid #2a2a2a; border-radius: 4px;">
+                            <button class="btn btn-primary" onclick="loadAdminHitDramaHistory()">筛选</button>
+                        </div>
+                        <div id="adminHistoryContent" style="color: #fff;">
+                            <div style="text-align: center; padding: 40px; color: #666;">加载中...</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+            const adminHistoryToolbar = modal.querySelector('.modal-body > div');
+            if (adminHistoryToolbar) {
+                adminHistoryToolbar.remove();
+            }
+
+            // 加载历史记录
+            loadAdminHitDramaHistory();
+        }
+
+        async function loadAdminHitDramaHistory() {
+            try {
+                const token = localStorage.getItem('authToken');
+                if (!token) {
+                    throw new Error('请先以 admin 用户登录主系统，再打开此界面');
+                }
+
+                const response = await fetch('/api/hit-dramas/history', {
+                    headers: getAdminAuthHeaders()
+                });
+                if (!response.ok) {
+                    const error = await response.json().catch(() => ({}));
+                    throw new Error(error.detail || `加载失败 (${response.status})`);
+                }
+
+                const histories = await response.json();
+                if (!Array.isArray(histories)) {
+                    throw new Error('历史记录返回格式不正确');
+                }
+
+                const historyContent = document.getElementById('adminHistoryContent');
+
+                if (histories.length === 0) {
+                    historyContent.innerHTML = '<div style="text-align: center; padding: 40px; color: #666;">暂无记录</div>';
+                    return;
+                }
+
+                historyContent.innerHTML = histories.map(h => {
+                    const diffHtml = h.field_name && h.old_value && h.new_value ?
+                        generateDiffHtml(h.old_value, h.new_value) : '';
+
+                    return `
+                        <div style="background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 4px; padding: 15px; margin-bottom: 15px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                                <div>
+                                    <strong style="color: #fff;">${escapeHtml(h.drama_name || '未知剧本')}</strong>
+                                    <span style="color: #666; margin-left: 10px;">${h.action_type === 'create' ? '创建' : h.action_type === 'update' ? '修改' : '删除'}</span>
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 15px;">
+                                    <div style="color: #888; font-size: 12px;">
+                                        ${new Date(h.edited_at).toLocaleString()} - ${escapeHtml(h.edited_by)}
+                                    </div>
+                                    ${h.action_type === 'update' && h.field_name ? `
+                                        <button class="btn-small" onclick="revertHitDramaHistory(${h.drama_id}, ${h.id}, '${escapeHtml(h.field_name)}')">回退到此版本</button>
+                                    ` : ''}
+                                </div>
+                            </div>
+                            ${h.field_name ? `
+                                <div style="color: #999; font-size: 13px; margin-top: 10px;">
+                                    <div style="margin-bottom: 10px;"><strong>字段：</strong>${escapeHtml(h.field_name)}</div>
+                                    ${diffHtml}
+                                </div>
+                            ` : `
+                                <div style="color: #999; font-size: 13px; margin-top: 10px;">
+                                    ${escapeHtml(h.new_value || '')}
+                                </div>
+                            `}
+                        </div>
+                    `;
+                }).join('');
+
+            } catch (error) {
+                console.error('Failed to load history:', error);
+                document.getElementById('adminHistoryContent').innerHTML =
+                    '<div style="text-align: center; padding: 40px; color: #666;">加载失败</div>';
+            }
+        }
+
+        async function revertHitDramaHistory(dramaId, historyId, fieldName) {
+            if (!confirm(`确定要回退"${fieldName}"字段到此版本吗？`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/hit-dramas/${dramaId}/revert/${historyId}`, {
+                    method: 'POST',
+                    headers: getAdminAuthHeaders()
+                });
+
+                if (response.ok) {
+                    alert('回退成功');
+                    loadAdminHitDramaHistory();
+                } else {
+                    const error = await response.json();
+                    alert(error.detail || '回退失败');
+                }
+            } catch (error) {
+                console.error('Failed to revert:', error);
+                alert('回退失败');
+            }
+        }
+
+        // Diff算法 - 使用简单的diff-match-patch算法
+        function generateDiffHtml(oldText, newText) {
+            const diffs = computeDiff(oldText, newText);
+
+            let oldHtml = '<div style="background: #0a0a0a; padding: 10px; border-radius: 4px; margin-bottom: 5px;">';
+            oldHtml += '<div style="color: #ff6b6b; margin-bottom: 5px;"><strong>旧值：</strong></div>';
+            oldHtml += '<pre style="margin: 0; white-space: pre-wrap; word-wrap: break-word; font-family: inherit;">';
+
+            let newHtml = '<div style="background: #0a0a0a; padding: 10px; border-radius: 4px;">';
+            newHtml += '<div style="color: #4caf50; margin-bottom: 5px;"><strong>新值：</strong></div>';
+            newHtml += '<pre style="margin: 0; white-space: pre-wrap; word-wrap: break-word; font-family: inherit;">';
+
+            diffs.forEach(diff => {
+                const text = escapeHtml(diff.text);
+                if (diff.type === 'equal') {
+                    oldHtml += text;
+                    newHtml += text;
+                } else if (diff.type === 'delete') {
+                    oldHtml += `<span style="background: #ff6b6b33; color: #ff6b6b; text-decoration: line-through;">${text}</span>`;
+                } else if (diff.type === 'insert') {
+                    newHtml += `<span style="background: #4caf5033; color: #4caf50;">${text}</span>`;
+                }
+            });
+
+            oldHtml += '</pre></div>';
+            newHtml += '</pre></div>';
+
+            return oldHtml + newHtml;
+        }
+
+        // 简单的diff算法实现
+        function computeDiff(oldText, newText) {
+            const oldLines = oldText.split('\n');
+            const newLines = newText.split('\n');
+            const diffs = [];
+
+            // 使用最长公共子序列(LCS)算法
+            const lcs = longestCommonSubsequence(oldLines, newLines);
+
+            let oldIndex = 0;
+            let newIndex = 0;
+            let lcsIndex = 0;
+
+            while (oldIndex < oldLines.length || newIndex < newLines.length) {
+                if (lcsIndex < lcs.length && oldIndex < oldLines.length && oldLines[oldIndex] === lcs[lcsIndex]) {
+                    // 相同的行
+                    diffs.push({ type: 'equal', text: oldLines[oldIndex] + '\n' });
+                    oldIndex++;
+                    newIndex++;
+                    lcsIndex++;
+                } else if (oldIndex < oldLines.length && (lcsIndex >= lcs.length || oldLines[oldIndex] !== lcs[lcsIndex])) {
+                    // 删除的行
+                    diffs.push({ type: 'delete', text: oldLines[oldIndex] + '\n' });
+                    oldIndex++;
+                } else if (newIndex < newLines.length) {
+                    // 新增的行
+                    diffs.push({ type: 'insert', text: newLines[newIndex] + '\n' });
+                    newIndex++;
+                }
+            }
+
+            return diffs;
+        }
+
+        // 最长公共子序列算法
+        function longestCommonSubsequence(arr1, arr2) {
+            const m = arr1.length;
+            const n = arr2.length;
+            const dp = Array(m + 1).fill(null).map(() => Array(n + 1).fill(0));
+
+            for (let i = 1; i <= m; i++) {
+                for (let j = 1; j <= n; j++) {
+                    if (arr1[i - 1] === arr2[j - 1]) {
+                        dp[i][j] = dp[i - 1][j - 1] + 1;
+                    } else {
+                        dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
+                    }
+                }
+            }
+
+            // 回溯找到LCS
+            const lcs = [];
+            let i = m, j = n;
+            while (i > 0 && j > 0) {
+                if (arr1[i - 1] === arr2[j - 1]) {
+                    lcs.unshift(arr1[i - 1]);
+                    i--;
+                    j--;
+                } else if (dp[i - 1][j] > dp[i][j - 1]) {
+                    i--;
+                } else {
+                    j--;
+                }
+            }
+
+            return lcs;
+        }
+    </script>
+</body>
+</html>

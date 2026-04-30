@@ -1,0 +1,2675 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>提示词管理 - Prompt Management</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: #0a0a0a;
+            color: #e0e0e0;
+            padding: 30px;
+        }
+
+        .manage-container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .manage-header {
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid #2a2a2a;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header-left h1 {
+            font-size: 24px;
+            font-weight: 500;
+            color: #fff;
+            margin-bottom: 8px;
+        }
+
+        .header-left p {
+            font-size: 13px;
+            color: #666;
+        }
+
+        .header-right {
+            display: flex;
+            gap: 10px;
+        }
+
+        /* 标签页切换 */
+        .tabs-container {
+            margin-bottom: 30px;
+            display: flex;
+            gap: 10px;
+            border-bottom: 1px solid #2a2a2a;
+        }
+
+        .tab-button {
+            padding: 12px 20px;
+            background: transparent;
+            border: none;
+            color: #666;
+            font-size: 14px;
+            cursor: pointer;
+            position: relative;
+            transition: color 0.2s;
+        }
+
+        .tab-button:hover {
+            color: #fff;
+        }
+
+        .tab-button.active {
+            color: #fff;
+        }
+
+        .tab-button.active::after {
+            content: '';
+            position: absolute;
+            bottom: -1px;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: #fff;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border-radius: 4px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: none;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn-primary {
+            background: #fff;
+            color: #000;
+        }
+
+        .btn-primary:hover {
+            background: #e0e0e0;
+        }
+
+        .btn-secondary {
+            background: transparent;
+            color: #fff;
+            border: 1px solid #3a3a3a;
+        }
+
+        .btn-secondary:hover {
+            border-color: #fff;
+        }
+
+        .prompts-grid {
+            display: grid;
+            gap: 20px;
+        }
+
+        .prompt-card {
+            background: #1a1a1a;
+            border: 1px solid #2a2a2a;
+            border-radius: 4px;
+            overflow: hidden;
+            transition: border-color 0.2s;
+        }
+
+        .prompt-card:hover {
+            border-color: #3a3a3a;
+        }
+
+        .prompt-card-header {
+            padding: 20px;
+            border-bottom: 1px solid #2a2a2a;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .prompt-title {
+            font-size: 16px;
+            font-weight: 500;
+            color: #fff;
+            margin-bottom: 5px;
+        }
+
+        .prompt-desc {
+            font-size: 12px;
+            color: #666;
+        }
+
+        .prompt-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+
+        .status-active {
+            background: #4caf50;
+        }
+
+        .status-inactive {
+            background: #666;
+        }
+
+        .prompt-card-body {
+            padding: 20px;
+        }
+
+        .prompt-content {
+            width: 100%;
+            min-height: 200px;
+            background: #0a0a0a;
+            border: 1px solid #2a2a2a;
+            color: #fff;
+            padding: 12px;
+            border-radius: 2px;
+            font-size: 12px;
+            font-family: 'Courier New', monospace;
+            line-height: 1.6;
+            resize: vertical;
+            transition: border-color 0.2s;
+        }
+
+        .prompt-content:focus {
+            outline: none;
+            border-color: #fff;
+        }
+
+        .prompt-card-footer {
+            padding: 15px 20px;
+            border-top: 1px solid #2a2a2a;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .update-time {
+            font-size: 11px;
+            color: #666;
+        }
+
+        .card-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .btn-small {
+            padding: 6px 12px;
+            font-size: 11px;
+            border-radius: 2px;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: none;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .btn-save {
+            background: #fff;
+            color: #000;
+        }
+
+        .btn-save:hover {
+            background: #e0e0e0;
+        }
+
+        .btn-reset {
+            background: transparent;
+            color: #fff;
+            border: 1px solid #3a3a3a;
+        }
+
+        .btn-reset:hover {
+            border-color: #fff;
+        }
+
+        .btn-toggle {
+            background: transparent;
+            color: #888;
+            border: 1px solid #3a3a3a;
+        }
+
+        .btn-toggle:hover {
+            border-color: #fff;
+            color: #fff;
+        }
+
+        .btn-delete {
+            background: transparent;
+            color: #f44336;
+            border: 1px solid #3a3a3a;
+        }
+
+        .btn-delete:hover {
+            border-color: #f44336;
+        }
+
+        /* 绘图风格模板样式 */
+        .templates-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .template-card {
+            background: #1a1a1a;
+            border: 1px solid #2a2a2a;
+            border-radius: 4px;
+            padding: 20px;
+            margin-bottom: 15px;
+            transition: border-color 0.2s;
+        }
+
+        .template-card:hover {
+            border-color: #3a3a3a;
+        }
+
+        .template-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .template-name {
+            font-size: 16px;
+            font-weight: 500;
+            color: #fff;
+        }
+
+        .template-content-display {
+            background: #0a0a0a;
+            border: 1px solid #2a2a2a;
+            border-radius: 2px;
+            padding: 12px;
+            color: #e0e0e0;
+            font-size: 13px;
+            line-height: 1.6;
+            margin-bottom: 10px;
+        }
+
+        .template-meta {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 11px;
+            color: #666;
+        }
+
+        .default-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            background: #4caf50;
+            color: #fff;
+            font-size: 11px;
+            border-radius: 2px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #555;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+
+        .toast {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            background: #2a2a2a;
+            color: #fff;
+            padding: 15px 20px;
+            border-radius: 4px;
+            font-size: 13px;
+            z-index: 1000;
+            opacity: 0;
+            transform: translateY(20px);
+            transition: all 0.3s;
+            pointer-events: none;
+        }
+
+        .toast.show {
+            opacity: 1;
+            transform: translateY(0);
+            pointer-events: auto;
+        }
+
+        .toast.success {
+            background: #4caf50;
+        }
+
+        .toast.error {
+            background: #f44336;
+        }
+
+        /* Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 2000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: #1a1a1a;
+            border: 1px solid #2a2a2a;
+            border-radius: 4px;
+            width: 600px;
+            max-width: 90vw;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            padding: 20px;
+            border-bottom: 1px solid #2a2a2a;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-header h3 {
+            font-size: 16px;
+            color: #fff;
+            font-weight: 500;
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            color: #666;
+            font-size: 24px;
+            cursor: pointer;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 2px;
+        }
+
+        .modal-close:hover {
+            background: #2a2a2a;
+            color: #fff;
+        }
+
+        .modal-body {
+            padding: 30px;
+        }
+
+        .modal-body p {
+            color: #fff;
+            margin-bottom: 20px;
+            line-height: 1.6;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-label {
+            display: block;
+            font-size: 13px;
+            color: #999;
+            margin-bottom: 8px;
+        }
+
+        .form-input {
+            width: 100%;
+            background: #0a0a0a;
+            border: 1px solid #2a2a2a;
+            color: #fff;
+            padding: 10px;
+            border-radius: 2px;
+            font-size: 13px;
+            transition: border-color 0.2s;
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: #fff;
+        }
+
+        textarea.form-input {
+            min-height: 120px;
+            resize: vertical;
+            font-family: 'Courier New', monospace;
+            line-height: 1.6;
+        }
+
+        .modal-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 30px;
+        }
+
+        .modal-actions button {
+            flex: 1;
+        }
+    </style>
+</head>
+<body>
+    <div class="manage-container">
+        <div class="manage-header">
+            <div class="header-left">
+                <h1>提示词管理</h1>
+                <p>管理AI提示词配置和绘图风格模板</p>
+            </div>
+            <div class="header-right">
+                <button class="btn btn-secondary" onclick="refreshCurrentTab()">刷新</button>
+                <a href="/" class="btn btn-secondary" id="manageBackLink">返回登录</a>
+            </div>
+        </div>
+
+        <!-- 标签页切换 -->
+        <div class="tabs-container">
+            <button class="tab-button active" data-tab="prompts" onclick="switchTab('prompts')">AI提示词配置</button>
+            <button class="tab-button" data-tab="storyboard2-settings" onclick="switchTab('storyboard2-settings')">故事板2设置</button>
+            <button class="tab-button" data-tab="styles" onclick="switchTab('styles')">绘图风格模板</button>
+            <button class="tab-button" data-tab="storyboard-requirements" onclick="switchTab('storyboard-requirements')">分镜图绘图要求</button>
+            <button class="tab-button" data-tab="storyboard-styles" onclick="switchTab('storyboard-styles')">分镜图绘画风格</button>
+            <button class="tab-button" data-tab="video-generation-rules" onclick="switchTab('video-generation-rules')">视频生成准则</button>
+            <button class="tab-button" data-tab="prompt-template" onclick="switchTab('prompt-template')">视频风格提示词模板</button>
+            <button class="tab-button" data-tab="narration-conversion" onclick="switchTab('narration-conversion')">文本转解说剧</button>
+            <button class="tab-button" data-tab="opening-generation" onclick="switchTab('opening-generation')">精彩开头生成</button>
+        </div>
+
+        <!-- AI提示词配置 -->
+        <div class="tab-content active" id="prompts-tab">
+            <div class="prompts-grid" id="promptsGrid">
+                <div class="loading">加载中...</div>
+            </div>
+
+            <!-- 时长配置模板子分区 -->
+            <div style="margin-top: 50px; padding-top: 30px; border-top: 1px solid #2a2a2a;">
+                <div style="margin-bottom: 20px;">
+                    <h3 style="font-size: 16px; margin-bottom: 8px;">时长配置模板</h3>
+                    <div style="font-size: 13px; color: #666;">
+                        管理时长配置模板（4~5短句 / 对话30字），包含简单分镜规则和视频提示词规则
+                    </div>
+                </div>
+                <div id="shotDurationTemplatesGrid">
+                    <div class="loading">加载中...</div>
+                </div>
+            </div>
+            <div style="margin-top: 40px; padding-top: 30px; border-top: 1px solid #2a2a2a;">
+                <div class="templates-header" style="margin-bottom: 20px;">
+                    <div style="font-size: 13px; color: #666;">
+                        绠＄悊鍏ㄥ眬澶ч暅澶存ā鏉匡紝鐢ㄤ簬鏁呬簨鏉縎ora涓?鐢熸垚澶ч暅澶存彁绀鸿瘝"鏃堕€夋嫨绗竴闀滃ご杩愰暅绛栫暐
+                    </div>
+                    <button class="btn btn-primary" onclick="openCreateLargeShotTemplateModal()">鏂板缓妯℃澘</button>
+                </div>
+                <div id="largeShotTemplatesGrid">
+                    <div class="loading">鍔犺浇涓?..</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="tab-content" id="storyboard2-settings-tab">
+            <div class="prompts-grid" id="storyboard2SettingsGrid">
+                <div class="loading">加载中...</div>
+            </div>
+        </div>
+
+        <!-- 绘图风格模板 -->
+        <div class="tab-content" id="styles-tab">
+            <div class="templates-header">
+                <div style="font-size: 14px; color: #666;">
+                    管理您的绘图风格模板，用于生成主体卡片图片时应用统一风格
+                </div>
+                <button class="btn btn-primary" onclick="openCreateTemplateModal()">新建模板</button>
+            </div>
+            <div id="templatesGrid">
+                <div class="loading">加载中...</div>
+            </div>
+        </div>
+
+        <!-- 视频生成准则 -->
+        <div class="tab-content" id="video-generation-rules-tab">
+            <div class="templates-header">
+                <div style="font-size: 14px; color: #666;">
+                    设置全局视频生成准则
+                </div>
+            </div>
+
+            <!-- Sora准则卡片 -->
+            <div class="prompt-card" style="margin-bottom: 20px;">
+                <div class="prompt-card-header">
+                    <div>
+                        <div class="prompt-title">Sora生成视频准则</div>
+                        <div class="prompt-desc">此准则适用于所有调用Sora生成视频的场景，会自动添加到视频生成提示词最前面</div>
+                    </div>
+                </div>
+                <div class="prompt-card-body">
+                    <textarea class="prompt-content" id="soraRuleContent" rows="5" placeholder="例如：准则：不要出现字幕"></textarea>
+                </div>
+                <div style="margin-top: 10px; text-align: right;">
+                    <button class="btn btn-primary" onclick="saveSoraRule()">保存Sora准则</button>
+                </div>
+            </div>
+
+            <!-- Grok准则卡片 -->
+            <div class="prompt-card">
+                <div class="prompt-card-header">
+                    <div>
+                        <div class="prompt-title">Grok生成视频准则</div>
+                        <div class="prompt-desc">此准则适用于所有调用Grok生成视频的场景，会自动添加到视频生成提示词最前面</div>
+                    </div>
+                </div>
+                <div class="prompt-card-body">
+                    <textarea class="prompt-content" id="grokRuleContent" rows="5" placeholder="例如：严格按照提示词生视频，不要出现其他人物"></textarea>
+                </div>
+                <div style="margin-top: 10px; text-align: right;">
+                    <button class="btn btn-primary" onclick="saveGrokRule()">保存Grok准则</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 分镜图绘图要求模板 -->
+        <div class="tab-content" id="storyboard-requirements-tab">
+            <div class="templates-header">
+                <div style="font-size: 14px; color: #666;">
+                    管理分镜图绘图要求模板，用于生成分镜图时使用
+                </div>
+                <button class="btn btn-primary" onclick="openCreateStoryboardRequirementModal()">新建模板</button>
+            </div>
+            <div id="storyboardRequirementsGrid">
+                <div class="loading">加载中...</div>
+            </div>
+        </div>
+
+        <!-- 分镜图绘画风格模板 -->
+        <div class="tab-content" id="storyboard-styles-tab">
+            <div class="templates-header">
+                <div style="font-size: 14px; color: #666;">
+                    管理分镜图绘画风格模板，用于生成分镜图时使用
+                </div>
+                <button class="btn btn-primary" onclick="openCreateStoryboardStyleModal()">新建模板</button>
+            </div>
+            <div id="storyboardStylesGrid">
+                <div class="loading">加载中...</div>
+            </div>
+        </div>
+
+        <!-- 视频风格提示词模板 -->
+        <div class="tab-content" id="prompt-template-tab">
+            <div class="templates-header">
+                <div style="font-size: 14px; color: #666;">
+                    管理视频风格提示词模板（准则+风格描述），在故事板视频设置中选择使用
+                </div>
+                <button class="btn btn-primary" onclick="openCreateVideoStyleModal()">新建模板</button>
+            </div>
+            <div id="videoStyleTemplatesGrid">
+                <div class="loading">加载中...</div>
+            </div>
+        </div>
+
+        <!-- 文本转解说剧提示词 -->
+        <div class="tab-content" id="narration-conversion-tab">
+            <div class="templates-header">
+                <div style="font-size: 14px; color: #666;">
+                    设置文本转解说剧的AI提示词，用于将普通剧本文案转换成第一人称解说形式
+                </div>
+            </div>
+            <div class="prompt-card">
+                <div class="prompt-card-header">
+                    <div>
+                        <div class="prompt-title">文本转解说剧提示词</div>
+                        <div class="prompt-desc">此提示词用于指导AI如何将普通文本转换为第一人称解说风格</div>
+                    </div>
+                </div>
+                <div class="prompt-card-body">
+                    <textarea class="prompt-content" id="narrationConversionContent" rows="10" placeholder="请输入转换提示词..."></textarea>
+                </div>
+                <div class="prompt-card-footer">
+                    <div class="update-time" id="narrationConversionUpdateTime"></div>
+                    <div class="card-actions">
+                        <button class="btn-small btn-save" onclick="saveNarrationConversionTemplate()">保存</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 精彩开头生成提示词 -->
+        <div class="tab-content" id="opening-generation-tab">
+            <div class="templates-header">
+                <div style="font-size: 14px; color: #666;">
+                    设置精彩开头生成的AI提示词，用于为短视频创作吸引人的开头
+                </div>
+            </div>
+            <div class="prompt-card">
+                <div class="prompt-card-header">
+                    <div>
+                        <div class="prompt-title">精彩开头生成提示词</div>
+                        <div class="prompt-desc">此提示词用于指导AI如何为短视频生成精彩吸引人的开头</div>
+                    </div>
+                </div>
+                <div class="prompt-card-body">
+                    <textarea class="prompt-content" id="openingGenerationContent" rows="10" placeholder="请输入生成提示词...">我想把这个片段做成一个短视频，需要一个精彩吸引人的开头，请你帮我写一个开头</textarea>
+                </div>
+                <div class="prompt-card-footer">
+                    <div class="update-time" id="openingGenerationUpdateTime"></div>
+                    <div class="card-actions">
+                        <button class="btn-small btn-save" onclick="saveOpeningGenerationTemplate()">保存</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Toast -->
+        <div class="toast" id="toast"></div>
+
+    <!-- 确认重置提示词Modal -->
+    <!-- Admin Password Modal -->
+    <div class="modal" id="adminAuthModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Admin Access</h3>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">Password</label>
+                    <input type="password" class="form-input" id="adminPasswordInput" placeholder="Enter admin password">
+                    <div id="adminAuthError" style="margin-top: 10px; color: #ff6b6b; font-size: 12px; display: none;">Incorrect password</div>
+                </div>
+                <div class="modal-actions">
+                    <button class="btn btn-primary" onclick="confirmAdminPassword()">Unlock</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="confirmModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>确认重置</h3>
+                <button class="modal-close" onclick="closeConfirmModal())">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p id="confirmMessage"></p>
+                <div class="modal-actions">
+                    <button class="btn btn-secondary" onclick="closeConfirmModal()">取消</button>
+                    <button class="btn btn-primary" id="confirmButton">确定</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 新建/编辑风格模板Modal -->
+    <div class="modal" id="templateModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="templateModalTitle">新建风格模板</h3>
+                <button class="modal-close" onclick="closeTemplateModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">模板名称</label>
+                    <input type="text" class="form-input" id="templateName" placeholder="如：日漫风格、写实风格等">
+                </div>
+                <div class="form-group">
+                    <label class="form-label" id="templateContentLabel">风格描述</label>
+                    <textarea class="form-input" id="templateContent" placeholder="输入角色版本风格描述"></textarea>
+                </div>
+                <div class="form-group" id="templateSceneContentGroup" style="display: none;">
+                    <label class="form-label">场景风格描述</label>
+                    <textarea class="form-input" id="templateSceneContent" placeholder="输入场景版本风格描述"></textarea>
+                </div>
+                <div class="form-group" id="templatePropContentGroup" style="display: none;">
+                    <label class="form-label">道具风格描述</label>
+                    <textarea class="form-input" id="templatePropContent" placeholder="输入道具版本风格描述"></textarea>
+                </div>
+                <div class="modal-actions">
+                    <button class="btn btn-secondary" onclick="closeTemplateModal()">取消</button>
+                    <button class="btn btn-primary" id="templateSaveButton" onclick="saveTemplate()">保存</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 确认删除风格模板Modal -->
+    <div class="modal" id="deleteTemplateModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>确认删除</h3>
+                <button class="modal-close" onclick="closeDeleteTemplateModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p id="deleteTemplateMessage"></p>
+                <div class="modal-actions">
+                    <button class="btn btn-secondary" onclick="closeDeleteTemplateModal()">取消</button>
+                    <button class="btn btn-primary" id="deleteTemplateButton">确定删除</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 新建/编辑视频风格模板Modal -->
+    <div class="modal" id="videoStyleModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="videoStyleModalTitle">新建视频风格模板</h3>
+                <button class="modal-close" onclick="closeVideoStyleModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">模板名称</label>
+                    <input type="text" class="form-input" id="videoStyleName" placeholder="如：3D（半真实）、真人 等">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">准则</label>
+                    <textarea class="form-input" id="videoStyleSoraRule" rows="5" placeholder="如：准则：&#10;1 不要出现字幕。&#10;2 对话用中文。"></textarea>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">风格描述</label>
+                    <textarea class="form-input" id="videoStylePrompt" rows="5" placeholder="如：仙侠3D半写实风格，PBR着色，次表面散射..."></textarea>
+                </div>
+                <div class="modal-actions">
+                    <button class="btn btn-secondary" onclick="closeVideoStyleModal()">取消</button>
+                    <button class="btn btn-primary" id="videoStyleSaveButton" onclick="saveVideoStyleTemplate()">保存</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const ADMIN_PASSWORD = 'admin1024';
+        const ADMIN_AUTH_STORAGE_KEY = 'ui_admin_auth_v1';
+        const ADMIN_AUTH_PASSWORD_KEY = 'ui_admin_password_v1';
+        let adminAuthed = false;
+        let prompts = [];
+        let templates = [];
+        let largeShotTemplates = [];
+        let storyboardRequirements = [];
+        let storyboardStyles = [];
+        let videoStyleTemplates = [];
+        let editingVideoStyleId = null;
+        const STORYBOARD2_PROMPT_KEYS = [
+            'generate_storyboard2_video_prompts',
+            'storyboard2_image_prompt_prefix'
+        ];
+        let currentTab = 'prompts';
+        let editingTemplateId = null;
+        let editingTemplateType = null; // 'style' | 'storyboard-requirement' | 'storyboard-style' | 'large-shot'
+
+        function persistAdminAuth(password) {
+            localStorage.setItem(ADMIN_AUTH_STORAGE_KEY, '1');
+            localStorage.setItem(ADMIN_AUTH_PASSWORD_KEY, password);
+        }
+
+        function clearAdminAuth() {
+            adminAuthed = false;
+            localStorage.removeItem(ADMIN_AUTH_STORAGE_KEY);
+            localStorage.removeItem(ADMIN_AUTH_PASSWORD_KEY);
+        }
+
+        function restoreAdminAuth() {
+            const unlocked = localStorage.getItem(ADMIN_AUTH_STORAGE_KEY) === '1';
+            const password = localStorage.getItem(ADMIN_AUTH_PASSWORD_KEY) || '';
+            if (unlocked && password === ADMIN_PASSWORD) {
+                adminAuthed = true;
+                return true;
+            }
+            clearAdminAuth();
+            return false;
+        }
+
+        function showAdminAuthModal() {
+            const modal = document.getElementById('adminAuthModal');
+            const input = document.getElementById('adminPasswordInput');
+            const error = document.getElementById('adminAuthError');
+            if (error) error.style.display = 'none';
+            if (modal) modal.classList.add('active');
+            if (input) {
+                input.value = '';
+                setTimeout(() => input.focus(), 0);
+            }
+        }
+
+        function hideAdminAuthModal() {
+            const modal = document.getElementById('adminAuthModal');
+            if (modal) modal.classList.remove('active');
+        }
+
+        function confirmAdminPassword() {
+            const input = document.getElementById('adminPasswordInput');
+            const error = document.getElementById('adminAuthError');
+            const value = input ? input.value.trim() : '';
+            if (value === ADMIN_PASSWORD) {
+                adminAuthed = true;
+                persistAdminAuth(value);
+                hideAdminAuthModal();
+                loadPrompts();
+                loadShotDurationTemplates();
+                loadLargeShotTemplates();
+                return;
+            }
+            clearAdminAuth();
+            if (error) error.style.display = 'block';
+            if (input) { input.value = ''; input.focus(); }
+        }
+
+        function ensureAdminAuth() {
+            if (adminAuthed || restoreAdminAuth()) return true;
+            showAdminAuthModal();
+            return false;
+        }
+
+        function initManage() {
+            if (restoreAdminAuth()) {
+                hideAdminAuthModal();
+                loadPrompts();
+                loadShotDurationTemplates();
+                loadLargeShotTemplates();
+                return;
+            }
+            showAdminAuthModal();
+        }
+
+        // 标签页切换
+        function switchTab(tab) {
+            currentTab = tab;
+
+            // 更新标签按钮状态
+            document.querySelectorAll('.tab-button').forEach(btn => {
+                if (btn.dataset.tab === tab) {
+                    btn.classList.add('active');
+                } else {
+                    btn.classList.remove('active');
+                }
+            });
+
+            // 更新内容区域
+            document.querySelectorAll('.tab-content').forEach(content => {
+                if (content.id === `${tab}-tab`) {
+                    content.classList.add('active');
+                } else {
+                    content.classList.remove('active');
+                }
+            });
+
+            // 加载对应数据
+            if (tab === 'prompts') {
+                loadPrompts();
+                loadShotDurationTemplates();
+                loadLargeShotTemplates();
+            } else if (tab === 'storyboard2-settings') {
+                loadStoryboard2Settings();
+            } else if (tab === 'styles') {
+                loadTemplates();
+            } else if (tab === 'storyboard-requirements') {
+                loadStoryboardRequirements();
+            } else if (tab === 'storyboard-styles') {
+                loadStoryboardStyles();
+            } else if (tab === 'video-generation-rules') {
+                loadVideoGenerationRulesData();
+            } else if (tab === 'prompt-template') {
+                loadVideoStyleTemplates();
+            } else if (tab === 'narration-conversion') {
+                loadNarrationConversionTemplate();
+            } else if (tab === 'opening-generation') {
+                loadOpeningGenerationTemplate();
+            }
+        }
+
+        // 刷新当前标签页
+        function refreshCurrentTab() {
+            if (currentTab === 'prompts') {
+                loadPrompts();
+                loadShotDurationTemplates();
+                loadLargeShotTemplates();
+            } else if (currentTab === 'storyboard2-settings') {
+                loadStoryboard2Settings();
+            } else if (currentTab === 'styles') {
+                loadTemplates();
+            } else if (currentTab === 'storyboard-requirements') {
+                loadStoryboardRequirements();
+            } else if (currentTab === 'storyboard-styles') {
+                loadStoryboardStyles();
+            } else if (currentTab === 'video-generation-rules') {
+                loadVideoGenerationRulesData();
+            } else if (currentTab === 'prompt-template') {
+                loadVideoStyleTemplates();
+            } else if (currentTab === 'narration-conversion') {
+                loadNarrationConversionTemplate();
+            } else if (currentTab === 'opening-generation') {
+                loadOpeningGenerationTemplate();
+            }
+        }
+
+        function isStoryboard2PromptConfig(prompt) {
+            return STORYBOARD2_PROMPT_KEYS.includes(String(prompt?.key || ''));
+        }
+
+        function renderPromptCards(gridId, promptList, emptyMessage = '暂无配置') {
+            const grid = document.getElementById(gridId);
+            if (!grid) {
+                return;
+            }
+
+            if (!Array.isArray(promptList) || promptList.length === 0) {
+                grid.innerHTML = `<div class="empty-state">${escapeHtml(emptyMessage)}</div>`;
+                return;
+            }
+
+            grid.innerHTML = promptList.map(prompt => `
+                <div class="prompt-card" data-id="${prompt.id}">
+                    <div class="prompt-card-header">
+                        <div>
+                            <div class="prompt-title">${escapeHtml(prompt.name)}</div>
+                            <div class="prompt-desc">${escapeHtml(prompt.description)}</div>
+                        </div>
+                        <div class="prompt-status">
+                            <span class="status-indicator ${prompt.is_active ? 'status-active' : 'status-inactive'}"></span>
+                            <span>${prompt.is_active ? 'Active' : 'Inactive'}</span>
+                        </div>
+                    </div>
+                    <div class="prompt-card-body">
+                        <textarea class="prompt-content" id="content-${prompt.id}">${escapeHtml(prompt.content)}</textarea>
+                    </div>
+                    <div class="prompt-card-footer">
+                        <div class="update-time">
+                            更新时间: ${new Date(prompt.updated_at).toLocaleString()}
+                        </div>
+                        <div class="card-actions">
+                            <button class="btn-small btn-toggle" onclick="togglePrompt(${prompt.id}, ${!prompt.is_active})">
+                                ${prompt.is_active ? '停用' : '启用'}
+                            </button>
+                            <button class="btn-small btn-reset" onclick="confirmReset(${prompt.id}, '${escapeHtml(prompt.name)}')">重置</button>
+                            <button class="btn-small btn-save" onclick="savePrompt(${prompt.id})">保存</button>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // 加载提示词列表
+        async function loadPrompts() {
+            if (!ensureAdminAuth()) return;
+            try {
+                const response = await fetch('/api/prompt-configs');
+                prompts = await response.json();
+                const generalPrompts = (Array.isArray(prompts) ? prompts : []).filter(
+                    prompt => !isStoryboard2PromptConfig(prompt) &&
+                              prompt.key !== 'simple_storyboard_shot_division' &&
+                              prompt.key !== 'generate_video_prompts' &&
+                              prompt.key !== 'generate_large_shot_prompts' &&
+                              prompt.key !== 'grok_rule' &&
+                              prompt.key !== 'storyboard2_grok_rule'
+                );
+                renderPromptCards('promptsGrid', generalPrompts);
+            } catch (error) {
+                console.error('Failed to load prompts:', error);
+                showToast('加载失败', 'error');
+            }
+        }
+
+        async function loadStoryboard2Settings() {
+            try {
+                const response = await fetch('/api/prompt-configs');
+                prompts = await response.json();
+                const sortOrder = new Map(STORYBOARD2_PROMPT_KEYS.map((key, index) => [key, index]));
+                const storyboard2Prompts = (Array.isArray(prompts) ? prompts : [])
+                    .filter(prompt => isStoryboard2PromptConfig(prompt))
+                    .sort((a, b) => (sortOrder.get(a.key) ?? 999) - (sortOrder.get(b.key) ?? 999));
+                renderPromptCards('storyboard2SettingsGrid', storyboard2Prompts, '暂无故事板2配置');
+            } catch (error) {
+                console.error('Failed to load storyboard2 prompt settings:', error);
+                showToast('加载失败', 'error');
+            }
+        }
+
+        async function reloadPromptConfigsForCurrentTab() {
+            if (currentTab === 'storyboard2-settings') {
+                await loadStoryboard2Settings();
+                return;
+            }
+            await loadPrompts();
+        }
+
+        // 保存提示词
+        async function savePrompt(id) {
+            const content = document.getElementById(`content-${id}`).value;
+            const btn = event.target;
+            const originalText = btn.textContent;
+
+            try {
+                btn.textContent = '保存中...';
+                btn.disabled = true;
+
+                const response = await fetch(`/api/prompt-configs/${id}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ content })
+                });
+
+                if (response.ok) {
+                    showToast('保存成功', 'success');
+                    await reloadPromptConfigsForCurrentTab();
+                } else {
+                    const error = await response.json();
+                    showToast(error.detail || '保存失败', 'error');
+                }
+            } catch (error) {
+                console.error('Failed to save prompt:', error);
+                showToast('保存失败', 'error');
+            } finally {
+                btn.textContent = originalText;
+                btn.disabled = false;
+            }
+        }
+
+        // 切换启用状态
+        async function togglePrompt(id, newStatus) {
+            try {
+                const response = await fetch(`/api/prompt-configs/${id}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ is_active: newStatus })
+                });
+
+                if (response.ok) {
+                    showToast(newStatus ? '已启用' : '已停用', 'success');
+                    await reloadPromptConfigsForCurrentTab();
+                } else {
+                    showToast('操作失败', 'error');
+                }
+            } catch (error) {
+                console.error('Failed to toggle prompt:', error);
+                showToast('操作失败', 'error');
+            }
+        }
+
+        // 确认重置
+        function confirmReset(id, name) {
+            const modal = document.getElementById('confirmModal');
+            const message = document.getElementById('confirmMessage');
+            const button = document.getElementById('confirmButton');
+
+            message.textContent = `确定要将 "${name}" 重置为默认值吗？当前的修改将会丢失。`;
+            const rawName = String(name || '').trim();
+            const displayName = rawName.startsWith('[迁移占位]已删除风格模板 ')
+                ? `风格模板 #${templateId}`
+                : rawName;
+            message.textContent = `确定要删除风格模板 "${displayName}" 吗？此操作不可撤销。`;
+            message.textContent = `确定要将 "${name}" 重置为默认值吗？当前的修改将会丢失。`;
+            modal.classList.add('active');
+
+            button.onclick = () => resetPrompt(id);
+        }
+
+        // 重置提示词
+        async function resetPrompt(id) {
+            try {
+                const response = await fetch(`/api/prompt-configs/${id}/reset`, {
+                    method: 'POST'
+                });
+
+                if (response.ok) {
+                    showToast('重置成功', 'success');
+                    closeConfirmModal();
+                    await reloadPromptConfigsForCurrentTab();
+                } else {
+                    const error = await response.json();
+                    showToast(error.detail || '重置失败', 'error');
+                }
+            } catch (error) {
+                console.error('Failed to reset prompt:', error);
+                showToast('重置失败', 'error');
+            }
+        }
+
+        // 关闭确认模态框
+        function closeConfirmModal() {
+            document.getElementById('confirmModal').classList.remove('active');
+        }
+
+        // ==================== 绘图风格模板管理 ====================
+
+        // 加载风格模板列表
+        function renderStyleTemplateVariantPreview(label, content) {
+            return `
+                <div style="margin-bottom: 10px;">
+                    <div style="font-weight: 600; margin-bottom: 4px;">${escapeHtml(label)}</div>
+                    <div class="template-content-display">${escapeHtml(content || '')}</div>
+                </div>
+            `;
+        }
+
+        function configureTemplateModalForType(templateType) {
+            const isStyleTemplate = templateType === 'style';
+            const contentLabel = document.getElementById('templateContentLabel');
+            const sceneGroup = document.getElementById('templateSceneContentGroup');
+            const propGroup = document.getElementById('templatePropContentGroup');
+
+            if (contentLabel) {
+                contentLabel.textContent = isStyleTemplate ? '角色风格描述' : '内容';
+            }
+            if (sceneGroup) {
+                sceneGroup.style.display = isStyleTemplate ? 'block' : 'none';
+            }
+            if (propGroup) {
+                propGroup.style.display = isStyleTemplate ? 'block' : 'none';
+            }
+        }
+
+        function fillStyleTemplateVariantFields(template = null) {
+            document.getElementById('templateContent').value = template?.content || '';
+            document.getElementById('templateSceneContent').value = template?.scene_content || '';
+            document.getElementById('templatePropContent').value = template?.prop_content || '';
+        }
+
+        async function loadTemplates() {
+            try {
+                const response = await fetch('/api/style-templates');
+
+                if (!response.ok) {
+                    throw new Error('加载失败');
+                }
+
+                templates = (await response.json()).filter(template =>
+                    !String(template?.name || '').startsWith('[迁移占位]已删除风格模板 ')
+                );
+
+                const grid = document.getElementById('templatesGrid');
+
+                if (templates.length === 0) {
+                    grid.innerHTML = '<div class="empty-state">暂无风格模板，点击"新建模板"开始创建</div>';
+                    return;
+                }
+
+                grid.innerHTML = templates.map(template => `
+                    <div class="template-card">
+                        <div class="template-header">
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <div class="template-name">${escapeHtml(template.name)}</div>
+                                ${template.is_default ? '<span class="default-badge">默认</span>' : ''}
+                            </div>
+                            <div class="card-actions">
+                                ${!template.is_default ? `<button class="btn-small btn-toggle" onclick="setDefaultTemplate(${template.id})">设为默认</button>` : ''}
+                                <button class="btn-small btn-save" onclick="openEditTemplateModal(${template.id})">编辑</button>
+                                <button class="btn-small btn-delete" onclick="confirmDeleteTemplate(${template.id}, '${escapeHtml(template.name)}')">删除</button>
+                            </div>
+                        </div>
+                        ${renderStyleTemplateVariantPreview('角色', template.content)}
+                        ${renderStyleTemplateVariantPreview('场景', template.scene_content)}
+                        ${renderStyleTemplateVariantPreview('道具', template.prop_content)}
+                        <div class="template-meta">
+                            <span>创建时间: ${new Date(template.created_at).toLocaleString()}</span>
+                        </div>
+                    </div>
+                `).join('');
+            } catch (error) {
+                console.error('Failed to load templates:', error);
+                showToast('加载风格模板失败', 'error');
+            }
+        }
+
+        // 打开新建模板弹窗
+        function openCreateTemplateModal() {
+            editingTemplateId = null;
+            editingTemplateType = 'style';
+            configureTemplateModalForType('style');
+            document.getElementById('templateModalTitle').textContent = '新建风格模板';
+            document.getElementById('templateName').value = '';
+            fillStyleTemplateVariantFields();
+            document.getElementById('templateModal').classList.add('active');
+        }
+
+        // 打开编辑模板弹窗
+        function openEditTemplateModal(templateId) {
+            const template = templates.find(t => t.id === templateId);
+            if (!template) return;
+
+            editingTemplateId = templateId;
+            editingTemplateType = 'style';
+            document.getElementById('templateModalTitle').textContent = '编辑风格模板';
+            configureTemplateModalForType('style');
+            document.getElementById('templateName').value = template.name;
+            fillStyleTemplateVariantFields(template);
+            document.getElementById('templateModal').classList.add('active');
+        }
+
+        // 关闭模板弹窗
+        function closeTemplateModal() {
+            document.getElementById('templateModal').classList.remove('active');
+            editingTemplateId = null;
+            configureTemplateModalForType('');
+        }
+
+        // 保存模板（新建或编辑）
+        async function saveTemplate() {
+            const name = document.getElementById('templateName').value.trim();
+            const content = document.getElementById('templateContent').value.trim();
+            const sceneContent = document.getElementById('templateSceneContent')?.value.trim() || '';
+            const propContent = document.getElementById('templatePropContent')?.value.trim() || '';
+
+            if (!name || !content) {
+                showToast('请填写完整信息', 'error');
+                return;
+            }
+
+            const button = document.getElementById('templateSaveButton');
+            const originalText = button.textContent;
+
+            try {
+                button.textContent = '保存中...';
+                button.disabled = true;
+
+                let url, method;
+
+                if (editingTemplateType === 'storyboard-requirement') {
+                    url = editingTemplateId
+                        ? `/api/storyboard-templates/requirements/${editingTemplateId}`
+                        : '/api/storyboard-templates/requirements';
+                    method = editingTemplateId ? 'PUT' : 'POST';
+                } else if (editingTemplateType === 'storyboard-style') {
+                    url = editingTemplateId
+                        ? `/api/storyboard-templates/styles/${editingTemplateId}`
+                        : '/api/storyboard-templates/styles';
+                    method = editingTemplateId ? 'PUT' : 'POST';
+                } else if (editingTemplateType === 'large-shot') {
+                    url = editingTemplateId
+                        ? `/api/large-shot-templates/${editingTemplateId}`
+                        : '/api/large-shot-templates';
+                    method = editingTemplateId ? 'PUT' : 'POST';
+                } else {
+                    url = editingTemplateId
+                        ? `/api/style-templates/${editingTemplateId}`
+                        : '/api/style-templates';
+                    method = editingTemplateId ? 'PUT' : 'POST';
+                }
+
+                const requestBody = { name, content };
+                if (editingTemplateType === 'style') {
+                    requestBody.scene_content = sceneContent;
+                    requestBody.prop_content = propContent;
+                }
+
+                const response = await fetch(url, {
+                    method: method,
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(requestBody)
+                });
+
+                if (response.ok) {
+                    showToast(editingTemplateId ? '保存成功' : '创建成功', 'success');
+                    closeTemplateModal();
+
+                    if (editingTemplateType === 'storyboard-requirement') {
+                        await loadStoryboardRequirements();
+                    } else if (editingTemplateType === 'storyboard-style') {
+                        await loadStoryboardStyles();
+                    } else if (editingTemplateType === 'large-shot') {
+                        await loadLargeShotTemplates();
+                    } else {
+                        await loadTemplates();
+                    }
+                } else {
+                    const error = await response.json();
+                    showToast(error.detail || '操作失败', 'error');
+                }
+            } catch (error) {
+                console.error('Failed to save template:', error);
+                showToast('操作失败', 'error');
+            } finally {
+                button.textContent = originalText;
+                button.disabled = false;
+            }
+        }
+
+        // 确认删除模板
+        async function getErrorDetail(response, fallbackMessage) {
+            const rawText = await response.text();
+            if (!rawText) {
+                return fallbackMessage;
+            }
+
+            try {
+                const parsed = JSON.parse(rawText);
+                return parsed.detail || parsed.message || fallbackMessage;
+            } catch (error) {
+                return rawText;
+            }
+        }
+
+        function confirmDeleteTemplate(templateId, name) {
+            const modal = document.getElementById('deleteTemplateModal');
+            const message = document.getElementById('deleteTemplateMessage');
+            const button = document.getElementById('deleteTemplateButton');
+
+            message.textContent = `确定要删除风格模板 "${name}" 吗？此操作不可撤销。`;
+            modal.classList.add('active');
+
+            const rawName = String(name || '').trim();
+            const displayName = rawName.startsWith('[迁移占位]已删除风格模板 ')
+                ? `风格模板 #${templateId}`
+                : rawName;
+            message.textContent = `确定要删除风格模板 "${displayName}" 吗？此操作不可撤销。`;
+            button.onclick = () => deleteTemplate(templateId);
+        }
+
+        // 删除模板
+        async function deleteTemplate(templateId) {
+            try {
+                const response = await fetch(`/api/style-templates/${templateId}`, {
+                    method: 'DELETE'
+                });
+
+                if (response.ok) {
+                    showToast('删除成功', 'success');
+                    closeDeleteTemplateModal();
+                    await loadTemplates();
+                } else {
+                    const errorDetail = await getErrorDetail(response, '删除失败');
+                    showToast(errorDetail || '删除失败', 'error');
+                }
+            } catch (error) {
+                console.error('Failed to delete template:', error);
+                showToast('删除失败', 'error');
+            }
+        }
+
+        // 关闭删除确认弹窗
+        function closeDeleteTemplateModal() {
+            document.getElementById('deleteTemplateModal').classList.remove('active');
+        }
+
+        // 设置默认模板
+        async function setDefaultTemplate(templateId) {
+            try {
+                const response = await fetch(`/api/style-templates/${templateId}/set-default`, {
+                    method: 'POST'
+                });
+
+                if (response.ok) {
+                    showToast('已设置为默认模板', 'success');
+                    await loadTemplates();
+                } else {
+                    const error = await response.json();
+                    showToast(error.detail || '设置失败', 'error');
+                }
+            } catch (error) {
+                console.error('Failed to set default template:', error);
+                showToast('设置失败', 'error');
+            }
+        }
+
+        // ==================== 视频生成准则管理（Sora和Grok） ====================
+
+        // 加载视频生成准则（Sora和Grok）
+        // ==================== 视频风格模板管理 ====================
+
+        async function loadVideoStyleTemplates() {
+            try {
+                const response = await fetch('/api/video-style-templates');
+                if (!response.ok) throw new Error('加载失败');
+                videoStyleTemplates = await response.json();
+                renderVideoStyleTemplates();
+            } catch (error) {
+                console.error('Failed to load video style templates:', error);
+                document.getElementById('videoStyleTemplatesGrid').innerHTML = '<div class="loading">加载失败</div>';
+            }
+        }
+
+        function renderVideoStyleTemplates() {
+            const grid = document.getElementById('videoStyleTemplatesGrid');
+            if (!videoStyleTemplates.length) {
+                grid.innerHTML = '<div class="empty-state">暂无视频风格模板，点击"新建模板"开始创建</div>';
+                return;
+            }
+            grid.innerHTML = videoStyleTemplates.map(t => `
+                <div class="template-card">
+                    <div class="template-header">
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <div class="template-name">${escapeHtml(t.name)}</div>
+                            ${t.is_default ? '<span class="default-badge">默认</span>' : ''}
+                        </div>
+                        <div class="card-actions">
+                            ${!t.is_default ? `<button class="btn-small btn-toggle" onclick="setDefaultVideoStyle(${t.id})">设为默认</button>` : ''}
+                            <button class="btn-small btn-save" onclick="editVideoStyle(${t.id})">编辑</button>
+                            <button class="btn-small btn-delete" onclick="deleteVideoStyle(${t.id},'${escapeHtml(t.name)}')">删除</button>
+                        </div>
+                    </div>
+                    <div class="template-content-display">
+                        ${escapeHtml(t.style_prompt || '')}
+                    </div>
+                    <div class="template-meta">
+                        <span>创建时间: ${new Date(t.created_at).toLocaleString()}</span>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function openCreateVideoStyleModal() {
+            editingVideoStyleId = null;
+            document.getElementById('videoStyleModalTitle').textContent = '新建视频风格模板';
+            document.getElementById('videoStyleName').value = '';
+            document.getElementById('videoStyleSoraRule').value = '';
+            document.getElementById('videoStylePrompt').value = '';
+            document.getElementById('videoStyleModal').classList.add('active');
+        }
+
+        function editVideoStyle(id) {
+            const t = videoStyleTemplates.find(x => x.id === id);
+            if (!t) return;
+            editingVideoStyleId = id;
+            document.getElementById('videoStyleModalTitle').textContent = '编辑视频风格模板';
+            document.getElementById('videoStyleName').value = t.name;
+            document.getElementById('videoStyleSoraRule').value = t.sora_rule || '';
+            document.getElementById('videoStylePrompt').value = t.style_prompt || '';
+            document.getElementById('videoStyleModal').classList.add('active');
+        }
+
+        function closeVideoStyleModal() {
+            document.getElementById('videoStyleModal').classList.remove('active');
+            editingVideoStyleId = null;
+        }
+
+        async function saveVideoStyleTemplate() {
+            const name = document.getElementById('videoStyleName').value.trim();
+            const soraRule = document.getElementById('videoStyleSoraRule').value;
+            const stylePrompt = document.getElementById('videoStylePrompt').value;
+
+            if (!name) { showToast('请输入模板名称', 'warning'); return; }
+
+            const body = JSON.stringify({ name, sora_rule: soraRule, style_prompt: stylePrompt });
+            try {
+                let response;
+                if (editingVideoStyleId) {
+                    response = await fetch(`/api/video-style-templates/${editingVideoStyleId}`, {
+                        method: 'PUT', headers: {'Content-Type': 'application/json'}, body
+                    });
+                } else {
+                    response = await fetch('/api/video-style-templates', {
+                        method: 'POST', headers: {'Content-Type': 'application/json'}, body
+                    });
+                }
+                if (response.ok) {
+                    showToast('保存成功', 'success');
+                    closeVideoStyleModal();
+                    await loadVideoStyleTemplates();
+                } else {
+                    const err = await response.json();
+                    showToast(err.detail || '保存失败', 'error');
+                }
+            } catch (error) {
+                console.error('Failed to save video style template:', error);
+                showToast('保存失败', 'error');
+            }
+        }
+
+        async function deleteVideoStyle(id, name) {
+            if (!confirm(`确定要删除模板"${name}"吗？`)) return;
+            try {
+                const response = await fetch(`/api/video-style-templates/${id}`, { method: 'DELETE' });
+                if (response.ok) {
+                    showToast('已删除', 'success');
+                    await loadVideoStyleTemplates();
+                } else {
+                    showToast('删除失败', 'error');
+                }
+            } catch (error) {
+                showToast('删除失败', 'error');
+            }
+        }
+
+        async function setDefaultVideoStyle(id) {
+            try {
+                const response = await fetch(`/api/video-style-templates/${id}/set-default`, { method: 'POST' });
+                if (response.ok) {
+                    showToast('已设为默认', 'success');
+                    await loadVideoStyleTemplates();
+                } else {
+                    showToast('设置失败', 'error');
+                }
+            } catch (error) {
+                showToast('设置失败', 'error');
+            }
+        }
+
+        // ==================== 视频生成准则管理（Sora和Grok） ====================
+
+        async function loadVideoGenerationRulesData() {
+            try {
+                const response = await fetch('/api/video-generation-rules');
+                if (!response.ok) throw new Error('加载失败');
+                const data = await response.json();
+                document.getElementById('soraRuleContent').value = data.sora_rule || '';
+                document.getElementById('grokRuleContent').value = data.grok_rule || '';
+            } catch (error) {
+                console.error('Failed to load video generation rules:', error);
+            }
+        }
+
+        async function saveSoraRule() {
+            const soraRule = document.getElementById('soraRuleContent').value;
+            const button = event.target;
+            const originalText = button.textContent;
+            try {
+                button.textContent = '保存中...';
+                button.disabled = true;
+                const response = await fetch('/api/video-generation-rules', {
+                    method: 'PUT',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ sora_rule: soraRule })
+                });
+                if (response.ok) {
+                    showToast('保存成功', 'success');
+                } else {
+                    showToast('保存失败', 'error');
+                }
+            } catch (error) {
+                showToast('保存失败', 'error');
+            } finally {
+                button.textContent = originalText;
+                button.disabled = false;
+            }
+        }
+
+        async function saveGrokRule() {
+            const grokRule = document.getElementById('grokRuleContent').value;
+            const button = event.target;
+            const originalText = button.textContent;
+            try {
+                button.textContent = '保存中...';
+                button.disabled = true;
+                const response = await fetch('/api/video-generation-rules', {
+                    method: 'PUT',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ grok_rule: grokRule })
+                });
+                if (response.ok) {
+                    showToast('保存成功', 'success');
+                } else {
+                    showToast('保存失败', 'error');
+                }
+            } catch (error) {
+                showToast('保存失败', 'error');
+            } finally {
+                button.textContent = originalText;
+                button.disabled = false;
+            }
+        }
+
+        // Legacy compat
+        async function loadGrokRule() { await loadVideoGenerationRulesData(); }
+        async function loadSoraRule() { await loadVideoGenerationRulesData(); }
+        async function loadVideoGenerationRules() { await loadVideoGenerationRulesData(); }
+
+        // ==================== 分镜图模板管理 ====================
+
+        // 加载分镜图绘图要求模板
+        async function loadStoryboardRequirements() {
+            try {
+                const response = await fetch('/api/storyboard-templates/requirements');
+
+                if (!response.ok) {
+                    throw new Error('加载失败');
+                }
+
+                storyboardRequirements = await response.json();
+
+                const grid = document.getElementById('storyboardRequirementsGrid');
+
+                if (storyboardRequirements.length === 0) {
+                    grid.innerHTML = '<div class="empty-state">暂无模板，点击"新建模板"开始创建</div>';
+                    return;
+                }
+
+                grid.innerHTML = storyboardRequirements.map(template => `
+                    <div class="template-card">
+                        <div class="template-header">
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <div class="template-name">${escapeHtml(template.name)}</div>
+                                ${template.is_default ? '<span class="default-badge">默认</span>' : ''}
+                            </div>
+                            <div class="card-actions">
+                                ${!template.is_default ? `<button class="btn-small btn-toggle" onclick="setDefaultStoryboardRequirement(${template.id})">设为默认</button>` : ''}
+                                <button class="btn-small btn-save" onclick="openEditStoryboardRequirementModal(${template.id})">编辑</button>
+                                <button class="btn-small btn-delete" onclick="confirmDeleteStoryboardRequirement(${template.id}, '${escapeHtml(template.name)}')">删除</button>
+                            </div>
+                        </div>
+                        <div class="template-content-display">
+                            ${escapeHtml(template.content)}
+                        </div>
+                        <div class="template-meta">
+                            <span>创建时间: ${new Date(template.created_at).toLocaleString()}</span>
+                        </div>
+                    </div>
+                `).join('');
+            } catch (error) {
+                console.error('Failed to load storyboard requirements:', error);
+                showToast('加载失败', 'error');
+            }
+        }
+
+        // 加载分镜图绘画风格模板
+        async function loadStoryboardStyles() {
+            try {
+                const response = await fetch('/api/storyboard-templates/styles');
+
+                if (!response.ok) {
+                    throw new Error('加载失败');
+                }
+
+                storyboardStyles = await response.json();
+
+                const grid = document.getElementById('storyboardStylesGrid');
+
+                if (storyboardStyles.length === 0) {
+                    grid.innerHTML = '<div class="empty-state">暂无模板，点击"新建模板"开始创建</div>';
+                    return;
+                }
+
+                grid.innerHTML = storyboardStyles.map(template => `
+                    <div class="template-card">
+                        <div class="template-header">
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <div class="template-name">${escapeHtml(template.name)}</div>
+                                ${template.is_default ? '<span class="default-badge">默认</span>' : ''}
+                            </div>
+                            <div class="card-actions">
+                                ${!template.is_default ? `<button class="btn-small btn-toggle" onclick="setDefaultStoryboardStyle(${template.id})">设为默认</button>` : ''}
+                                <button class="btn-small btn-save" onclick="openEditStoryboardStyleModal(${template.id})">编辑</button>
+                                <button class="btn-small btn-delete" onclick="confirmDeleteStoryboardStyle(${template.id}, '${escapeHtml(template.name)}')">删除</button>
+                            </div>
+                        </div>
+                        <div class="template-content-display">
+                            ${escapeHtml(template.content)}
+                        </div>
+                        <div class="template-meta">
+                            <span>创建时间: ${new Date(template.created_at).toLocaleString()}</span>
+                        </div>
+                    </div>
+                `).join('');
+            } catch (error) {
+                console.error('Failed to load storyboard styles:', error);
+                showToast('加载失败', 'error');
+            }
+        }
+
+        // 打开新建分镜图绘图要求模板弹窗
+        function openCreateStoryboardRequirementModal() {
+            editingTemplateId = null;
+            editingTemplateType = 'storyboard-requirement';
+            document.getElementById('templateModalTitle').textContent = '新建分镜图绘图要求模板';
+            document.getElementById('templateName').value = '';
+            document.getElementById('templateContent').value = '';
+            document.getElementById('templateModal').classList.add('active');
+        }
+
+        // 打开编辑分镜图绘图要求模板弹窗
+        function openEditStoryboardRequirementModal(templateId) {
+            const template = storyboardRequirements.find(t => t.id === templateId);
+            if (!template) return;
+
+            editingTemplateId = templateId;
+            editingTemplateType = 'storyboard-requirement';
+            document.getElementById('templateModalTitle').textContent = '编辑分镜图绘图要求模板';
+            document.getElementById('templateName').value = template.name;
+            document.getElementById('templateContent').value = template.content;
+            document.getElementById('templateModal').classList.add('active');
+        }
+
+        // 打开新建分镜图绘画风格模板弹窗
+        function openCreateStoryboardStyleModal() {
+            editingTemplateId = null;
+            editingTemplateType = 'storyboard-style';
+            document.getElementById('templateModalTitle').textContent = '新建分镜图绘画风格模板';
+            document.getElementById('templateName').value = '';
+            document.getElementById('templateContent').value = '';
+            document.getElementById('templateModal').classList.add('active');
+        }
+
+        // 打开编辑分镜图绘画风格模板弹窗
+        function openEditStoryboardStyleModal(templateId) {
+            const template = storyboardStyles.find(t => t.id === templateId);
+            if (!template) return;
+
+            editingTemplateId = templateId;
+            editingTemplateType = 'storyboard-style';
+            document.getElementById('templateModalTitle').textContent = '编辑分镜图绘画风格模板';
+            document.getElementById('templateName').value = template.name;
+            document.getElementById('templateContent').value = template.content;
+            document.getElementById('templateModal').classList.add('active');
+        }
+
+        // 确认删除分镜图绘图要求模板
+        function confirmDeleteStoryboardRequirement(templateId, name) {
+            const modal = document.getElementById('deleteTemplateModal');
+            const message = document.getElementById('deleteTemplateMessage');
+            const button = document.getElementById('deleteTemplateButton');
+
+            message.textContent = `确定要删除模板 "${name}" 吗？此操作不可撤销。`;
+            modal.classList.add('active');
+
+            button.onclick = () => deleteStoryboardRequirement(templateId);
+        }
+
+        // 删除分镜图绘图要求模板
+        async function deleteStoryboardRequirement(templateId) {
+            try {
+                const response = await fetch(`/api/storyboard-templates/requirements/${templateId}`, {
+                    method: 'DELETE'
+                });
+
+                if (response.ok) {
+                    showToast('删除成功', 'success');
+                    closeDeleteTemplateModal();
+                    await loadStoryboardRequirements();
+                } else {
+                    const error = await response.json();
+                    showToast(error.detail || '删除失败', 'error');
+                }
+            } catch (error) {
+                console.error('Failed to delete template:', error);
+                showToast('删除失败', 'error');
+            }
+        }
+
+        // 确认删除分镜图绘画风格模板
+        function confirmDeleteStoryboardStyle(templateId, name) {
+            const modal = document.getElementById('deleteTemplateModal');
+            const message = document.getElementById('deleteTemplateMessage');
+            const button = document.getElementById('deleteTemplateButton');
+
+            message.textContent = `确定要删除模板 "${name}" 吗？此操作不可撤销。`;
+            modal.classList.add('active');
+
+            button.onclick = () => deleteStoryboardStyle(templateId);
+        }
+
+        // 删除分镜图绘画风格模板
+        async function deleteStoryboardStyle(templateId) {
+            try {
+                const response = await fetch(`/api/storyboard-templates/styles/${templateId}`, {
+                    method: 'DELETE'
+                });
+
+                if (response.ok) {
+                    showToast('删除成功', 'success');
+                    closeDeleteTemplateModal();
+                    await loadStoryboardStyles();
+                } else {
+                    const error = await response.json();
+                    showToast(error.detail || '删除失败', 'error');
+                }
+            } catch (error) {
+                console.error('Failed to delete template:', error);
+                showToast('删除失败', 'error');
+            }
+        }
+
+        // 设置默认分镜图绘图要求模板
+        async function setDefaultStoryboardRequirement(templateId) {
+            try {
+                const response = await fetch(`/api/storyboard-templates/requirements/${templateId}/set-default`, {
+                    method: 'POST'
+                });
+
+                if (response.ok) {
+                    showToast('已设置为默认模板', 'success');
+                    await loadStoryboardRequirements();
+                } else {
+                    const error = await response.json();
+                    showToast(error.detail || '设置失败', 'error');
+                }
+            } catch (error) {
+                console.error('Failed to set default template:', error);
+                showToast('设置失败', 'error');
+            }
+        }
+
+        // 设置默认分镜图绘画风格模板
+        async function setDefaultStoryboardStyle(templateId) {
+            try {
+                const response = await fetch(`/api/storyboard-templates/styles/${templateId}/set-default`, {
+                    method: 'POST'
+                });
+
+                if (response.ok) {
+                    showToast('已设置为默认模板', 'success');
+                    await loadStoryboardStyles();
+                } else {
+                    const error = await response.json();
+                    showToast(error.detail || '设置失败', 'error');
+                }
+            } catch (error) {
+                console.error('Failed to set default template:', error);
+                showToast('设置失败', 'error');
+            }
+        }
+
+        // ==================== 视频风格提示词模板管理 ====================
+
+        // 加载视频风格提示词模板
+        async function loadPromptTemplate() {
+            try {
+                const response = await fetch('/api/global-settings/prompt_template');
+
+                if (!response.ok) {
+                    throw new Error('加载失败');
+                }
+
+                const data = await response.json();
+                document.getElementById('promptTemplateContent').value = data.value || '';
+            } catch (error) {
+                console.error('Failed to load prompt template:', error);
+                showToast('加载视频风格提示词模板失败', 'error');
+            }
+        }
+
+        // 保存视频风格提示词模板
+        async function savePromptTemplate() {
+            const content = document.getElementById('promptTemplateContent').value;
+            const button = event.target;
+            const originalText = button.textContent;
+
+            try {
+                button.textContent = '保存中...';
+                button.disabled = true;
+
+                const response = await fetch('/api/global-settings/prompt_template', {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ value: content })
+                });
+
+                if (response.ok) {
+                    showToast('保存成功', 'success');
+                    await loadPromptTemplate();
+                } else {
+                    const error = await response.json();
+                    showToast(error.detail || '保存失败', 'error');
+                }
+            } catch (error) {
+                console.error('Failed to save prompt template:', error);
+                showToast('保存失败', 'error');
+            } finally {
+                button.textContent = originalText;
+                button.disabled = false;
+            }
+        }
+
+        // ==================== 文本转解说剧提示词管理 ====================
+
+        // 加载文本转解说剧提示词
+        async function loadNarrationConversionTemplate() {
+            try {
+                const response = await fetch('/api/global-settings/narration_conversion_template');
+
+                if (!response.ok) {
+                    throw new Error('加载失败');
+                }
+
+                const data = await response.json();
+                document.getElementById('narrationConversionContent').value = data.value || '';
+            } catch (error) {
+                console.error('Failed to load narration conversion template:', error);
+                showToast('加载文本转解说剧提示词失败', 'error');
+            }
+        }
+
+        // 保存文本转解说剧提示词
+        async function saveNarrationConversionTemplate() {
+            const content = document.getElementById('narrationConversionContent').value;
+            const button = event.target;
+            const originalText = button.textContent;
+
+            try {
+                button.textContent = '保存中...';
+                button.disabled = true;
+
+                const response = await fetch('/api/global-settings/narration_conversion_template', {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ value: content })
+                });
+
+                if (response.ok) {
+                    showToast('保存成功', 'success');
+                    await loadNarrationConversionTemplate();
+                } else {
+                    const error = await response.json();
+                    showToast(error.detail || '保存失败', 'error');
+                }
+            } catch (error) {
+                console.error('Failed to save narration conversion template:', error);
+                showToast('保存失败', 'error');
+            } finally {
+                button.textContent = originalText;
+                button.disabled = false;
+            }
+        }
+
+        // ==================== 精彩开头生成提示词管理 ====================
+
+        // 加载精彩开头生成提示词
+        async function loadOpeningGenerationTemplate() {
+            try {
+                const response = await fetch('/api/global-settings/opening_generation_template');
+
+                if (!response.ok) {
+                    throw new Error('加载失败');
+                }
+
+                const data = await response.json();
+                document.getElementById('openingGenerationContent').value = data.value || '我想把这个片段做成一个短视频，需要一个精彩吸引人的开头，请你帮我写一个开头';
+            } catch (error) {
+                console.error('Failed to load opening generation template:', error);
+                showToast('加载精彩开头生成提示词失败', 'error');
+            }
+        }
+
+        // 保存精彩开头生成提示词
+        async function saveOpeningGenerationTemplate() {
+            const content = document.getElementById('openingGenerationContent').value;
+            const button = event.target;
+            const originalText = button.textContent;
+
+            try {
+                button.textContent = '保存中...';
+                button.disabled = true;
+
+                const response = await fetch('/api/global-settings/opening_generation_template', {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ value: content })
+                });
+
+                if (response.ok) {
+                    showToast('保存成功', 'success');
+                    await loadOpeningGenerationTemplate();
+                } else {
+                    const error = await response.json();
+                    showToast(error.detail || '保存失败', 'error');
+                }
+            } catch (error) {
+                console.error('Failed to save opening generation template:', error);
+                showToast('保存失败', 'error');
+            } finally {
+                button.textContent = originalText;
+                button.disabled = false;
+            }
+        }
+
+        // ==================== 通用函数 ====================
+
+        // 显示提示
+        function showToast(message, type = 'success') {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.className = `toast ${type} show`;
+
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 3000);
+        }
+
+        // HTML转义
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // 点击模态框外部关闭
+        document.getElementById('confirmModal').addEventListener('click', (e) => {
+            if (e.target.id === 'confirmModal') closeConfirmModal();
+        });
+
+        document.getElementById('templateModal').addEventListener('click', (e) => {
+            if (e.target.id === 'templateModal') closeTemplateModal();
+        });
+
+        // ==================== 时长配置模板管理 ====================
+
+        // 加载时长配置模板列表
+        async function loadShotDurationTemplates() {
+            try {
+                const response = await fetch('/api/shot-duration-templates');
+                if (!response.ok) {
+                    throw new Error('加载失败');
+                }
+
+                const templates = await response.json();
+                const grid = document.getElementById('shotDurationTemplatesGrid');
+
+                if (!templates || templates.length === 0) {
+                    grid.innerHTML = '<div class="empty-state">暂无模板数据</div>';
+                    return;
+                }
+
+                const durationNameMap = { 15: '4~5短句', 25: '对话30字' };
+                grid.innerHTML = templates
+                    .filter(template => template.duration === 15 || template.duration === 25)
+                    .map(template => `
+                    <div class="template-card">
+                        <div class="template-header">
+                            <div>
+                                <div class="template-name">${durationNameMap[template.duration] || template.duration + '秒规格'}</div>
+                                <div class="template-description" style="margin-top: 6px;">
+                                    目标字数 ${escapeHtml(String(template.simple_storyboard_config?.target_chars_min || '-'))}
+                                    -
+                                    ${escapeHtml(String(template.simple_storyboard_config?.target_chars_max || '-'))}
+                                    ，软上限 ${escapeHtml(String(template.simple_storyboard_config?.soft_max_chars || '-'))}
+                                </div>
+                            </div>
+                            <div class="card-actions">
+                                <button class="btn-small btn-save" onclick="openEditShotDurationModal(${template.duration})">编辑</button>
+                            </div>
+                        </div>
+                    </div>
+                `).join('');
+            } catch (error) {
+                console.error('Failed to load shot duration templates:', error);
+                showToast('加载时长配置模板失败', 'error');
+            }
+        }
+
+        function renderRuleConfigField(label, id, value, type = 'number', extra = '') {
+            return `
+                <div class="form-group">
+                    <label class="form-label">${label}</label>
+                    <input class="form-input" id="${id}" type="${type}" value="${escapeHtml(String(value ?? ''))}" ${extra}>
+                </div>
+            `;
+        }
+
+        function readCommaSeparatedList(id) {
+            return String(document.getElementById(id)?.value || '')
+                .split(',')
+                .map(item => item.trim())
+                .filter(Boolean);
+        }
+
+        // 打开编辑时长配置模板弹窗
+        async function openEditShotDurationModal(duration) {
+            try {
+                const response = await fetch(`/api/shot-duration-templates/${duration}`);
+                if (!response.ok) {
+                    throw new Error('加载模板失败');
+                }
+
+                const template = await response.json();
+                const config = template.simple_storyboard_config || {};
+
+                // 创建编辑弹窗
+                const modal = document.createElement('div');
+                modal.className = 'modal form-modal active';
+                modal.id = 'editShotDurationModal';
+                modal.dataset.simpleStoryboardHiddenFlags = JSON.stringify({
+                    keep_dialogue_turn_intact: Boolean(config.keep_dialogue_turn_intact),
+                    respect_quote_boundary: Boolean(config.respect_quote_boundary),
+                    respect_paragraph_boundary: Boolean(config.respect_paragraph_boundary),
+                });
+                modal.innerHTML = `
+                    <div class="modal-content" style="max-width: 800px; max-height: 90vh; overflow-y: auto;">
+                        <div class="modal-header">
+                            <h3>${{15:'4~5短句',25:'对话30字'}[template.duration] || template.duration + '秒规格'}配置</h3>
+                            <button class="modal-close" onclick="closeShotDurationModal()">&times;</button>
+                        </div>
+                        <div class="modal-body" style="padding: 30px;">
+                            <div class="form-group">
+                                <label class="form-label">程序分镜规则</label>
+                                <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
+                                    ${renderRuleConfigField('目标字数下限', 'targetCharsMin', config.target_chars_min)}
+                                    ${renderRuleConfigField('目标字数上限', 'targetCharsMax', config.target_chars_max)}
+                                    ${renderRuleConfigField('软上限', 'softMaxChars', config.soft_max_chars)}
+                                    ${renderRuleConfigField('硬上限', 'hardMaxChars', config.hard_max_chars)}
+                                    ${renderRuleConfigField('每镜头最多单元数', 'maxUnitsPerShot', config.max_units_per_shot)}
+                                    ${renderRuleConfigField('短碎片合并阈值', 'mergeShortFragmentThreshold', config.merge_short_fragment_threshold)}
+                                </div>
+                                <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:12px;">
+                                    ${renderRuleConfigField('强边界标点（逗号分隔）', 'hardStopPunctuations', (config.hard_stop_punctuations || []).join(','), 'text')}
+                                    ${renderRuleConfigField('弱边界标点（逗号分隔）', 'softStopPunctuations', (config.soft_stop_punctuations || []).join(','), 'text')}
+                                </div>
+                                <div style="display:flex;flex-wrap:wrap;gap:16px;margin-top:12px;">
+                                    <label><input type="checkbox" id="keepDialogueTurnIntact" ${config.keep_dialogue_turn_intact ? 'checked' : ''}> 保持对白回合完整</label>
+                                    <label><input type="checkbox" id="respectQuoteBoundary" ${config.respect_quote_boundary ? 'checked' : ''}> 尊重引号边界</label>
+                                    <label><input type="checkbox" id="respectParagraphBoundary" ${config.respect_paragraph_boundary ? 'checked' : ''}> 尊重段落边界</label>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">视频提示词规则</label>
+                                <textarea class="form-input" id="videoPromptRule" style="min-height: 300px;">${escapeHtml(template.video_prompt_rule)}</textarea>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">大镜头提示词规则</label>
+                                <textarea class="form-input" id="largeShotPromptRule" style="min-height: 300px;">${escapeHtml(template.large_shot_prompt_rule || '')}</textarea>
+                            </div>
+                            <div class="modal-actions">
+                                <button class="btn btn-secondary" onclick="closeShotDurationModal()">取消</button>
+                                <button class="btn btn-primary" onclick="saveShotDurationTemplate(${template.duration})">保存</button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+
+                document.body.appendChild(modal);
+                const simpleStoryboardHiddenOptions = modal.querySelector('#keepDialogueTurnIntact')?.closest('div');
+                if (simpleStoryboardHiddenOptions) {
+                    simpleStoryboardHiddenOptions.style.display = 'none';
+                }
+            } catch (error) {
+                console.error('Failed to load template:', error);
+                showToast('加载模板失败', 'error');
+            }
+        }
+
+        // 关闭编辑弹窗
+        function closeShotDurationModal() {
+            const modal = document.getElementById('editShotDurationModal');
+            if (modal) {
+                modal.remove();
+            }
+        }
+
+        // 保存时长配置模板
+        async function saveShotDurationTemplate(duration) {
+            const simpleStoryboardConfig = {
+                hard_stop_punctuations: readCommaSeparatedList('hardStopPunctuations'),
+                soft_stop_punctuations: readCommaSeparatedList('softStopPunctuations'),
+                keep_dialogue_turn_intact: Boolean(document.getElementById('keepDialogueTurnIntact')?.checked),
+                respect_quote_boundary: Boolean(document.getElementById('respectQuoteBoundary')?.checked),
+                respect_paragraph_boundary: Boolean(document.getElementById('respectParagraphBoundary')?.checked),
+                target_chars_min: parseInt(document.getElementById('targetCharsMin')?.value || '0', 10),
+                target_chars_max: parseInt(document.getElementById('targetCharsMax')?.value || '0', 10),
+                soft_max_chars: parseInt(document.getElementById('softMaxChars')?.value || '0', 10),
+                hard_max_chars: parseInt(document.getElementById('hardMaxChars')?.value || '0', 10),
+                max_units_per_shot: parseInt(document.getElementById('maxUnitsPerShot')?.value || '0', 10),
+                merge_short_fragment_threshold: parseInt(document.getElementById('mergeShortFragmentThreshold')?.value || '0', 10),
+            };
+            const videoPromptRule = document.getElementById('videoPromptRule').value.trim();
+            const largeShotPromptRule = document.getElementById('largeShotPromptRule').value.trim();
+
+            if (!videoPromptRule || !largeShotPromptRule) {
+                showToast('请填写完整信息', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/shot-duration-templates/${duration}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        simple_storyboard_config: simpleStoryboardConfig,
+                        video_prompt_rule: videoPromptRule,
+                        large_shot_prompt_rule: largeShotPromptRule
+                    })
+                });
+
+                if (response.ok) {
+                    showToast('保存成功', 'success');
+                    closeShotDurationModal();
+                    await loadShotDurationTemplates();
+                } else {
+                    const error = await response.json();
+                    showToast(error.detail || '保存失败', 'error');
+                }
+            } catch (error) {
+                console.error('Failed to save template:', error);
+                showToast('保存失败', 'error');
+            }
+        }
+
+        // ==================== 模态框事件监听 ====================
+
+        async function loadLargeShotTemplates() {
+            try {
+                const response = await fetch('/api/large-shot-templates');
+                if (!response.ok) {
+                    throw new Error('加载失败');
+                }
+
+                largeShotTemplates = await response.json();
+                const grid = document.getElementById('largeShotTemplatesGrid');
+                if (!grid) return;
+
+                if (!largeShotTemplates.length) {
+                    grid.innerHTML = '<div class="empty-state">暂无大镜头模板，点击"新建模板"开始创建</div>';
+                    return;
+                }
+
+                grid.innerHTML = largeShotTemplates.map(template => `
+                    <div class="template-card">
+                        <div class="template-header">
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <div class="template-name">${escapeHtml(template.name)}</div>
+                                ${template.is_default ? '<span class="default-badge">默认</span>' : ''}
+                            </div>
+                            <div class="card-actions">
+                                ${!template.is_default ? `<button class="btn-small btn-toggle" onclick="setDefaultLargeShotTemplate(${template.id})">设为默认</button>` : ''}
+                                <button class="btn-small btn-save" onclick="openEditLargeShotTemplateModal(${template.id})">编辑</button>
+                                <button class="btn-small btn-delete" onclick="confirmDeleteLargeShotTemplate(${template.id}, '${escapeHtml(template.name)}')">删除</button>
+                            </div>
+                        </div>
+                        <div class="template-content-display">${escapeHtml(template.content || '')}</div>
+                        <div class="template-meta">
+                            <span>创建时间: ${new Date(template.created_at).toLocaleString()}</span>
+                        </div>
+                    </div>
+                `).join('');
+            } catch (error) {
+                console.error('Failed to load large shot templates:', error);
+                const grid = document.getElementById('largeShotTemplatesGrid');
+                if (grid) {
+                    grid.innerHTML = '<div class="loading">加载失败</div>';
+                }
+                showToast('加载大镜头模板失败', 'error');
+            }
+        }
+
+        function openCreateLargeShotTemplateModal() {
+            editingTemplateId = null;
+            editingTemplateType = 'large-shot';
+            document.getElementById('templateModalTitle').textContent = '新建大镜头模板';
+            document.getElementById('templateName').value = '';
+            document.getElementById('templateContent').value = '';
+            document.getElementById('templateModal').classList.add('active');
+        }
+
+        function openEditLargeShotTemplateModal(templateId) {
+            const template = largeShotTemplates.find(t => t.id === templateId);
+            if (!template) return;
+
+            editingTemplateId = templateId;
+            editingTemplateType = 'large-shot';
+            document.getElementById('templateModalTitle').textContent = '编辑大镜头模板';
+            document.getElementById('templateName').value = template.name || '';
+            document.getElementById('templateContent').value = template.content || '';
+            document.getElementById('templateModal').classList.add('active');
+        }
+
+        function confirmDeleteLargeShotTemplate(templateId, name) {
+            const modal = document.getElementById('deleteTemplateModal');
+            const message = document.getElementById('deleteTemplateMessage');
+            const button = document.getElementById('deleteTemplateButton');
+
+            message.textContent = `确定要删除大镜头模板"${String(name || '').trim()}"吗？此操作不可撤销。`;
+            modal.classList.add('active');
+            button.onclick = () => deleteLargeShotTemplate(templateId);
+        }
+
+        async function deleteLargeShotTemplate(templateId) {
+            try {
+                const response = await fetch(`/api/large-shot-templates/${templateId}`, {
+                    method: 'DELETE'
+                });
+
+                if (response.ok) {
+                    showToast('删除成功', 'success');
+                    closeDeleteTemplateModal();
+                    await loadLargeShotTemplates();
+                } else {
+                    const errorDetail = await getErrorDetail(response, '删除失败');
+                    showToast(errorDetail || '删除失败', 'error');
+                }
+            } catch (error) {
+                console.error('Failed to delete large shot template:', error);
+                showToast('删除失败', 'error');
+            }
+        }
+
+        async function setDefaultLargeShotTemplate(templateId) {
+            try {
+                const response = await fetch(`/api/large-shot-templates/${templateId}/set-default`, {
+                    method: 'POST'
+                });
+
+                if (response.ok) {
+                    showToast('已设置为默认模板', 'success');
+                    await loadLargeShotTemplates();
+                } else {
+                    const error = await response.json();
+                    showToast(error.detail || '设置失败', 'error');
+                }
+            } catch (error) {
+                console.error('Failed to set large shot default template:', error);
+                showToast('设置失败', 'error');
+            }
+        }
+
+
+        async function loadLargeShotTemplates() {
+            try {
+                const response = await fetch('/api/large-shot-templates');
+                if (!response.ok) {
+                    throw new Error('加载失败');
+                }
+
+                largeShotTemplates = await response.json();
+                const grid = document.getElementById('largeShotTemplatesGrid');
+                if (!grid) return;
+
+                if (!largeShotTemplates.length) {
+                    grid.innerHTML = '<div class="empty-state">暂无大镜头模板，点击"新建模板"开始创建</div>';
+                    return;
+                }
+
+                grid.innerHTML = largeShotTemplates.map(template => `
+                    <div class="template-card">
+                        <div class="template-header">
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <div class="template-name">${escapeHtml(template.name)}</div>
+                                ${template.is_default ? '<span class="default-badge">默认</span>' : ''}
+                            </div>
+                            <div class="card-actions">
+                                ${!template.is_default ? `<button class="btn-small btn-toggle" onclick="setDefaultLargeShotTemplate(${template.id})">设为默认</button>` : ''}
+                                <button class="btn-small btn-save" onclick="openEditLargeShotTemplateModal(${template.id})">编辑</button>
+                                <button class="btn-small btn-delete" onclick="confirmDeleteLargeShotTemplate(${template.id}, ${JSON.stringify(String(template.name || ''))})">删除</button>
+                            </div>
+                        </div>
+                        <div class="template-content-display">${escapeHtml(template.content || '')}</div>
+                        <div class="template-meta">
+                            <span>创建时间: ${new Date(template.created_at).toLocaleString()}</span>
+                        </div>
+                    </div>
+                `).join('');
+            } catch (error) {
+                console.error('Failed to load large shot templates:', error);
+                const grid = document.getElementById('largeShotTemplatesGrid');
+                if (grid) {
+                    grid.innerHTML = '<div class="loading">加载失败</div>';
+                }
+                showToast('加载大镜头模板失败', 'error');
+            }
+        }
+
+        function openCreateLargeShotTemplateModal() {
+            editingTemplateId = null;
+            editingTemplateType = 'large-shot';
+            document.getElementById('templateModalTitle').textContent = '新建大镜头模板';
+            document.getElementById('templateName').value = '';
+            document.getElementById('templateContent').value = '';
+            document.getElementById('templateModal').classList.add('active');
+        }
+
+        function openEditLargeShotTemplateModal(templateId) {
+            const template = largeShotTemplates.find(t => t.id === templateId);
+            if (!template) return;
+
+            editingTemplateId = templateId;
+            editingTemplateType = 'large-shot';
+            document.getElementById('templateModalTitle').textContent = '编辑大镜头模板';
+            document.getElementById('templateName').value = template.name || '';
+            document.getElementById('templateContent').value = template.content || '';
+            document.getElementById('templateModal').classList.add('active');
+        }
+
+        function confirmDeleteLargeShotTemplate(templateId, name) {
+            const modal = document.getElementById('deleteTemplateModal');
+            const message = document.getElementById('deleteTemplateMessage');
+            const button = document.getElementById('deleteTemplateButton');
+
+            message.textContent = `确定要删除大镜头模板"${String(name || '').trim()}"吗？此操作不可撤销。`;
+            modal.classList.add('active');
+            button.onclick = () => deleteLargeShotTemplate(templateId);
+        }
+
+        async function deleteLargeShotTemplate(templateId) {
+            try {
+                const response = await fetch(`/api/large-shot-templates/${templateId}`, {
+                    method: 'DELETE'
+                });
+
+                if (response.ok) {
+                    showToast('删除成功', 'success');
+                    closeDeleteTemplateModal();
+                    await loadLargeShotTemplates();
+                } else {
+                    const errorDetail = await getErrorDetail(response, '删除失败');
+                    showToast(errorDetail || '删除失败', 'error');
+                }
+            } catch (error) {
+                console.error('Failed to delete large shot template:', error);
+                showToast('删除失败', 'error');
+            }
+        }
+
+        async function setDefaultLargeShotTemplate(templateId) {
+            try {
+                const response = await fetch(`/api/large-shot-templates/${templateId}/set-default`, {
+                    method: 'POST'
+                });
+
+                if (response.ok) {
+                    showToast('已设置为默认模板', 'success');
+                    await loadLargeShotTemplates();
+                } else {
+                    const error = await response.json();
+                    showToast(error.detail || '设置失败', 'error');
+                }
+            } catch (error) {
+                console.error('Failed to set large shot default template:', error);
+                showToast('设置失败', 'error');
+            }
+        }
+
+        function normalizeLargeShotTemplatesSection() {
+            const grid = document.getElementById('largeShotTemplatesGrid');
+            if (!grid || !grid.parentElement) return;
+
+            const header = grid.parentElement.querySelector('.templates-header');
+            if (!header) return;
+
+            const description = header.querySelector('div');
+            if (description) {
+                description.textContent = '管理全局大镜头模板，用于故事板 Sora 中生成大镜头提示词时选择第一个镜头的运镜策略';
+            }
+
+            const createButton = header.querySelector('button');
+            if (createButton) {
+                createButton.textContent = '新建模板';
+            }
+
+            if (!grid.children.length) {
+                grid.innerHTML = '<div class="loading">加载中...</div>';
+            }
+        }
+
+
+        async function loadLargeShotTemplates() {
+            try {
+                normalizeLargeShotTemplatesSection();
+
+                const response = await fetch('/api/large-shot-templates');
+                if (!response.ok) {
+                    throw new Error('加载失败');
+                }
+
+                largeShotTemplates = await response.json();
+                const grid = document.getElementById('largeShotTemplatesGrid');
+                if (!grid) return;
+
+                if (!largeShotTemplates.length) {
+                    grid.innerHTML = '<div class="empty-state">暂无大镜头模板，点击“新建模板”开始创建</div>';
+                    return;
+                }
+
+                grid.innerHTML = largeShotTemplates.map(template => `
+                    <div class="template-card">
+                        <div class="template-header">
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <div class="template-name">${escapeHtml(template.name)}</div>
+                                ${template.is_default ? '<span class="default-badge">默认</span>' : ''}
+                            </div>
+                            <div class="card-actions">
+                                ${!template.is_default ? `<button class="btn-small btn-toggle" onclick="setDefaultLargeShotTemplate(${template.id})">设为默认</button>` : ''}
+                                <button class="btn-small btn-save" onclick="openEditLargeShotTemplateModal(${template.id})">编辑</button>
+                                <button class="btn-small btn-delete" onclick="confirmDeleteLargeShotTemplate(${template.id}, ${JSON.stringify(String(template.name || ''))})">删除</button>
+                            </div>
+                        </div>
+                        <div class="template-content-display">${escapeHtml(template.content || '')}</div>
+                        <div class="template-meta">
+                            <span>创建时间: ${new Date(template.created_at).toLocaleString()}</span>
+                        </div>
+                    </div>
+                `).join('');
+            } catch (error) {
+                console.error('Failed to load large shot templates:', error);
+                const grid = document.getElementById('largeShotTemplatesGrid');
+                if (grid) {
+                    grid.innerHTML = '<div class="loading">加载失败</div>';
+                }
+                showToast('加载大镜头模板失败', 'error');
+            }
+        }
+
+        function openCreateLargeShotTemplateModal() {
+            editingTemplateId = null;
+            editingTemplateType = 'large-shot';
+            document.getElementById('templateModalTitle').textContent = '新建大镜头模板';
+            document.getElementById('templateName').value = '';
+            document.getElementById('templateContent').value = '';
+            document.getElementById('templateModal').classList.add('active');
+        }
+
+        function openEditLargeShotTemplateModal(templateId) {
+            const template = largeShotTemplates.find(t => t.id === templateId);
+            if (!template) return;
+
+            editingTemplateId = templateId;
+            editingTemplateType = 'large-shot';
+            document.getElementById('templateModalTitle').textContent = '编辑大镜头模板';
+            document.getElementById('templateName').value = template.name || '';
+            document.getElementById('templateContent').value = template.content || '';
+            document.getElementById('templateModal').classList.add('active');
+        }
+
+        function confirmDeleteLargeShotTemplate(templateId, name) {
+            const modal = document.getElementById('deleteTemplateModal');
+            const message = document.getElementById('deleteTemplateMessage');
+            const button = document.getElementById('deleteTemplateButton');
+
+            message.textContent = `确定要删除大镜头模板“${String(name || '').trim()}”吗？此操作不可撤销。`;
+            modal.classList.add('active');
+            button.onclick = () => deleteLargeShotTemplate(templateId);
+        }
+
+        async function deleteLargeShotTemplate(templateId) {
+            try {
+                const response = await fetch(`/api/large-shot-templates/${templateId}`, {
+                    method: 'DELETE'
+                });
+
+                if (response.ok) {
+                    showToast('删除成功', 'success');
+                    closeDeleteTemplateModal();
+                    await loadLargeShotTemplates();
+                } else {
+                    const errorDetail = await getErrorDetail(response, '删除失败');
+                    showToast(errorDetail || '删除失败', 'error');
+                }
+            } catch (error) {
+                console.error('Failed to delete large shot template:', error);
+                showToast('删除失败', 'error');
+            }
+        }
+
+        async function setDefaultLargeShotTemplate(templateId) {
+            try {
+                const response = await fetch(`/api/large-shot-templates/${templateId}/set-default`, {
+                    method: 'POST'
+                });
+
+                if (response.ok) {
+                    showToast('已设为默认模板', 'success');
+                    await loadLargeShotTemplates();
+                } else {
+                    const error = await response.json();
+                    showToast(error.detail || '设置失败', 'error');
+                }
+            } catch (error) {
+                console.error('Failed to set large shot default template:', error);
+                showToast('设置失败', 'error');
+            }
+        }
+
+        function getManageHomeUrl() {
+            return `${window.location.origin}/`;
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const backLink = document.getElementById('manageBackLink');
+            if (backLink) {
+                backLink.href = getManageHomeUrl();
+            }
+            // 初始化管理界面，显示密码验证
+            normalizeLargeShotTemplatesSection();
+            initManage();
+        });
+
+        const adminPasswordInput = document.getElementById('adminPasswordInput');
+        if (adminPasswordInput) {
+            adminPasswordInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') confirmAdminPassword();
+            });
+        }
+    </script>
+</body>
+</html>

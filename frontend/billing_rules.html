@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>计费规则</title>
+  <style>
+    :root{--panel:#101b28;--bd:#24354b;--txt:#eef4fb;--muted:#8da0b8;--acc:#2f7cf6;--danger:#ef7373;--ok:#37c78f}
+    *{box-sizing:border-box}body{margin:0;min-height:100vh;font-family:"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;background:radial-gradient(circle at top left,rgba(47,124,246,.16),transparent 28%),linear-gradient(180deg,#08121c 0%,#060d14 100%);color:var(--txt)}
+    button,input,select{font:inherit}button{cursor:pointer}.shell{max-width:1600px;margin:0 auto;padding:24px 20px 36px}.topbar{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;margin-bottom:18px}.topbar h1{margin:0;font-size:30px}.subtitle{margin-top:8px;color:var(--muted);font-size:14px;line-height:1.6;max-width:880px}.actions,.toolbar,.rule-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center}.toolbar,.rule-actions{justify-content:space-between}.btn{padding:10px 16px;border-radius:12px;border:1px solid var(--bd);background:var(--panel);color:var(--txt)}.btn.primary{background:var(--acc);border-color:rgba(47,124,246,.45)}.btn:disabled{opacity:.6;cursor:not-allowed}.status{min-height:20px;margin-bottom:16px;color:var(--muted);font-size:13px}.status.error{color:var(--danger)}.layout{display:grid;grid-template-columns:420px minmax(0,1fr);gap:18px;align-items:start}.panel{background:linear-gradient(180deg,var(--panel),#0c1520);border:1px solid var(--bd);border-radius:18px;overflow:hidden}.head{padding:18px 20px 0}.title{font-size:17px;font-weight:600}.meta{margin-top:6px;color:var(--muted);font-size:12px;line-height:1.5}.body{padding:18px 20px 20px}.form-grid,.field,.auth-box{display:grid;gap:12px}.field label{color:var(--muted);font-size:12px}.field input,.field select,.auth-box input{width:100%;padding:10px 12px;border:1px solid var(--bd);border-radius:12px;background:rgba(7,16,25,.7);color:var(--txt)}.inline{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.table-wrap{overflow:auto;border:1px solid var(--bd);border-radius:14px;background:rgba(7,16,25,.52)}table{width:100%;border-collapse:collapse;min-width:920px}th,td{padding:11px 13px;border-bottom:1px solid rgba(36,53,75,.7);text-align:left;vertical-align:top;font-size:13px}thead th{position:sticky;top:0;background:#0c1520;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.04em}.mono{font-family:Consolas,monospace;color:#b9d9ff;word-break:break-all}.muted{color:var(--muted)}.empty{text-align:center;padding:32px 16px;color:var(--muted);line-height:1.6}.tag{display:inline-flex;padding:4px 9px;border-radius:999px;border:1px solid transparent;font-size:11px}.tag-finalized{color:var(--ok);background:rgba(55,199,143,.1);border-color:rgba(55,199,143,.22)}.tag-reversed{color:var(--danger);background:rgba(239,115,115,.1);border-color:rgba(239,115,115,.22)}.row-active td{background:rgba(19,39,63,.48)}.auth-tip{color:var(--muted);font-size:13px;line-height:1.6}.modal{position:fixed;inset:0;background:rgba(4,8,14,.72);display:none;align-items:center;justify-content:center;padding:20px;z-index:1000}.modal.active{display:flex}.modal-card{width:min(420px,100%);background:linear-gradient(180deg,#142233,#0d1724);border:1px solid var(--bd);border-radius:18px;padding:22px;box-shadow:0 18px 48px rgba(0,0,0,.35)}.auth-error{display:none;color:var(--danger);font-size:13px}
+    @media (max-width:1380px){.layout{grid-template-columns:1fr}}@media (max-width:720px){.shell{padding:18px 12px 24px}.topbar{flex-direction:column}.inline{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <div class="topbar">
+      <div>
+        <h1>计费规则</h1>
+        <div class="subtitle">这里只支持修改已有规则，不提供新增入口。旧规则 <span class="mono">banana2 image</span> 和 <span class="mono">banana-pro image</span> 已从此页面隐藏。</div>
+      </div>
+      <div class="actions">
+        <button class="btn" onclick="returnToApp()">返回主页</button>
+        <button class="btn" onclick="returnToBilling()">返回计费</button>
+        <button class="btn primary" id="refreshButton" onclick="refreshRules()">刷新规则</button>
+      </div>
+    </div>
+    <div class="status" id="statusLine">请输入管理员密码后加载计费规则。</div>
+    <div class="layout">
+      <section class="panel">
+        <div class="head"><div class="title">规则编辑</div><div class="meta" id="editorMeta">先从右侧表格选择一条规则，再修改并保存。</div></div>
+        <div class="body">
+          <form id="ruleForm" onsubmit="submitRuleForm(event)">
+            <div class="form-grid">
+              <div class="field"><label for="ruleNameInput">规则名称</label><input id="ruleNameInput" type="text" placeholder="请选择右侧规则后编辑"></div>
+              <div class="inline">
+                <div class="field"><label for="ruleCategorySelect">Category</label><select id="ruleCategorySelect"><option value="text">text</option><option value="image">image</option><option value="video">video</option></select></div>
+                <div class="field"><label for="ruleBillingModeSelect">Billing Mode</label><select id="ruleBillingModeSelect"><option value="per_call">per_call</option><option value="per_image">per_image</option><option value="per_second">per_second</option></select></div>
+              </div>
+              <div class="inline">
+                <div class="field"><label for="ruleStageInput">Stage</label><input id="ruleStageInput" type="text" placeholder="留空表示匹配整个类别"></div>
+                <div class="field"><label for="ruleProviderInput">Provider</label><input id="ruleProviderInput" type="text" placeholder="例如：jimeng / banana / yyds"></div>
+              </div>
+              <div class="inline">
+                <div class="field"><label for="ruleModelInput">Model</label><input id="ruleModelInput" type="text" placeholder="例如：图片 4.6"></div>
+                <div class="field"><label for="ruleResolutionInput">Resolution</label><input id="ruleResolutionInput" type="text" placeholder="例如：1K / 2K / 4K，留空为通配"></div>
+              </div>
+              <div class="inline">
+                <div class="field"><label for="rulePriceInput">单价 RMB</label><input id="rulePriceInput" type="number" min="0" step="0.00001" placeholder="0.15485"></div>
+                <div class="field"><label for="rulePriorityInput">优先级</label><input id="rulePriorityInput" type="number" value="0"></div>
+              </div>
+              <div class="inline">
+                <div class="field"><label for="ruleActiveSelect">状态</label><select id="ruleActiveSelect"><option value="true">启用</option><option value="false">停用</option></select></div>
+                <div class="field"></div>
+              </div>
+              <div class="inline">
+                <div class="field"><label for="ruleEffectiveFromInput">生效开始</label><input id="ruleEffectiveFromInput" type="datetime-local"></div>
+                <div class="field"><label for="ruleEffectiveToInput">生效结束</label><input id="ruleEffectiveToInput" type="datetime-local"></div>
+              </div>
+            </div>
+            <div class="rule-actions" style="margin-top:12px">
+              <div class="auth-tip" id="selectedRuleHint">当前未选中规则。</div>
+              <div class="actions">
+                <button class="btn primary" id="ruleSubmitButton" type="submit">保存修改</button>
+                <button class="btn" type="button" onclick="resetRuleForm()">取消选择</button>
+              </div>
+            </div>
+          </form>
+        </div>
+      </section>
+      <section class="panel">
+        <div class="head"><div class="title">已有规则</div><div class="meta">仅展示当前可维护的规则；点击“编辑”载入左侧表单。</div></div>
+        <div class="body">
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>规则</th><th>类别</th><th>Stage</th><th>Provider</th><th>Model</th><th>Resolution</th><th>方式</th><th>单价</th><th>优先级</th><th>状态</th><th>操作</th></tr></thead>
+              <tbody id="ruleTableBody"><tr><td colspan="11" class="empty">等待管理员授权。</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <div class="modal" id="adminAuthModal">
+    <div class="modal-card">
+      <div class="title">管理员验证</div>
+      <div class="auth-tip">进入 billing 规则页面前，请输入管理员密码。</div>
+      <div class="auth-box" style="margin-top:14px">
+        <input type="password" id="adminPasswordInput" placeholder="输入管理员密码">
+        <div id="adminAuthError" class="auth-error">管理员密码错误</div>
+      </div>
+      <div class="toolbar" style="margin-top:18px">
+        <button class="btn" type="button" onclick="returnToBilling()">返回计费</button>
+        <button class="btn primary" type="button" onclick="confirmAdminPassword()">进入</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const ADMIN_PASSWORD='admin1024';
+    const ADMIN_AUTH_STORAGE_KEY='ui_admin_auth_v1';
+    const ADMIN_AUTH_PASSWORD_KEY='ui_admin_password_v1';
+    const state={rules:[],editingRuleId:null};
+    let adminAuthed=false;
+
+    function persistAdminAuth(password){localStorage.setItem(ADMIN_AUTH_STORAGE_KEY,'1');localStorage.setItem(ADMIN_AUTH_PASSWORD_KEY,password)}
+    function clearAdminAuth(){adminAuthed=false;localStorage.removeItem(ADMIN_AUTH_STORAGE_KEY);localStorage.removeItem(ADMIN_AUTH_PASSWORD_KEY)}
+    function restoreAdminAuth(){const unlocked=localStorage.getItem(ADMIN_AUTH_STORAGE_KEY)==='1';const password=localStorage.getItem(ADMIN_AUTH_PASSWORD_KEY)||'';if(unlocked&&password===ADMIN_PASSWORD){adminAuthed=true;return true}clearAdminAuth();return false}
+    function showAdminAuthModal(){document.getElementById('adminAuthModal').classList.add('active');const input=document.getElementById('adminPasswordInput');document.getElementById('adminAuthError').style.display='none';input.value='';setTimeout(()=>input.focus(),0)}
+    function hideAdminAuthModal(){document.getElementById('adminAuthModal').classList.remove('active')}
+    function confirmAdminPassword(){const input=document.getElementById('adminPasswordInput');const value=(input.value||'').trim();if(value===ADMIN_PASSWORD){adminAuthed=true;persistAdminAuth(value);hideAdminAuthModal();initialize().catch((error)=>{console.error('Failed to initialize billing rules page:',error);setStatus(error.message||'初始化计费规则页面失败。','error')});return}clearAdminAuth();document.getElementById('adminAuthError').style.display='block';input.value='';input.focus()}
+    function ensureAdminAuth(){if(adminAuthed||restoreAdminAuth())return true;showAdminAuthModal();return false}
+
+    function html(value){const div=document.createElement('div');div.textContent=value==null?'':String(value);return div.innerHTML}
+    function headers(extra={}){const token=localStorage.getItem('authToken');const adminPassword=localStorage.getItem(ADMIN_AUTH_PASSWORD_KEY);return{...extra,...(token?{Authorization:`Bearer ${token}`}:{}) ,...(adminPassword?{'X-Admin-Password':adminPassword}:{})}}
+    async function apiFetch(url,options={}){if(!ensureAdminAuth())throw new Error('管理员未授权');const response=await fetch(url,{...options,headers:headers(options.headers||{})});const payload=await response.json().catch(()=>({}));if(response.status===403){clearAdminAuth();showAdminAuthModal();throw new Error(payload.detail||'管理员密码错误')}if(!response.ok)throw new Error(payload.detail||`${url} 请求失败 (${response.status})`);return payload}
+    function setStatus(message,type=''){const node=document.getElementById('statusLine');node.textContent=message;node.className=type?`status ${type}`:'status'}
+    function returnToApp(){window.location.href=`${window.location.origin}/`}
+    function returnToBilling(){window.location.href=`${window.location.origin}/billing`}
+    function money(value){const n=Number(value||0);return Number.isFinite(n)?`¥${n.toFixed(5)}`:`¥${value||'0.00000'}`}
+    function time(value){if(!value)return'-';const normalized=/Z|[+-]\d{2}:?\d{2}$/.test(value)?value:`${value}Z`;const date=new Date(normalized);return Number.isNaN(date.getTime())?value:date.toLocaleString('zh-CN')}
+    function timeLocal(value){if(!value)return'';const normalized=/Z|[+-]\d{2}:?\d{2}$/.test(value)?value:`${value}Z`;const date=new Date(normalized);if(Number.isNaN(date.getTime()))return String(value).slice(0,16);const offsetMs=date.getTime()-date.getTimezoneOffset()*60000;return new Date(offsetMs).toISOString().slice(0,16)}
+    function toIso(value){const normalized=String(value||'').trim();if(!normalized)return null;const date=new Date(normalized);return Number.isNaN(date.getTime())?null:date.toISOString()}
+    function tag(label,type){return `<span class="tag tag-${html(type)}">${html(label)}</span>`}
+
+    function populateRuleForm(rule){state.editingRuleId=Number(rule.id);document.getElementById('ruleNameInput').value=rule.rule_name||'';document.getElementById('ruleCategorySelect').value=rule.category||'text';document.getElementById('ruleBillingModeSelect').value=rule.billing_mode||'per_call';document.getElementById('ruleStageInput').value=rule.stage||'';document.getElementById('ruleProviderInput').value=rule.provider||'';document.getElementById('ruleModelInput').value=rule.model_name||'';document.getElementById('ruleResolutionInput').value=rule.resolution||'';document.getElementById('rulePriceInput').value=rule.unit_price_rmb||'';document.getElementById('rulePriorityInput').value=String(rule.priority||0);document.getElementById('ruleActiveSelect').value=rule.is_active?'true':'false';document.getElementById('ruleEffectiveFromInput').value=timeLocal(rule.effective_from);document.getElementById('ruleEffectiveToInput').value=timeLocal(rule.effective_to);document.getElementById('editorMeta').textContent=`正在编辑规则 #${rule.id}，保存后将只影响后续命中，不会改写历史账单。`;document.getElementById('selectedRuleHint').textContent=`当前选中：${rule.rule_name||`规则 #${rule.id}`}`;renderRuleTable()}
+    function resetRuleForm(){state.editingRuleId=null;document.getElementById('ruleForm').reset();document.getElementById('ruleCategorySelect').value='text';document.getElementById('ruleBillingModeSelect').value='per_call';document.getElementById('ruleActiveSelect').value='true';document.getElementById('rulePriorityInput').value='0';document.getElementById('editorMeta').textContent='先从右侧表格选择一条规则，再修改并保存。';document.getElementById('selectedRuleHint').textContent='当前未选中规则。';renderRuleTable()}
+    function editRule(ruleId){const rule=state.rules.find((item)=>Number(item.id)===Number(ruleId));if(!rule)return;populateRuleForm(rule)}
+    function renderRuleTable(){const node=document.getElementById('ruleTableBody');if(!state.rules.length){node.innerHTML='<tr><td colspan="11" class="empty">暂无价格规则</td></tr>';return}node.innerHTML=state.rules.map((rule)=>`<tr class="${Number(rule.id)===Number(state.editingRuleId)?'row-active':''}"><td><div>${html(rule.rule_name||'-')}</div><div class="muted">${html(time(rule.updated_at||rule.created_at))}</div></td><td>${html(rule.category||'-')}</td><td class="mono">${html(rule.stage||'*')}</td><td class="mono">${html(rule.provider||'*')}</td><td class="mono">${html(rule.model_name||'*')}</td><td class="mono">${html(rule.resolution||'*')}</td><td>${html(rule.billing_mode||'-')}</td><td>${html(money(rule.unit_price_rmb))}</td><td>${html(String(rule.priority||0))}</td><td>${tag(rule.is_active?'启用':'停用',rule.is_active?'finalized':'reversed')}</td><td><button class="btn" type="button" onclick="editRule(${rule.id})">编辑</button></td></tr>`).join('')}
+
+    async function loadRules(){const payload=await apiFetch('/api/billing/rules');state.rules=Array.isArray(payload.rules)?payload.rules:[];renderRuleTable();if(state.editingRuleId){const current=state.rules.find((item)=>Number(item.id)===Number(state.editingRuleId));if(current){populateRuleForm(current);return}}if(!state.rules.length)resetRuleForm()}
+    async function submitRuleForm(event){event.preventDefault();if(!state.editingRuleId){setStatus('请先从右侧选择需要编辑的规则。','error');return}const submitButton=document.getElementById('ruleSubmitButton');submitButton.disabled=true;const payload={rule_name:document.getElementById('ruleNameInput').value.trim(),category:document.getElementById('ruleCategorySelect').value,stage:document.getElementById('ruleStageInput').value.trim(),provider:document.getElementById('ruleProviderInput').value.trim(),model_name:document.getElementById('ruleModelInput').value.trim(),resolution:document.getElementById('ruleResolutionInput').value.trim(),billing_mode:document.getElementById('ruleBillingModeSelect').value,unit_price_rmb:Number(document.getElementById('rulePriceInput').value||0),is_active:document.getElementById('ruleActiveSelect').value==='true',priority:Number(document.getElementById('rulePriorityInput').value||0),effective_from:toIso(document.getElementById('ruleEffectiveFromInput').value),effective_to:toIso(document.getElementById('ruleEffectiveToInput').value)};if(!payload.rule_name){setStatus('规则名称不能为空。','error');submitButton.disabled=false;return}try{await apiFetch(`/api/billing/rules/${state.editingRuleId}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});await loadRules();setStatus(`规则 #${state.editingRuleId} 已更新。`)}catch(error){console.error('Failed to update billing rule:',error);setStatus(error.message||'更新计费规则失败。','error')}finally{submitButton.disabled=false}}
+    async function refreshRules(){if(!ensureAdminAuth())return;const button=document.getElementById('refreshButton');button.disabled=true;try{setStatus('正在刷新计费规则...');await loadRules();if(state.editingRuleId){setStatus(`刷新完成。当前选中规则 #${state.editingRuleId}。`)}else{setStatus('刷新完成。')}}catch(error){console.error('Failed to refresh billing rules:',error);setStatus(error.message||'刷新计费规则失败。','error')}finally{button.disabled=false}}
+    async function initialize(){if(!ensureAdminAuth())return;hideAdminAuthModal();resetRuleForm();await refreshRules()}
+
+    document.addEventListener('DOMContentLoaded',()=>{const adminPasswordInput=document.getElementById('adminPasswordInput');if(adminPasswordInput){adminPasswordInput.addEventListener('keydown',(e)=>{if(e.key==='Enter')confirmAdminPassword()})}if(restoreAdminAuth()){hideAdminAuthModal();initialize().catch((error)=>{console.error('Failed to initialize billing rules page:',error);setStatus(error.message||'初始化计费规则页面失败。','error')});return}showAdminAuthModal()})
+  </script>
+</body>
+</html>

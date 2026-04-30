@@ -1,0 +1,703 @@
+import requests
+import json
+import time
+from typing import List
+from database import SessionLocal
+import models
+from ai_config import get_ai_config
+
+
+def get_prompt_by_key(key: str) -> str:
+    """
+    从数据库读取提示词配置
+
+    Args:
+        key: 提示词的唯一标识符
+
+    Returns:
+        str: 提示词内容
+
+    Raises:
+        Exception: 如果提示词不存在或未启用
+    """
+    db = SessionLocal()
+    try:
+        config = db.query(models.PromptConfig).filter(
+            models.PromptConfig.key == key,
+            models.PromptConfig.is_active == True
+        ).first()
+
+        if not config:
+            raise Exception(f"提示词配置不存在或未启用: {key}")
+
+        return config.content
+    finally:
+        db.close()
+
+
+def analyze_script_content(content: str, prompt_style: str = None) -> dict:
+    """
+    使用AI分析文案内容，提取角色、场景、道具
+
+    Args:
+        content: 文案内容
+        prompt_style: 可选的prompt风格描述（用户自定义部分）
+
+    Returns:
+        dict: {
+            "characters": [{"name": "角色名", "prompt": "生成prompt"}],
+            "scenes": [{"name": "场景名", "prompt": "生成prompt"}],
+            "props": [{"name": "道具名", "prompt": "生成prompt"}]
+        }
+    """
+
+    # 默认风格描述
+    if not prompt_style:
+        prompt_style = """日系动画风格，手绘质感，横版16:9比例
+- 角色：包含外貌特征、服装、表情、姿态、画风、色调等
+- 场景：包含环境描述、风格、构图、氛围、色调、光影等（不包含人物）
+- 道具：包含物品特征、材质、风格、细节等（不包含人物）"""
+
+    # 从数据库读取prompt模板
+    prompt_template = get_prompt_by_key("analyze_script_content")
+    prompt = prompt_template.format(content=content, prompt_style=prompt_style)
+
+    # 获取AI配置
+    config = get_ai_config()
+
+    try:
+        response = requests.post(
+            url=config['api_url'],
+            headers={
+                "Authorization": f"Bearer {config['api_key']}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": config['model'],
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ],
+                "response_format": {"type": "json_object"}  # ✅ 强制返回 JSON 格式
+            },
+            timeout=config['timeout']
+        )
+
+        if response.status_code != 200:
+            raise Exception(f"AI请求失败: {response.status_code} - {response.text}")
+
+        result = response.json()
+        content = result['choices'][0]['message']['content']
+
+        # 尝试提取JSON
+        # 有时AI会返回```json ... ```格式
+        if '```json' in content:
+            content = content.split('```json')[1].split('```')[0].strip()
+        elif '```' in content:
+            content = content.split('```')[1].split('```')[0].strip()
+
+        parsed = json.loads(content)
+
+        # 验证格式
+        if 'characters' not in parsed or 'scenes' not in parsed or 'props' not in parsed:
+            raise ValueError("AI返回格式不正确")
+
+        return parsed
+
+    except json.JSONDecodeError as e:
+        raise Exception(f"AI返回的JSON格式错误: {str(e)}")
+    except Exception as e:
+        raise Exception(f"AI分析失败: {str(e)}")
+
+
+def analyze_script_for_storyboard(content: str, prompt_style: str = None) -> dict:
+    """
+    使用AI分析剧本内容，生成分镜表JSON
+
+    Args:
+        content: 剧本内容
+        prompt_style: 可选的风格约束（用于生成ai_prompt）
+
+    Returns:
+        dict: {
+            "shots": [
+                {
+                    "shot_number": "镜号",
+                    "shot_scale": "景别",
+                    "camera_angle": "镜头角度",
+                    "camera_movement": "镜头运动",
+                    "characters": [
+                        {"name": "角色名", "type": "角色/场景/道具", "ai_prompt": "AI生图提示词"}
+                    ],
+                    "scene_description": "场景描述词（AI生图提示词）",
+                    "script_excerpt": "对应的原剧本段落",
+                    "visual": "画面",
+                    "dialogue": "对白",
+                    "sound_effects": "音效",
+                    "transition": "转场",
+                    "duration": "时长"
+                }
+            ]
+        }
+    """
+    # 默认风格约束
+    if not prompt_style:
+        prompt_style = """日系动画风格，手绘质感，横版16:9比例
+- 角色：包含外貌特征、服装、表情、姿态、画风、色调等
+- 场景：包含环境描述、风格、构图、氛围、色调、光影等（不包含人物）
+- 道具：包含物品特征、材质、风格、细节等（不包含人物）"""
+
+    # 完整的prompt（基于prompt.txt）
+    prompt = f"""你是一个专业的分镜脚本生成助手。请分析以下剧本内容，生成详细的分镜表。
+
+剧本内容：
+{content}
+
+请以 JSON 格式返回，格式要求：
+
+1. 根字段为 "shots"，值为镜头数组
+2. 每个镜头包含以下英文字段（必须全部包含）：
+   - shot_number: 镜头序号（字符串，如"1"、"2"）
+   - shot_scale: 景别（全景/中景/近景/特写/大特写等）
+   - camera_angle: 镜头角度（平视/俯视/仰视等）
+   - camera_movement: 镜头运动（固定/横移/推镜头/拉镜头/跟镜头等）
+   - characters: 出镜角色数组（重要：这是数组，支持多个角色）
+   - scene_description: 场景描述词（用于AI生图，纯场景，无人物）
+   - script_excerpt: 对应的原剧本段落
+   - visual: 画面描述
+   - dialogue: 对白内容
+   - sound_effects: 音效描述
+   - transition: 转场方式（淡入/淡出/切/叠化等）
+   - duration: 时长（如"8s"、"10s"、"15s"）
+
+3. characters 数组中的每个元素包含三个字段：
+   - name: 角色/场景/道具名称（使用剧中全名）
+   - type: 类别（只能是"角色"、"场景"或"道具"之一）
+   - ai_prompt: 用于生成该角色/场景/道具图片的详细中文提示词
+
+4. 如果某镜头没有出镜角色，characters 使用空数组 []
+
+AI Prompt 生成风格约束（严格遵守）：
+{prompt_style}
+
+要求：
+1. 每个镜头约10秒
+2. 台词和旁白不超过50字
+3. 同一场景的不同镜头，ai_prompt 中的光线、氛围、风格要保持一致
+4. scene_description 和 ai_prompt（类型为"场景"或"道具"的）必须纯粹描述环境/物品，不能出现人物
+5. 场景和道具的 ai_prompt 必须明确标注"无人物"
+6. 角色命名使用剧中人物全名，不加括号说明
+7. 所有字段名使用英文，所有内容使用中文
+8. 直接返回 JSON，不要有任何其他文字说明
+
+JSON 输出格式示例：
+
+{{
+  "shots": [
+    {{
+      "shot_number": "1",
+      "shot_scale": "全景",
+      "camera_angle": "平视",
+      "camera_movement": "固定",
+      "characters": [
+        {{
+          "name": "小明",
+          "type": "角色",
+          "ai_prompt": "少年，短发，校服，温柔的微笑，日系动画风格，手绘质感，暖色调，柔和的光影，横版16:9比例"
+        }},
+        {{
+          "name": "小红",
+          "type": "角色",
+          "ai_prompt": "少女，长发，校服裙，开朗的笑容，日系动画风格，手绘质感，暖色调，柔和的光影，横版16:9比例"
+        }}
+      ],
+      "scene_description": "空无一人的教室，日系动画风格，手绘质感，温暖的午后阳光从窗户洒进，木质课桌椅整齐排列，前方黑板，怀旧氛围，柔和的阴影，横版16:9比例，无人物",
+      "script_excerpt": "放学后的教室，阳光透过窗户洒进来。小明和小红坐在课桌前，认真地讨论着作业。",
+      "visual": "教室内，阳光从窗户照进，小明和小红坐在课桌前讨论作业",
+      "dialogue": "小明：这道题我不太懂。\\n小红：让我来帮你看看吧。",
+      "sound_effects": "轻柔的环境音，纸张翻动声",
+      "transition": "淡入",
+      "duration": "10s"
+    }},
+    {{
+      "shot_number": "2",
+      "shot_scale": "近景",
+      "camera_angle": "俯视",
+      "camera_movement": "推镜头",
+      "characters": [],
+      "scene_description": "书桌特写，日系动画风格，手绘质感，木质桌面上散落着作业本和铅笔，午后阳光照射，温暖色调，细腻的纹理，横版16:9比例，无人物",
+      "script_excerpt": "镜头推向桌面上的作业本，铅笔在纸上快速移动着。",
+      "visual": "桌面特写，作业本和文具，铅笔在书写",
+      "dialogue": "",
+      "sound_effects": "铅笔在纸上书写的声音",
+      "transition": "切",
+      "duration": "8s"
+    }}
+  ]
+}}
+
+现在请根据以上要求，分析剧本内容并生成完整的分镜表JSON。"""
+
+    # 获取AI配置
+    config = get_ai_config()
+
+    try:
+        response = requests.post(
+            url=config['api_url'],
+            headers={
+                "Authorization": f"Bearer {config['api_key']}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": config['model'],
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ],
+                "response_format": {"type": "json_object"}  # ✅ 强制返回 JSON 格式
+            },
+            timeout=config['timeout']
+        )
+
+        if response.status_code != 200:
+            raise Exception(f"AI请求失败: {response.status_code} - {response.text}")
+
+        result = response.json()
+        content = result['choices'][0]['message']['content']
+
+        # 提取JSON
+        if '```json' in content:
+            content = content.split('```json')[1].split('```')[0].strip()
+        elif '```' in content:
+            content = content.split('```')[1].split('```')[0].strip()
+
+        parsed = json.loads(content)
+
+        # 验证格式
+        if 'shots' not in parsed:
+            raise ValueError("AI返回格式不正确：缺少'shots'字段")
+
+        shots = parsed['shots']
+        if not isinstance(shots, list):
+            raise ValueError("AI返回格式不正确：'shots'必须是数组")
+
+        # 验证每个shot的characters字段是数组
+        for shot in shots:
+            if 'characters' in shot and not isinstance(shot['characters'], list):
+                # 如果是旧格式的对象，转换为数组
+                old_char = shot['characters']
+                if isinstance(old_char, dict):
+                    shot['characters'] = [old_char]
+                else:
+                    shot['characters'] = []
+
+        return parsed
+
+    except json.JSONDecodeError as e:
+        raise Exception(f"AI返回的JSON格式错误: {str(e)}")
+    except Exception as e:
+        raise Exception(f"AI分析失败: {str(e)}")
+
+
+def generate_storyboard_prompts(
+    script_excerpt: str,
+    scene_description: str,
+    subject_names: List[str],
+    duration: int,
+    prompt_style: str = None
+) -> dict:
+    """
+    生成分镜视频/音频/台词提示词
+    """
+    subject_text = "、".join(subject_names) if subject_names else "无"
+    safe_duration = duration if duration in (10, 15) else 10
+    extra_style = (prompt_style or "").strip()
+
+    # 从数据库读取prompt模板
+    prompt_template = get_prompt_by_key("generate_video_prompts")
+    prompt = prompt_template.format(
+        script_excerpt=script_excerpt,
+        scene_description=scene_description,
+        subject_text=subject_text,
+        safe_duration=safe_duration,
+        extra_style=f"\n\n补充要求（可编辑提示词）\n{extra_style}" if extra_style else ""
+    )
+
+    # 获取AI配置
+    config = get_ai_config()
+
+    try:
+        response = requests.post(
+            url=config['api_url'],
+            headers={
+                "Authorization": f"Bearer {config['api_key']}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": config['model'],
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ],
+                "response_format": {"type": "json_object"}  # ✅ 强制返回 JSON 格式
+            },
+            timeout=config['timeout']
+        )
+
+        if response.status_code != 200:
+            raise Exception(f"AI请求失败: {response.status_code} - {response.text}")
+
+        result = response.json()
+        content = result['choices'][0]['message']['content']
+
+        if '```json' in content:
+            content = content.split('```json')[1].split('```')[0].strip()
+        elif '```' in content:
+            content = content.split('```')[1].split('```')[0].strip()
+
+        parsed = json.loads(content)
+
+        required_keys = {"storyboardVideoPrompt", "storyboardAudioPrompt", "storyboardDialogue"}
+        if not required_keys.issubset(parsed.keys()):
+            raise ValueError("AI返回格式不正确")
+
+        return parsed
+
+    except json.JSONDecodeError as e:
+        raise Exception(f"AI返回的JSON格式错误: {str(e)}")
+    except Exception as e:
+        raise Exception(f"AI生成失败: {str(e)}")
+
+
+# ==================== 新三阶段分镜生成 ====================
+
+def stage1_generate_initial_storyboard(content: str) -> tuple:
+    """
+    阶段1：初步分镜生成（带重试机制）
+
+    Args:
+        content: 一批剧本内容（约500字）
+
+    Returns:
+        tuple: (parsed_result, debug_info)
+        - parsed_result: dict with "shots" array
+        - debug_info: dict with "input" and "output" for debugging
+    """
+    max_retries = 3
+    last_error = None
+
+    for attempt in range(max_retries):
+        try:
+            # 从数据库读取prompt模板
+            prompt_template = get_prompt_by_key("stage1_initial_storyboard")
+            prompt = prompt_template.format(content=content)
+
+            # 获取AI配置
+            config = get_ai_config()
+
+            # 准备调试信息
+            request_data = {
+                "model": config['model'],
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ],
+                "response_format": {"type": "json_object"}  # ✅ 强制返回 JSON 格式
+            }
+
+            response = requests.post(
+                url=config['api_url'],
+                headers={
+                    "Authorization": f"Bearer {config['api_key']}",
+                    "Content-Type": "application/json",
+                },
+                json=request_data,
+                timeout=config['timeout']
+            )
+
+            if response.status_code != 200:
+                debug_info = {
+                    "input": {"content": content, "prompt": prompt},
+                    "output": {"error": f"HTTP {response.status_code}", "response_text": response.text}
+                }
+                raise Exception(f"AI请求失败: {response.status_code} - {response.text}")
+
+            result = response.json()
+            content_result = result['choices'][0]['message']['content']
+
+            # 提取JSON
+            raw_content = content_result
+            if '```json' in content_result:
+                content_result = content_result.split('```json')[1].split('```')[0].strip()
+            elif '```' in content_result:
+                content_result = content_result.split('```')[1].split('```')[0].strip()
+
+            parsed = json.loads(content_result)
+
+            # 验证格式
+            if 'shots' not in parsed:
+                raise ValueError("AI返回格式不正确：缺少'shots'字段")
+
+            # 构建调试信息
+            debug_info = {
+                "input": {
+                    "content": content,
+                    "prompt": prompt,
+                    "request_data": request_data
+                },
+                "output": {
+                    "raw_response": raw_content,
+                    "parsed_json": parsed,
+                    "full_response": result
+                }
+            }
+
+            # ✅ 成功返回
+            return parsed, debug_info
+
+        except json.JSONDecodeError as e:
+            last_error = f"JSON解析错误: {str(e)}"
+            print(f"⚠️ 阶段1尝试 {attempt + 1}/{max_retries} 失败: {last_error}")
+
+        except KeyError as e:
+            last_error = f"API响应缺少字段: {str(e)}"
+            print(f"⚠️ 阶段1尝试 {attempt + 1}/{max_retries} 失败: {last_error}")
+
+        except Exception as e:
+            last_error = str(e)
+            print(f"⚠️ 阶段1尝试 {attempt + 1}/{max_retries} 失败: {last_error}")
+
+        # 如果不是最后一次尝试，等待后重试
+        if attempt < max_retries - 1:
+            wait_time = 2 ** attempt  # 指数退避: 1秒, 2秒, 4秒
+            print(f"⏳ 等待 {wait_time} 秒后重试...")
+            time.sleep(wait_time)
+
+    # 所有重试都失败
+    debug_info = {
+        "input": {"batch_content": content, "error": "Exception before API call"},
+        "output": {"error": f"阶段1 AI分析失败: {last_error}"}
+    }
+    raise Exception(f"阶段1 AI分析失败（已重试{max_retries}次）: {last_error}")
+
+
+def stage2_refine_shot_details(target_shot_number: str, shots_with_context: str) -> tuple:
+    """
+    阶段2：逐镜头细化
+
+    Args:
+        target_shot_number: 目标镜头编号
+        shots_with_context: 格式化的上下文字符串（包含目标镜头和前后各2个镜头）
+
+    Returns:
+        tuple: (parsed_result, debug_info)
+        - parsed_result: dict with shot details
+        - debug_info: dict with "input" and "output" for debugging
+    """
+    # 从数据库读取prompt模板
+    prompt_template = get_prompt_by_key("stage2_refine_shot")
+    prompt = prompt_template.format(
+        target_shot_number=target_shot_number,
+        shots_with_context=shots_with_context
+    )
+
+    # 获取AI配置
+    config = get_ai_config()
+
+    # 准备调试信息
+    request_data = {
+        "model": config['model'],
+        "messages": [
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ],
+        "response_format": {"type": "json_object"}  # ✅ 强制返回 JSON 格式
+    }
+
+    try:
+        response = requests.post(
+            url=config['api_url'],
+            headers={
+                "Authorization": f"Bearer {config['api_key']}",
+                "Content-Type": "application/json",
+            },
+            json=request_data,
+            timeout=config['timeout']
+        )
+
+        if response.status_code != 200:
+            debug_info = {
+                "input": {"target_shot_number": target_shot_number, "shots_with_context": shots_with_context, "prompt": prompt},
+                "output": {"error": f"HTTP {response.status_code}", "response_text": response.text}
+            }
+            raise Exception(f"AI请求失败: {response.status_code} - {response.text}")
+
+        result = response.json()
+        content_result = result['choices'][0]['message']['content']
+
+        # 提取JSON
+        raw_content = content_result
+        if '```json' in content_result:
+            content_result = content_result.split('```json')[1].split('```')[0].strip()
+        elif '```' in content_result:
+            content_result = content_result.split('```')[1].split('```')[0].strip()
+
+        parsed = json.loads(content_result)
+
+        # 验证格式（新版本不再包含 dialogue 字段）
+        required_keys = {"shot_number", "subjects", "scene_description"}
+        if not required_keys.issubset(parsed.keys()):
+            raise ValueError("AI返回格式不正确")
+
+        # 构建调试信息
+        debug_info = {
+            "input": {
+                "target_shot_number": target_shot_number,
+                "shots_with_context": shots_with_context,
+                "prompt": prompt,
+                "request_data": request_data
+            },
+            "output": {
+                "raw_response": raw_content,
+                "parsed_json": parsed,
+                "full_response": result
+            }
+        }
+
+        return parsed, debug_info
+
+    except json.JSONDecodeError as e:
+        # ⚠️ 详细错误信息：保存AI原始返回内容
+        error_msg = f"AI返回的JSON格式错误: {str(e)}"
+        error_msg += f"\n📄 AI原始返回内容（前500字）:\n{content_result[:500] if 'content_result' in locals() else '未获取到内容'}"
+
+        debug_info = {
+            "input": {"target_shot_number": target_shot_number, "shots_with_context": shots_with_context, "prompt": prompt},
+            "output": {"error": f"JSON解析错误: {str(e)}", "raw_content": content_result if 'content_result' in locals() else None}
+        }
+        raise Exception(error_msg)
+    except Exception as e:
+        error_msg = f"阶段2 AI分析失败: {str(e)}"
+        if 'content_result' in locals():
+            error_msg += f"\n📄 AI原始返回内容（前500字）:\n{content_result[:500]}"
+
+        if 'debug_info' not in locals():
+            debug_info = {
+                "input": {"target_shot_number": target_shot_number, "shots_with_context": shots_with_context, "prompt": prompt},
+                "output": {"error": str(e), "raw_content": content_result if 'content_result' in locals() else None}
+            }
+        raise Exception(error_msg)
+
+
+def stage3_generate_subject_prompts(full_storyboard_json: str, subjects_list: str) -> tuple:
+    """
+    阶段3：生成主体绘画提示词
+
+    Args:
+        full_storyboard_json: 完整的分镜表JSON字符串
+        subjects_list: 需要生成提示词的主体列表
+
+    Returns:
+        tuple: (parsed_result, debug_info)
+        - parsed_result: dict with "subjects" array
+        - debug_info: dict with "input" and "output" for debugging
+    """
+    total_shots = full_storyboard_json.count('"shot_number"')
+
+    # 从数据库读取prompt模板
+    prompt_template = get_prompt_by_key("stage3_subject_prompts")
+    prompt = prompt_template.format(
+        total_shots=total_shots,
+        full_storyboard_json=full_storyboard_json,
+        subjects_list=subjects_list
+    )
+
+    # 获取AI配置
+    config = get_ai_config()
+
+    # 准备调试信息
+    request_data = {
+        "model": config['model'],
+        "messages": [
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ],
+        "response_format": {"type": "json_object"}  # ✅ 强制返回 JSON 格式
+    }
+
+    try:
+        response = requests.post(
+            url=config['api_url'],
+            headers={
+                "Authorization": f"Bearer {config['api_key']}",
+                "Content-Type": "application/json",
+            },
+            json=request_data,
+            timeout=config['timeout']
+        )
+
+        if response.status_code != 200:
+            debug_info = {
+                "input": {"full_storyboard_json": full_storyboard_json, "subjects_list": subjects_list, "prompt": prompt},
+                "output": {"error": f"HTTP {response.status_code}", "response_text": response.text}
+            }
+            raise Exception(f"AI请求失败: {response.status_code} - {response.text}")
+
+        result = response.json()
+        content_result = result['choices'][0]['message']['content']
+
+        # 提取JSON
+        raw_content = content_result
+        if '```json' in content_result:
+            content_result = content_result.split('```json')[1].split('```')[0].strip()
+        elif '```' in content_result:
+            content_result = content_result.split('```')[1].split('```')[0].strip()
+
+        parsed = json.loads(content_result)
+
+        # 验证格式
+        if 'subjects' not in parsed:
+            raise ValueError("AI返回格式不正确：缺少'subjects'字段")
+
+        # 构建调试信息
+        debug_info = {
+            "input": {
+                "full_storyboard_json": full_storyboard_json,
+                "subjects_list": subjects_list,
+                "prompt": prompt,
+                "request_data": request_data
+            },
+            "output": {
+                "raw_response": raw_content,
+                "parsed_json": parsed,
+                "full_response": result
+            }
+        }
+
+        return parsed, debug_info
+
+    except json.JSONDecodeError as e:
+        debug_info = {
+            "input": {"full_storyboard_json": full_storyboard_json, "subjects_list": subjects_list, "prompt": prompt},
+            "output": {"error": f"JSON解析错误: {str(e)}", "raw_content": content_result if 'content_result' in locals() else None}
+        }
+        raise Exception(f"AI返回的JSON格式错误: {str(e)}")
+    except Exception as e:
+        if 'debug_info' not in locals():
+            debug_info = {
+                "input": {"full_storyboard_json": full_storyboard_json, "subjects_list": subjects_list, "prompt": prompt},
+                "output": {"error": str(e)}
+            }
+        raise Exception(f"阶段3 AI分析失败: {str(e)}")
