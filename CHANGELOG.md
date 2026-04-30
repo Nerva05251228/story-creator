@@ -15,6 +15,7 @@ This project uses a lightweight `Added`, `Changed`, `Fixed`, `Security`, and `Mi
 - Added backend video provider stats and quota proxy endpoints so the browser no longer calls private upstream video APIs directly.
 - Added environment validation tests for local `.env` loading, placeholder rejection, admin password handling, and frontend runtime configuration.
 - Added a route registry test that fails on duplicate FastAPI method/path registrations.
+- Added startup/preflight boundary contract tests before the app factory and router refactor.
 
 ### Security
 

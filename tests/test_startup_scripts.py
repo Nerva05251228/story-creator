@@ -35,6 +35,7 @@ class StartupScriptTests(unittest.TestCase):
             "start_all.cmd": "start_all.ps1",
             "start_web.cmd": "start_web.ps1",
             "start_poller.cmd": "start_poller.ps1",
+            "start_server.cmd": "start_web.ps1",
         }
         for filename, target in expected.items():
             with self.subTest(filename=filename):
@@ -101,11 +102,26 @@ class StartupScriptTests(unittest.TestCase):
         self.assertIn("$env:APP_ROLE = 'poller'", source)
         self.assertIn("$env:ENABLE_BACKGROUND_POLLER = '1'", source)
         self.assertIn("python .\\preflight.py check", source)
+        self.assertNotIn("preflight.py migrate", source)
         self.assertIn("python .\\run_pollers.py", source)
         self.assertLess(
             source.index("python .\\preflight.py check"),
             source.index("python .\\run_pollers.py"),
         )
+
+    def test_powershell_startup_roles_use_strict_preflight_modes(self):
+        expected = {
+            "start_all.ps1": ".\\preflight.py migrate",
+            "start_web.ps1": "python .\\preflight.py migrate",
+            "start_poller.ps1": "python .\\preflight.py check",
+        }
+        for filename, command in expected.items():
+            with self.subTest(filename=filename):
+                source = (ROOT_DIR / filename).read_text(encoding="utf-8")
+                self.assertIn(command, source)
+
+        poller_source = (ROOT_DIR / "start_poller.ps1").read_text(encoding="utf-8")
+        self.assertNotIn("preflight.py migrate", poller_source)
 
     def test_cmd_web_script_runs_preflight_before_uvicorn_workers(self):
         source = (ROOT_DIR / "start_server.cmd").read_text(encoding="utf-8")
@@ -113,6 +129,72 @@ class StartupScriptTests(unittest.TestCase):
         self.assertIn("start_web.ps1", source)
         self.assertNotIn("preflight.py migrate", source)
         self.assertNotIn("-m uvicorn main:app", source)
+
+    def test_cmd_wrappers_do_not_directly_invoke_preflight_or_uvicorn(self):
+        expected = {
+            "start_all.cmd": ("start_all.ps1", "START_ALL_EXIT"),
+            "start_web.cmd": ("start_web.ps1", "START_WEB_EXIT"),
+            "start_poller.cmd": ("start_poller.ps1", "START_POLLER_EXIT"),
+            "start_server.cmd": ("start_web.ps1", "START_SERVER_EXIT"),
+        }
+        allowed_prefixes = (
+            "@echo off",
+            "setlocal",
+            "powershell.exe -NoProfile -ExecutionPolicy Bypass -File",
+            "set ",
+            "if not ",
+            "echo",
+            "echo.",
+            "rem ",
+            "::",
+            "cd /d ",
+            "pushd ",
+            "popd",
+            "Review the error output above",
+            "pause >nul",
+            ")",
+            "exit /b ",
+        )
+        for filename, (target, exit_var) in expected.items():
+            with self.subTest(filename=filename):
+                source = (ROOT_DIR / filename).read_text(encoding="utf-8")
+                expected_delegate = (
+                    f'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0{target}" %*'
+                )
+                meaningful_lines = [
+                    line.strip()
+                    for line in source.splitlines()
+                    if line.strip()
+                ]
+
+                self.assertEqual(
+                    sum(1 for line in meaningful_lines if line == expected_delegate),
+                    1,
+                )
+                self.assertEqual(
+                    [line for line in meaningful_lines if line.startswith("powershell.exe ")],
+                    [expected_delegate],
+                )
+                self.assertIn(f'set "{exit_var}=%ERRORLEVEL%"', source)
+                for line in meaningful_lines:
+                    self.assertTrue(
+                        any(line.startswith(prefix) for prefix in allowed_prefixes),
+                        msg=f"Unexpected command in {filename}: {line}",
+                    )
+                    self.assertNotRegex(
+                        line,
+                        r"(?<!\^)[&|]",
+                        msg=f"Chained commands are not allowed in {filename}: {line}",
+                    )
+                executable_lines = [
+                    line
+                    for line in meaningful_lines
+                    if not line.startswith(("echo", "echo.", "rem ", "::"))
+                ]
+                self.assertNotRegex(
+                    "\n".join(executable_lines).lower(),
+                    r"\bpython\b|\buvicorn\b|\bnpm\b|preflight\.py|run_pollers\.py",
+                )
 
 
 if __name__ == "__main__":

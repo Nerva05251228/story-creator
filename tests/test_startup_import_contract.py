@@ -29,6 +29,51 @@ def _top_level_calls(source: str) -> list[str]:
     return calls
 
 
+def _function_body_source(source: str, function_name: str) -> str:
+    tree = ast.parse(source)
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == function_name:
+            return "\n".join(ast.get_source_segment(source, child) or "" for child in node.body)
+    raise AssertionError(f"{function_name} not found")
+
+
+def _function_node(source: str, function_name: str) -> ast.FunctionDef | ast.AsyncFunctionDef:
+    tree = ast.parse(source)
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == function_name:
+            return node
+    raise AssertionError(f"{function_name} not found")
+
+
+def _dotted_call_name(node: ast.Call) -> str:
+    parts = []
+    current = node.func
+    while isinstance(current, ast.Attribute):
+        parts.append(current.attr)
+        current = current.value
+    if isinstance(current, ast.Name):
+        parts.append(current.id)
+    return ".".join(reversed(parts))
+
+
+def _is_metadata_create_all_call(node: ast.Call) -> bool:
+    if not isinstance(node.func, ast.Attribute) or node.func.attr != "create_all":
+        return False
+    metadata_attr = node.func.value
+    return isinstance(metadata_attr, ast.Attribute) and metadata_attr.attr == "metadata"
+
+
+def _function_call_leaf_names(source: str, function_name: str) -> set[str]:
+    function = _function_node(source, function_name)
+    names = set()
+    for node in ast.walk(function):
+        if isinstance(node, ast.Call):
+            call_name = _dotted_call_name(node)
+            if call_name:
+                names.add(call_name.rsplit(".", 1)[-1])
+    return names
+
+
 class StartupImportContractTests(unittest.TestCase):
     def test_main_import_does_not_run_database_bootstrap(self):
         source = MAIN_PATH.read_text(encoding="utf-8-sig")
@@ -45,11 +90,44 @@ class StartupImportContractTests(unittest.TestCase):
 
     def test_web_startup_event_does_not_run_external_network_prewarms_directly(self):
         source = MAIN_PATH.read_text(encoding="utf-8-sig")
-        startup_body = source.split("async def startup_event():", 1)[1].split("# 关闭事件", 1)[0]
+        startup_body = _function_body_source(source, "startup_event")
 
         self.assertIn("start_background_pollers", startup_body)
         self.assertNotIn("refresh_image_model_catalog", startup_body)
         self.assertNotIn("refresh_video_provider_accounts", startup_body)
+
+    def test_web_startup_event_excludes_schema_bootstrap_and_preflight_responsibilities(self):
+        source = MAIN_PATH.read_text(encoding="utf-8-sig")
+        startup_node = _function_node(source, "startup_event")
+        legacy_bootstrap_calls = _function_call_leaf_names(source, "run_startup_bootstrap")
+        forbidden_calls = []
+        forbidden_imports = []
+
+        for node in ast.walk(startup_node):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.name == "preflight":
+                        forbidden_imports.append(alias.name)
+            elif isinstance(node, ast.ImportFrom) and node.module == "preflight":
+                forbidden_imports.append(node.module)
+            elif isinstance(node, ast.Call):
+                call_name = _dotted_call_name(node)
+                leaf_name = call_name.rsplit(".", 1)[-1]
+                if (
+                    call_name.startswith("preflight.")
+                    or _is_metadata_create_all_call(node)
+                    or leaf_name in {
+                        "run_startup_preflight",
+                        "run_startup_bootstrap",
+                        "_ensure_runtime_directories",
+                        "_ensure_function_model_configs",
+                    }
+                    or leaf_name in legacy_bootstrap_calls
+                ):
+                    forbidden_calls.append(call_name)
+
+        self.assertEqual(forbidden_imports, [])
+        self.assertEqual(forbidden_calls, [])
 
 
 if __name__ == "__main__":

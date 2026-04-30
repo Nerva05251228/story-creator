@@ -1,3 +1,4 @@
+import ast
 import sys
 import unittest
 from pathlib import Path
@@ -13,12 +14,78 @@ if str(BACKEND_DIR) not in sys.path:
 import preflight  # noqa: E402
 
 
+def _function_name_for_node(tree: ast.AST, target: ast.AST) -> str | None:
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and any(
+            child is target for child in ast.walk(node)
+        ):
+            return node.name
+    return None
+
+
+def _imported_main_module_nodes(tree: ast.AST) -> set[str | None]:
+    importlib_aliases = {"importlib"}
+    import_module_aliases: set[str] = set()
+    importers: set[str | None] = set()
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name == "importlib":
+                    importlib_aliases.add(alias.asname or alias.name)
+        elif isinstance(node, ast.ImportFrom):
+            if node.module == "importlib":
+                for alias in node.names:
+                    if alias.name == "import_module":
+                        import_module_aliases.add(alias.asname or alias.name)
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import) and any(alias.name == "main" for alias in node.names):
+            importers.add(_function_name_for_node(tree, node))
+        elif isinstance(node, ast.ImportFrom) and node.module == "main":
+            importers.add(_function_name_for_node(tree, node))
+        elif isinstance(node, ast.Call):
+            if not _imports_main_module_call(node):
+                continue
+
+            if isinstance(node.func, ast.Name):
+                if node.func.id == "__import__" or node.func.id in import_module_aliases:
+                    importers.add(_function_name_for_node(tree, node))
+            elif (
+                isinstance(node.func, ast.Attribute)
+                and node.func.attr == "import_module"
+                and isinstance(node.func.value, ast.Name)
+                and node.func.value.id in importlib_aliases
+            ):
+                importers.add(_function_name_for_node(tree, node))
+
+    return importers
+
+
+def _imports_main_module_call(node: ast.Call) -> bool:
+    first_arg = node.args[0] if node.args else None
+    if isinstance(first_arg, ast.Constant) and first_arg.value == "main":
+        return True
+    for keyword in node.keywords:
+        if keyword.arg == "name" and isinstance(keyword.value, ast.Constant):
+            if keyword.value.value == "main":
+                return True
+    return False
+
+
 class PreflightTests(unittest.TestCase):
     def test_module_does_not_import_main_at_import_time(self):
         source = (BACKEND_DIR / "preflight.py").read_text(encoding="utf-8")
 
         self.assertNotIn("import main", source.split("def run_startup_preflight", 1)[0])
         self.assertNotIn("from main", source.split("def run_startup_preflight", 1)[0])
+
+    def test_only_legacy_bootstrap_imports_main(self):
+        source = (BACKEND_DIR / "preflight.py").read_text(encoding="utf-8")
+        tree = ast.parse(source)
+
+        self.assertEqual(_imported_main_module_nodes(tree), {"_run_legacy_bootstrap"})
+
 
     def test_migrate_skips_when_version_already_recorded(self):
         calls = []
