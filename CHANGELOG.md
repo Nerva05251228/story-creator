@@ -46,6 +46,7 @@ This project uses a lightweight `Added`, `Changed`, `Fixed`, `Security`, and `Mi
 ### Removed
 
 - Removed obsolete backup and ad hoc local test artifacts: `backend/ai_service.py.backup`, `frontend/js/app.js.backup`, `test.py`, and `test2.py`.
+- Removed stale test wrappers that imported the deleted ad hoc `test.py` and `test2.py` scripts.
 - Removed the superseded `docs/simple-storyboard-params-guide.md`; follow-up architecture and migration notes now live under `docs/refactor/`.
 
 ### Migration
