@@ -24,6 +24,7 @@ This project uses a lightweight `Added`, `Changed`, `Fixed`, `Security`, and `Mi
 
 ### Changed
 
+- Moved the backend video provider stats and quota proxy routes into the dedicated video router.
 - Extracted story library response/create schemas into `backend/api/schemas/story_library.py` and moved `GET /api/public/users/{user_id}/libraries` into the public API router.
 
 ### Security

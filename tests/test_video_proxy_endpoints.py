@@ -25,13 +25,13 @@ apply_test_env_defaults()
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
-import main  # noqa: E402
+from api.routers import video as video_router  # noqa: E402
 
 
 class VideoProxyEndpointTests(unittest.TestCase):
     def test_video_proxy_endpoints_are_sync_routes(self):
-        self.assertFalse(inspect.iscoroutinefunction(main.get_video_provider_stats))
-        self.assertFalse(inspect.iscoroutinefunction(main.get_video_quota))
+        self.assertFalse(inspect.iscoroutinefunction(video_router.get_video_provider_stats))
+        self.assertFalse(inspect.iscoroutinefunction(video_router.get_video_quota))
 
     def test_provider_stats_proxy_shapes_upstream_list_payload(self):
         class DummyResponse:
@@ -40,8 +40,8 @@ class VideoProxyEndpointTests(unittest.TestCase):
             def json(self):
                 return [{"provider": "moti", "running": 1}]
 
-        with mock.patch.object(main.requests, "get", return_value=DummyResponse()) as get_mock:
-            result = main.get_video_provider_stats(user=SimpleNamespace(id=1))
+        with mock.patch.object(video_router.requests, "get", return_value=DummyResponse()) as get_mock:
+            result = video_router.get_video_provider_stats(user=SimpleNamespace(id=1))
 
         self.assertEqual(result, {"providers": [{"provider": "moti", "running": 1}]})
         get_mock.assert_called_once_with(
@@ -57,8 +57,8 @@ class VideoProxyEndpointTests(unittest.TestCase):
             def json(self):
                 return {"remaining": 12}
 
-        with mock.patch.object(main.requests, "get", return_value=DummyResponse()) as get_mock:
-            result = main.get_video_quota("alice bob", user=SimpleNamespace(id=1))
+        with mock.patch.object(video_router.requests, "get", return_value=DummyResponse()) as get_mock:
+            result = video_router.get_video_quota("alice bob", user=SimpleNamespace(id=1))
 
         self.assertEqual(result, {"remaining": 12})
         get_mock.assert_called_once_with(

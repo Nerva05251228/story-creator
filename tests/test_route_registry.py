@@ -98,24 +98,36 @@ class RouteRegistryTests(unittest.TestCase):
         )
 
     def test_video_provider_accounts_route_is_owned_by_video_router(self):
+        self._assert_get_route_owned_by(
+            "/api/video/providers/{provider}/accounts",
+            "api.routers.video.get_video_provider_accounts",
+        )
+
+    def test_video_provider_stats_route_is_owned_by_video_router(self):
+        self._assert_get_route_owned_by(
+            "/api/video/provider-stats",
+            "api.routers.video.get_video_provider_stats",
+        )
+
+    def test_video_quota_route_is_owned_by_video_router(self):
+        self._assert_get_route_owned_by(
+            "/api/video/quota/{username}",
+            "api.routers.video.get_video_quota",
+        )
+
+    def _assert_get_route_owned_by(self, path, expected_qualified_name):
         for route in main.app.routes:
             methods = getattr(route, "methods", set()) or set()
-            if (
-                getattr(route, "path", None) == "/api/video/providers/{provider}/accounts"
-                and "GET" in methods
-            ):
+            if getattr(route, "path", None) == path and "GET" in methods:
                 endpoint = getattr(route, "endpoint", None)
                 qualified_name = (
                     f"{getattr(endpoint, '__module__', '')}."
                     f"{getattr(endpoint, '__name__', '')}"
                 )
-                self.assertEqual(
-                    qualified_name,
-                    "api.routers.video.get_video_provider_accounts",
-                )
+                self.assertEqual(qualified_name, expected_qualified_name)
                 return
 
-        self.fail("GET /api/video/providers/{provider}/accounts is not registered")
+        self.fail(f"GET {path} is not registered")
 
     def test_admin_routes_verify_admin_password_header(self):
         missing = []
