@@ -26,6 +26,7 @@ from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import quote, urlparse
 
 from api.routers import image_generation, media, pages, public
+from api.schemas.story_library import StoryLibraryCreate, StoryLibraryResponse
 from env_config import get_env, is_placeholder_env_value, load_app_env
 
 
@@ -5051,29 +5052,6 @@ class LoginRequest(BaseModel):
 class PasswordVerifyRequest(BaseModel):
     password: str
 
-class UserResponse(BaseModel):
-    id: int
-    username: str
-    created_at: datetime
-
-    class Config:
-        from_attributes = True
-
-class StoryLibraryCreate(BaseModel):
-    name: str
-    description: str = ""
-
-class StoryLibraryResponse(BaseModel):
-    id: int
-    user_id: int
-    name: str
-    description: str
-    created_at: datetime
-    owner: UserResponse
-
-    class Config:
-        from_attributes = True
-
 class SubjectCardCreate(BaseModel):
     name: str
     alias: Optional[str] = None
@@ -7740,20 +7718,6 @@ async def delete_generated_image(
     db.commit()
 
     return {"message": "Generated image deleted successfully"}
-
-# ==================== 公开角色库API ====================
-
-@app.get("/api/public/users/{user_id}/libraries", response_model=List[StoryLibraryResponse])
-async def get_user_libraries(
-    user_id: int,
-    db: Session = Depends(get_db)
-):
-    """获取指定用户的所有角色库"""
-    libraries = db.query(models.StoryLibrary).filter(
-        models.StoryLibrary.user_id == user_id
-    ).order_by(models.StoryLibrary.created_at.desc()).all()
-
-    return libraries
 
 # ==================== 管理API ====================
 

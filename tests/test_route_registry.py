@@ -81,6 +81,14 @@ class RouteRegistryTests(unittest.TestCase):
 
         self.assertEqual(registered[("GET", "/api/public/users")], ["get_all_users"])
 
+    def test_public_user_libraries_route_is_registered_once(self):
+        registered = _registered_method_paths()
+
+        self.assertEqual(
+            registered[("GET", "/api/public/users/{user_id}/libraries")],
+            ["get_user_libraries"],
+        )
+
     def test_image_generation_models_route_is_registered_once(self):
         registered = _registered_method_paths()
 

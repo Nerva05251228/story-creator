@@ -1,6 +1,9 @@
+from typing import List
+
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
+from api.schemas.story_library import StoryLibraryResponse
 import models
 from database import get_db
 
@@ -31,3 +34,16 @@ async def get_all_users(db: Session = Depends(get_db)):
         })
 
     return result
+
+
+@router.get("/users/{user_id}/libraries", response_model=List[StoryLibraryResponse])
+async def get_user_libraries(
+    user_id: int,
+    db: Session = Depends(get_db)
+):
+    """Return story libraries owned by a public user."""
+    libraries = db.query(models.StoryLibrary).filter(
+        models.StoryLibrary.user_id == user_id
+    ).order_by(models.StoryLibrary.created_at.desc()).all()
+
+    return libraries

@@ -21,6 +21,10 @@ This project uses a lightweight `Added`, `Changed`, `Fixed`, `Security`, and `Mi
 - Added a dedicated public API router for `GET /api/public/users` with backend route ownership coverage.
 - Added a dedicated image generation router for `GET /api/image-generation/models` with route ownership coverage.
 
+### Changed
+
+- Extracted story library response/create schemas into `backend/api/schemas/story_library.py` and moved `GET /api/public/users/{user_id}/libraries` into the public API router.
+
 ### Security
 
 - Documented the requirement that private keys, API tokens, service endpoints, database credentials, Redis credentials, CDN settings, LLM relay settings, image service settings, video service settings, and TTS settings must move to local `.env` files.
