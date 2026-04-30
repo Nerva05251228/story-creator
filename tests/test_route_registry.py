@@ -25,22 +25,6 @@ import main  # noqa: E402
 
 IGNORED_AUTOMATIC_METHODS = {"HEAD", "OPTIONS"}
 
-KNOWN_DUPLICATE_ROUTES = {
-    ("GET", "/api/scripts/{script_id}/episodes"): (
-        "get_script_episodes",
-        "get_script_episodes",
-    ),
-    ("POST", "/api/scripts/{script_id}/copy"): (
-        "copy_script",
-        "copy_script",
-    ),
-    ("POST", "/api/scripts/{script_id}/episodes"): (
-        "create_episode",
-        "create_episode",
-    ),
-}
-
-
 def _registered_method_paths():
     registered = defaultdict(list)
     for route in main.app.routes:
@@ -58,7 +42,7 @@ def _registered_method_paths():
 
 
 class RouteRegistryTests(unittest.TestCase):
-    def test_duplicate_routes_match_current_baseline(self):
+    def test_route_registry_has_no_duplicate_paths(self):
         registered = _registered_method_paths()
         duplicates = {
             key: tuple(endpoints)
@@ -66,17 +50,7 @@ class RouteRegistryTests(unittest.TestCase):
             if len(endpoints) > 1
         }
 
-        self.assertEqual(duplicates, KNOWN_DUPLICATE_ROUTES)
-
-    def test_route_registry_has_no_unexpected_duplicate_paths(self):
-        registered = _registered_method_paths()
-        unexpected = {
-            key: tuple(endpoints)
-            for key, endpoints in sorted(registered.items())
-            if len(endpoints) > 1 and key not in KNOWN_DUPLICATE_ROUTES
-        }
-
-        self.assertEqual(unexpected, {})
+        self.assertEqual(duplicates, {})
 
 
 if __name__ == "__main__":

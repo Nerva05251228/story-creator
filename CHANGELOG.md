@@ -14,7 +14,7 @@ This project uses a lightweight `Added`, `Changed`, `Fixed`, `Security`, and `Mi
 - Added `.env.example` and shared startup environment loading for the Phase 1A configuration migration.
 - Added backend video provider stats and quota proxy endpoints so the browser no longer calls private upstream video APIs directly.
 - Added environment validation tests for local `.env` loading, placeholder rejection, admin password handling, and frontend runtime configuration.
-- Added a route registry baseline test that records the current duplicate route set and fails on new unexpected duplicates.
+- Added a route registry test that fails on duplicate FastAPI method/path registrations.
 
 ### Security
 
@@ -34,6 +34,7 @@ This project uses a lightweight `Added`, `Changed`, `Fixed`, `Security`, and `Mi
 - Fixed relay task submission failures caused by `relay.example.invalid` placeholder configuration.
 - Reduced local UI stalls by deferring startup video metadata polling, making new-script selector loading asynchronous, rendering shot selection from local state before background refresh, and moving Sora video URL refresh to the background.
 - Repaired malformed admin page markup that could corrupt toolbar, modal, and table controls.
+- Removed unreachable duplicate script copy and episode route handlers so FastAPI route registration is unambiguous.
 
 ### Removed
 
