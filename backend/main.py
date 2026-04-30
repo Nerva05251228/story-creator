@@ -26,6 +26,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from urllib.parse import quote, urlparse
 
+from api.routers import pages
 from env_config import get_env, is_placeholder_env_value, load_app_env
 
 
@@ -4108,6 +4109,7 @@ async def track_request_load(request, call_next):
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 app.mount("/videos", StaticFiles(directory="videos"), name="videos")
 app.mount("/static", StaticFiles(directory="../frontend"), name="static")
+app.include_router(pages.router)
 
 FILE_SERVING_ROOTS = (
     Path("uploads") / "hit_drama_videos",
@@ -6427,46 +6429,6 @@ def generate_collage_image(shot_id: int, db: Session, include_scenes: bool = Fal
     return cdn_url
 
 # ==================== API路由 ====================
-
-@app.get("/")
-async def root():
-    """返回登录页面"""
-    return FileResponse("../frontend/login.html")
-
-@app.get("/app")
-async def app_page():
-    """返回主应用页面"""
-    return FileResponse("../frontend/index.html")
-
-@app.get("/admin")
-async def admin_page():
-    """返回管理页面"""
-    return FileResponse("../frontend/admin.html")
-
-@app.get("/model-select")
-async def model_select_page():
-    """返回模型选择页面"""
-    return FileResponse("../frontend/model_select.html")
-
-@app.get("/billing")
-async def billing_page():
-    """返回计费页面"""
-    return FileResponse("../frontend/billing.html")
-
-@app.get("/billing-rules")
-async def billing_rules_page():
-    """返回计费规则页面"""
-    return FileResponse("../frontend/billing_rules.html")
-
-@app.get("/dashboard")
-async def dashboard_page():
-    """返回任务看板页面"""
-    return FileResponse("../frontend/dashboard.html")
-
-@app.get("/manage")
-async def manage_page():
-    """返回提示词管理页面"""
-    return FileResponse("../frontend/manage.html")
 
 @app.post("/api/auth/login")
 async def login(request: LoginRequest, db: Session = Depends(get_db)):

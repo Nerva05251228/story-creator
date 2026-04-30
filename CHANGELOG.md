@@ -9,6 +9,7 @@ This project uses a lightweight `Added`, `Changed`, `Fixed`, `Security`, and `Mi
 ### Added
 
 - Added refactor planning documents under `docs/refactor/`.
+- Added the first backend extraction slice by moving fixed HTML page routes into a dedicated FastAPI router.
 - Added a master plan for backend modularization, Vue/shadcn-vue migration, Redis worker boundaries, and public repository readiness.
 - Added validation planning for API contracts, permissions, PostgreSQL integration, browser regression, worker concurrency, and secret scanning.
 - Added `.env.example` and shared startup environment loading for the Phase 1A configuration migration.
