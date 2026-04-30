@@ -22,10 +22,14 @@ from tests.env_defaults import apply_test_env_defaults  # noqa: E402
 
 apply_test_env_defaults()
 
-import main  # noqa: E402
+from api.routers import media  # noqa: E402
 
 
 class FileServingSecurityTests(unittest.TestCase):
+    def assert_missing_file_error(self, exception):
+        self.assertEqual(exception.status_code, 404)
+        self.assertEqual(exception.detail, "文件不存在")
+
     def test_get_file_serves_files_inside_allowed_roots(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir) / "uploads"
@@ -33,8 +37,8 @@ class FileServingSecurityTests(unittest.TestCase):
             allowed_file = root / "clip.mp4"
             allowed_file.write_text("video", encoding="utf-8")
 
-            with mock.patch.object(main, "FILE_SERVING_ROOTS", (root,)):
-                response = asyncio.run(main.get_file("clip.mp4"))
+            with mock.patch.object(media, "FILE_SERVING_ROOTS", (root,)):
+                response = asyncio.run(media.get_file("clip.mp4"))
 
             self.assertEqual(Path(response.path).resolve(), allowed_file.resolve())
 
@@ -45,11 +49,11 @@ class FileServingSecurityTests(unittest.TestCase):
             root.mkdir()
             (base / "secret.txt").write_text("secret", encoding="utf-8")
 
-            with mock.patch.object(main, "FILE_SERVING_ROOTS", (root,)):
-                with self.assertRaises(main.HTTPException) as raised:
-                    asyncio.run(main.get_file("../secret.txt"))
+            with mock.patch.object(media, "FILE_SERVING_ROOTS", (root,)):
+                with self.assertRaises(media.HTTPException) as raised:
+                    asyncio.run(media.get_file("../secret.txt"))
 
-            self.assertEqual(raised.exception.status_code, 404)
+            self.assert_missing_file_error(raised.exception)
 
     def test_get_file_rejects_windows_separator_traversal(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -58,11 +62,11 @@ class FileServingSecurityTests(unittest.TestCase):
             root.mkdir()
             (base / "secret.txt").write_text("secret", encoding="utf-8")
 
-            with mock.patch.object(main, "FILE_SERVING_ROOTS", (root,)):
-                with self.assertRaises(main.HTTPException) as raised:
-                    asyncio.run(main.get_file("..\\secret.txt"))
+            with mock.patch.object(media, "FILE_SERVING_ROOTS", (root,)):
+                with self.assertRaises(media.HTTPException) as raised:
+                    asyncio.run(media.get_file("..\\secret.txt"))
 
-            self.assertEqual(raised.exception.status_code, 404)
+            self.assert_missing_file_error(raised.exception)
 
     def test_get_file_rejects_absolute_paths(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -72,11 +76,11 @@ class FileServingSecurityTests(unittest.TestCase):
             secret_file = base / "secret.txt"
             secret_file.write_text("secret", encoding="utf-8")
 
-            with mock.patch.object(main, "FILE_SERVING_ROOTS", (root,)):
-                with self.assertRaises(main.HTTPException) as raised:
-                    asyncio.run(main.get_file(str(secret_file)))
+            with mock.patch.object(media, "FILE_SERVING_ROOTS", (root,)):
+                with self.assertRaises(media.HTTPException) as raised:
+                    asyncio.run(media.get_file(str(secret_file)))
 
-            self.assertEqual(raised.exception.status_code, 404)
+            self.assert_missing_file_error(raised.exception)
 
     def test_get_file_rejects_nested_escape_from_specific_root(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -85,11 +89,11 @@ class FileServingSecurityTests(unittest.TestCase):
             root.mkdir(parents=True)
             (base / "uploads" / "secret.txt").write_text("secret", encoding="utf-8")
 
-            with mock.patch.object(main, "FILE_SERVING_ROOTS", (root,)):
-                with self.assertRaises(main.HTTPException) as raised:
-                    asyncio.run(main.get_file("../secret.txt"))
+            with mock.patch.object(media, "FILE_SERVING_ROOTS", (root,)):
+                with self.assertRaises(media.HTTPException) as raised:
+                    asyncio.run(media.get_file("../secret.txt"))
 
-            self.assertEqual(raised.exception.status_code, 404)
+            self.assert_missing_file_error(raised.exception)
 
 
 if __name__ == "__main__":

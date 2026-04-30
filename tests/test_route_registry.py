@@ -71,6 +71,11 @@ class RouteRegistryTests(unittest.TestCase):
 
         self.assertEqual(duplicates, {})
 
+    def test_media_file_route_is_registered_once(self):
+        registered = _registered_method_paths()
+
+        self.assertEqual(registered[("GET", "/files/{filename:path}")], ["get_file"])
+
     def test_admin_routes_verify_admin_password_header(self):
         missing = []
         for route in main.app.routes:

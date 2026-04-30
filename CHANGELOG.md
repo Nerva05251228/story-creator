@@ -17,6 +17,7 @@ This project uses a lightweight `Added`, `Changed`, `Fixed`, `Security`, and `Mi
 - Added environment validation tests for local `.env` loading, placeholder rejection, admin password handling, and frontend runtime configuration.
 - Added a route registry test that fails on duplicate FastAPI method/path registrations.
 - Added startup/preflight boundary contract tests before the app factory and router refactor.
+- Added a dedicated media router for `/files/{filename:path}` while preserving traversal protections.
 
 ### Security
 
