@@ -23,6 +23,7 @@ import subprocess
 import tempfile
 from datetime import timedelta
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from urllib.parse import quote, urlparse
 
 from env_config import get_env, is_placeholder_env_value, load_app_env
@@ -4108,20 +4109,31 @@ app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 app.mount("/videos", StaticFiles(directory="videos"), name="videos")
 app.mount("/static", StaticFiles(directory="../frontend"), name="static")
 
+FILE_SERVING_ROOTS = (
+    Path("uploads") / "hit_drama_videos",
+    Path("uploads"),
+    Path("videos"),
+)
+
+
+def _resolve_file_serving_candidate(root: Path, filename: str) -> Optional[Path]:
+    root_path = root.resolve()
+    candidate = (root / filename).resolve()
+    try:
+        candidate.relative_to(root_path)
+    except ValueError:
+        return None
+    return candidate
+
+
 # 统一文件访问路由（用于爆款库视频等）
 @app.get("/files/{filename:path}")
 async def get_file(filename: str):
     """统一文件访问接口"""
-    # 尝试从不同目录查找文件
-    possible_paths = [
-        os.path.join("uploads", "hit_drama_videos", filename),
-        os.path.join("uploads", filename),
-        os.path.join("videos", filename)
-    ]
-
-    for file_path in possible_paths:
-        if os.path.exists(file_path):
-            return FileResponse(file_path)
+    for root in FILE_SERVING_ROOTS:
+        file_path = _resolve_file_serving_candidate(root, filename)
+        if file_path and file_path.is_file():
+            return FileResponse(str(file_path))
 
     raise HTTPException(status_code=404, detail="文件不存在")
 

@@ -19,9 +19,11 @@ This project uses a lightweight `Added`, `Changed`, `Fixed`, `Security`, and `Mi
 
 - Documented the requirement that private keys, API tokens, service endpoints, database credentials, Redis credentials, CDN settings, LLM relay settings, image service settings, video service settings, and TTS settings must move to local `.env` files.
 - Documented that the repository should only contain safe placeholders in `.env.example` before public release.
+- Rebuilt git history from the sanitized current tree so old committed secrets are no longer reachable from `main`.
 - Removed real default service tokens and private service URLs from the first backend configuration path and Windows startup scripts.
 - Moved admin panel, master password, and Nerva password defaults out of source and into local environment configuration.
 - Rejected placeholder relay and video API configuration values before network requests are sent.
+- Restricted `/files/{filename}` serving to resolved files inside approved upload/video roots and added traversal regression tests.
 
 ### Fixed
 
