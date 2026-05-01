@@ -1,4 +1,4 @@
-﻿from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form, BackgroundTasks, Query
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form, BackgroundTasks, Query
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -34,6 +34,9 @@ from api.routers import (
     public,
     subject_cards,
     video,
+    episodes,
+    hit_dramas,
+    shots,
 )
 from api.services.card_media import (
     _ensure_audio_duration_seconds_cached,
@@ -4019,40 +4022,8 @@ def ensure_function_model_config_columns():
 HIT_DRAMA_ONLINE_TIME_PATTERN = re.compile(r"^(?P<year>\d{4})[./-](?P<month>\d{1,2})[./-](?P<day>\d{1,2})$")
 
 
-def normalize_hit_drama_online_time(value: Any) -> str:
-    raw_value = str(value or "").strip()
-    if not raw_value:
-        return ""
-
-    match = HIT_DRAMA_ONLINE_TIME_PATTERN.fullmatch(raw_value)
-    if not match:
-        raise ValueError("上线时间格式应为 YYYY.MM.DD")
-
-    year = int(match.group("year"))
-    month = int(match.group("month"))
-    day = int(match.group("day"))
-
-    try:
-        datetime(year, month, day)
-    except ValueError as exc:
-        raise ValueError("上线时间不是有效日期") from exc
-
-    return f"{year:04d}.{month:02d}.{day:02d}"
 
 
-def normalize_hit_drama_payload(payload: Dict[str, Any]) -> Dict[str, str]:
-    normalized_payload: Dict[str, str] = {}
-    if "drama_name" in payload:
-        normalized_payload["drama_name"] = str(payload.get("drama_name") or "").strip()
-    if "view_count" in payload:
-        normalized_payload["view_count"] = str(payload.get("view_count") or "").strip()
-    if "opening_15_sentences" in payload:
-        normalized_payload["opening_15_sentences"] = str(payload.get("opening_15_sentences") or "").replace("\r\n", "\n").replace("\r", "\n").strip()
-    if "first_episode_script" in payload:
-        normalized_payload["first_episode_script"] = str(payload.get("first_episode_script") or "").replace("\r\n", "\n").replace("\r", "\n").strip()
-    if "online_time" in payload:
-        normalized_payload["online_time"] = normalize_hit_drama_online_time(payload.get("online_time"))
-    return normalized_payload
 
 
 def ensure_hit_drama_columns():
@@ -8611,7 +8582,6 @@ async def generate_opening(
 
 
 
-@app.get("/api/episodes/{episode_id}", response_model=EpisodeResponse)
 def get_episode(
     episode_id: int,
     user: models.User = Depends(get_current_user),
@@ -8655,7 +8625,6 @@ def _count_storyboard_items(raw_data: Optional[str]) -> int:
     return len(shots) if isinstance(shots, list) else 0
 
 
-@app.get("/api/episodes/{episode_id}/poll-status")
 def get_episode_poll_status(
     episode_id: int,
     user: models.User = Depends(get_current_user),
@@ -8666,7 +8635,6 @@ def get_episode_poll_status(
         db.commit()
     return _build_episode_poll_status_payload(episode)
 
-@app.get("/api/episodes/{episode_id}/total-cost")
 async def get_episode_total_cost(
     episode_id: int,
     user: models.User = Depends(get_current_user),
@@ -8710,7 +8678,6 @@ async def get_episode_total_cost(
         "billing_version": int(getattr(episode, "billing_version", 0) or 0),
     }
 
-@app.put("/api/episodes/{episode_id}", response_model=EpisodeResponse)
 async def update_episode(
     episode_id: int,
     episode_data: EpisodeCreate,
@@ -8733,7 +8700,6 @@ async def update_episode(
     return episode
 
 
-@app.put("/api/episodes/{episode_id}/storyboard2-duration")
 async def update_episode_storyboard2_duration(
     episode_id: int,
     request: dict,
@@ -8759,7 +8725,6 @@ async def update_episode_storyboard2_duration(
     return {"message": "时长规格已更新", "duration": duration}
 
 
-@app.patch("/api/episodes/{episode_id}/shot-image-size")
 async def update_episode_shot_image_size(
     episode_id: int,
     request: EpisodeShotImageSizeUpdateRequest,
@@ -8828,7 +8793,6 @@ async def update_episode_shot_image_size(
     }
 
 
-@app.patch("/api/episodes/{episode_id}/storyboard-video-settings")
 async def update_episode_storyboard_video_settings(
     episode_id: int,
     request: EpisodeStoryboardVideoSettingsUpdateRequest,
@@ -10155,7 +10119,6 @@ class SimpleStoryboardRequest(BaseModel):
     content: Optional[str] = None  # 可选的自定义文案内容
     batch_size: Optional[int] = 500  # 分批字数，默认500
 
-@app.post("/api/episodes/{episode_id}/generate-simple-storyboard")
 async def generate_simple_storyboard_api(
     episode_id: int,
     request: SimpleStoryboardRequest = None,
@@ -10253,7 +10216,6 @@ async def generate_simple_storyboard_api(
     }
 
 
-@app.get("/api/episodes/{episode_id}/simple-storyboard")
 def get_simple_storyboard(
     episode_id: int,
     user: models.User = Depends(get_current_user),
@@ -10305,7 +10267,6 @@ def get_simple_storyboard(
     }
 
 
-@app.get("/api/episodes/{episode_id}/simple-storyboard/status")
 def get_simple_storyboard_status(
     episode_id: int,
     user: models.User = Depends(get_current_user),
@@ -10329,7 +10290,6 @@ def get_simple_storyboard_status(
     }
 
 
-@app.post("/api/episodes/{episode_id}/simple-storyboard/retry-failed-batches")
 async def retry_failed_simple_storyboard_batches_api(
     episode_id: int,
     background_tasks: BackgroundTasks = None,
@@ -10340,7 +10300,6 @@ async def retry_failed_simple_storyboard_batches_api(
     raise HTTPException(status_code=400, detail="失败批次重试已移除，请重新发起整次简单分镜生成")
 
 
-@app.put("/api/episodes/{episode_id}/simple-storyboard")
 async def update_simple_storyboard(
     episode_id: int,
     data: dict,
@@ -10370,7 +10329,6 @@ async def update_simple_storyboard(
     return {"message": "简单分镜数据已更新"}
 
 
-@app.post("/api/episodes/{episode_id}/generate-detailed-storyboard")
 async def generate_detailed_storyboard_api(
     episode_id: int,
     background_tasks: BackgroundTasks = None,
@@ -10434,7 +10392,6 @@ class AnalyzeStoryboardRequest(BaseModel):
     content: Optional[str] = None  # 可选的自定义文案内容
     append: Optional[bool] = False  # 是否追加模式（不清空旧数据）
 
-@app.post("/api/episodes/{episode_id}/analyze-storyboard", response_model=StoryboardAnalyzeResponse)
 async def analyze_episode_for_storyboard(
     episode_id: int,
     request: AnalyzeStoryboardRequest = None,
@@ -10459,7 +10416,6 @@ async def analyze_episode_for_storyboard(
 
 
 # 新增：获取详细分镜的原始JSON数据（包含完整的voice_type、narration、dialogue）
-@app.get("/api/episodes/{episode_id}/detailed-storyboard")
 def get_detailed_storyboard(
     episode_id: int,
     user: models.User = Depends(get_current_user),
@@ -10541,7 +10497,6 @@ def get_detailed_storyboard(
 
 
 # 保存配音表数据（只更新voiceover_data字段）
-@app.put("/api/episodes/{episode_id}/voiceover")
 async def update_voiceover_data(
     episode_id: int,
     request: dict,
@@ -10573,7 +10528,6 @@ async def update_voiceover_data(
     return {"message": "配音表已保存", "success": True, "shots": normalized_shots}
 
 
-@app.get("/api/episodes/{episode_id}/voiceover/shared")
 async def get_voiceover_shared_data(
     episode_id: int,
     user: models.User = Depends(get_current_user),
@@ -10584,7 +10538,6 @@ async def get_voiceover_shared_data(
     return {"success": True, "shared": shared}
 
 
-@app.post("/api/episodes/{episode_id}/voiceover/shared/voice-references")
 async def create_voiceover_voice_reference(
     episode_id: int,
     name: str = Form(...),
@@ -10615,7 +10568,6 @@ async def create_voiceover_voice_reference(
     return {"success": True, "item": item, "shared": _load_script_voiceover_shared_data(script)}
 
 
-@app.put("/api/episodes/{episode_id}/voiceover/shared/voice-references/{reference_id}")
 async def rename_voiceover_voice_reference(
     episode_id: int,
     reference_id: str,
@@ -10659,7 +10611,6 @@ async def rename_voiceover_voice_reference(
     }
 
 
-@app.get("/api/episodes/{episode_id}/voiceover/shared/voice-references/{reference_id}/preview")
 async def preview_voiceover_voice_reference(
     episode_id: int,
     reference_id: str,
@@ -10698,7 +10649,6 @@ async def preview_voiceover_voice_reference(
     )
 
 
-@app.delete("/api/episodes/{episode_id}/voiceover/shared/voice-references/{reference_id}")
 async def delete_voiceover_voice_reference(
     episode_id: int,
     reference_id: str,
@@ -10734,7 +10684,6 @@ async def delete_voiceover_voice_reference(
     }
 
 
-@app.post("/api/episodes/{episode_id}/voiceover/shared/vector-presets")
 async def upsert_voiceover_vector_preset(
     episode_id: int,
     request: dict,
@@ -10776,7 +10725,6 @@ async def upsert_voiceover_vector_preset(
     return {"success": True, "preset_id": preset_id, "shared": _load_script_voiceover_shared_data(script)}
 
 
-@app.delete("/api/episodes/{episode_id}/voiceover/shared/vector-presets/{preset_id}")
 async def delete_voiceover_vector_preset(
     episode_id: int,
     preset_id: str,
@@ -10810,7 +10758,6 @@ async def delete_voiceover_vector_preset(
     }
 
 
-@app.post("/api/episodes/{episode_id}/voiceover/shared/emotion-audio-presets")
 async def create_voiceover_emotion_audio_preset(
     episode_id: int,
     name: str = Form(...),
@@ -10842,7 +10789,6 @@ async def create_voiceover_emotion_audio_preset(
     return {"success": True, "item": item, "shared": _load_script_voiceover_shared_data(script)}
 
 
-@app.delete("/api/episodes/{episode_id}/voiceover/shared/emotion-audio-presets/{preset_id}")
 async def delete_voiceover_emotion_audio_preset(
     episode_id: int,
     preset_id: str,
@@ -10876,7 +10822,6 @@ async def delete_voiceover_emotion_audio_preset(
     }
 
 
-@app.post("/api/episodes/{episode_id}/voiceover/shared/setting-templates")
 async def upsert_voiceover_setting_template(
     episode_id: int,
     request: dict,
@@ -10943,7 +10888,6 @@ async def upsert_voiceover_setting_template(
     }
 
 
-@app.delete("/api/episodes/{episode_id}/voiceover/shared/setting-templates/{template_id}")
 async def delete_voiceover_setting_template(
     episode_id: int,
     template_id: str,
@@ -10972,7 +10916,6 @@ async def delete_voiceover_setting_template(
     }
 
 
-@app.post("/api/episodes/{episode_id}/voiceover/lines/{line_id}/generate")
 async def enqueue_voiceover_line_generate(
     episode_id: int,
     line_id: str,
@@ -11106,7 +11049,6 @@ async def enqueue_voiceover_line_generate(
     }
 
 
-@app.post("/api/episodes/{episode_id}/voiceover/generate-all")
 async def enqueue_voiceover_generate_all(
     episode_id: int,
     user: models.User = Depends(get_current_user),
@@ -11263,7 +11205,6 @@ async def enqueue_voiceover_generate_all(
     }
 
 
-@app.get("/api/episodes/{episode_id}/voiceover/tts-status")
 def get_voiceover_tts_status(
     episode_id: int,
     user: models.User = Depends(get_current_user),
@@ -11298,7 +11239,6 @@ def get_voiceover_tts_status(
     }
 
 
-@app.get("/api/episodes/{episode_id}/storyboard")
 def get_episode_storyboard(
     episode_id: int,
     user: models.User = Depends(get_current_user),
@@ -11563,7 +11503,6 @@ def get_episode_storyboard(
     }
 
 
-@app.get("/api/episodes/{episode_id}/storyboard/status")
 def get_episode_storyboard_status(
     episode_id: int,
     user: models.User = Depends(get_current_user),
@@ -12131,7 +12070,6 @@ def _analyze_storyboard_changes(episode_id: int, new_storyboard_data: dict, db: 
     }
 
 
-@app.put("/api/episodes/{episode_id}/storyboard")
 async def update_episode_storyboard(
     episode_id: int,
     request: dict,
@@ -12236,7 +12174,6 @@ async def update_episode_storyboard(
 
     return {"message": "分镜表已保存", "success": True}
 
-@app.post("/api/episodes/{episode_id}/create-from-storyboard")
 async def create_from_storyboard(
     episode_id: int,
     request: Optional[CreateStoryboardRequest] = None,
@@ -13058,7 +12995,6 @@ class VideoStatusInfoResponse(BaseModel):
     info: str = ""
     error_message: str = ""
 
-@app.post("/api/episodes/{episode_id}/shots", response_model=ShotResponse)
 async def create_shot(
     episode_id: int,
     shot: ShotCreate,
@@ -13276,7 +13212,6 @@ def _sync_processing_storyboard_videos_for_episode(
     return updated_count
 
 
-@app.get("/api/episodes/{episode_id}/shots", response_model=List[ShotResponse])
 def get_episode_shots(
     episode_id: int,
     user: models.User = Depends(get_current_user),
@@ -13510,7 +13445,6 @@ def get_episode_shots(
     return response_shots
 
 
-@app.get("/api/shots/{shot_id}/video-status-info", response_model=VideoStatusInfoResponse)
 def get_shot_video_status_info(
     shot_id: int,
     user: models.User = Depends(get_current_user),
@@ -13569,7 +13503,6 @@ def get_shot_video_status_info(
         error_message=error_message
     )
 
-@app.put("/api/shots/{shot_id}", response_model=ShotResponse)
 async def update_shot(
     shot_id: int,
     shot_data: ShotUpdate,
@@ -13707,7 +13640,6 @@ async def update_shot(
     shot.selected_scene_image_url = _resolve_selected_scene_reference_image_url(shot, db)
     return shot
 
-@app.get("/api/shots/{shot_id}/extract-scene")
 async def extract_scene_from_cards(
     shot_id: int,
     user: models.User = Depends(get_current_user),
@@ -13731,7 +13663,6 @@ async def extract_scene_from_cards(
         "shot_id": shot_id
     }
 
-@app.delete("/api/episodes/{episode_id}")
 async def delete_episode(
     episode_id: int,
     user: models.User = Depends(get_current_user),
@@ -13767,7 +13698,6 @@ async def delete_episode(
 
     return {"message": "剧集删除成功", "episode_id": episode_id}
 
-@app.delete("/api/shots/{shot_id}")
 async def delete_shot(
     shot_id: int,
     user: models.User = Depends(get_current_user),
@@ -13816,7 +13746,6 @@ async def delete_shot(
         "deleted_scope": deleted_scope,
     }
 
-@app.post("/api/shots/{shot_id}/duplicate", response_model=ShotResponse)
 async def duplicate_shot(
     shot_id: int,
     request: dict = {},  # 新增：接收请求体
@@ -14619,7 +14548,6 @@ class GenerateSoraPromptRequest(BaseModel):
     reference_shot_id: Optional[int] = None
 
 
-@app.post("/api/shots/{shot_id}/generate-sora-prompt")
 async def generate_sora_prompt(
     shot_id: int,
     background_tasks: BackgroundTasks,
@@ -14644,7 +14572,6 @@ class GenerateLargeShotPromptRequest(BaseModel):
     template_id: Optional[int] = None
 
 
-@app.post("/api/shots/{shot_id}/generate-large-shot-prompt")
 async def generate_large_shot_prompt(
     shot_id: int,
     background_tasks: BackgroundTasks,
@@ -14666,7 +14593,6 @@ async def generate_large_shot_prompt(
     )
 
 
-@app.post("/api/shots/{shot_id}/manual-sora-prompt", response_model=ShotResponse)
 async def manual_set_sora_prompt(
     shot_id: int,
     request: ManualSoraPromptRequest,
@@ -14704,7 +14630,6 @@ async def manual_set_sora_prompt(
     shot.selected_scene_image_url = _resolve_selected_scene_reference_image_url(shot, db)
     return shot
 
-@app.get("/api/shots/{shot_id}/full-sora-prompt")
 async def get_full_sora_prompt(
     shot_id: int,
     user: models.User = Depends(get_current_user),
@@ -15081,7 +15006,6 @@ def _do_batch_generate_sora_prompts(
         db.close()
 
 
-@app.post("/api/episodes/{episode_id}/batch-generate-sora-prompts")
 async def batch_generate_sora_prompts(
     episode_id: int,
     request: BatchGenerateSoraPromptsRequest,
@@ -15333,7 +15257,6 @@ def _do_batch_generate_sora_videos(
         db.close()
 
 
-@app.post("/api/episodes/{episode_id}/batch-generate-sora-videos")
 async def batch_generate_sora_videos(
     episode_id: int,
     request: BatchGenerateSoraVideosRequest,
@@ -15490,7 +15413,6 @@ def _reserve_legacy_managed_session_slots(session: models.ManagedSession, db: Se
 
     return reserved_count
 
-@app.post("/api/episodes/{episode_id}/start-managed-generation")
 async def start_managed_generation(
     episode_id: int,
     request: StartManagedGenerationRequest,
@@ -15603,7 +15525,6 @@ async def start_managed_generation(
         "provider": episode_settings["provider"]
     }
 
-@app.post("/api/episodes/{episode_id}/stop-managed-generation")
 async def stop_managed_generation(
     episode_id: int,
     user: models.User = Depends(get_current_user),
@@ -15641,7 +15562,6 @@ async def stop_managed_generation(
         )
     }
 
-@app.get("/api/episodes/{episode_id}/managed-session-status", response_model=ManagedSessionStatusResponse)
 def get_managed_session_status(
     episode_id: int,
     user: models.User = Depends(get_current_user),
@@ -15678,7 +15598,6 @@ def get_managed_session_status(
         created_at=session.created_at
     )
 
-@app.post("/api/episodes/{episode_id}/refresh-videos")
 async def refresh_episode_videos(
     episode_id: int,
     user: models.User = Depends(get_current_user),
@@ -15899,7 +15818,6 @@ def get_managed_tasks(
 
     return result
 
-@app.get("/api/shots/{shot_id}/videos", response_model=List[ShotVideoResponse])
 async def get_shot_videos(
     shot_id: int,
     user: models.User = Depends(get_current_user),
@@ -15937,7 +15855,6 @@ async def get_shot_videos(
 
     return videos
 
-@app.put("/api/shots/{shot_id}/thumbnail")
 async def update_shot_thumbnail(
     shot_id: int,
     request: ThumbnailUpdate,
@@ -15968,7 +15885,6 @@ async def update_shot_thumbnail(
 
 # ==================== 分镜表导入API ====================
 
-@app.post("/api/episodes/{episode_id}/import-storyboard")
 async def import_storyboard(
     episode_id: int,
     file: UploadFile = File(...),
@@ -16218,7 +16134,6 @@ async def import_storyboard(
         "created_subject_names": created_subjects[:10]  # 显示前10个
     }
 
-@app.get("/api/episodes/{episode_id}/export-storyboard")
 async def export_storyboard(
     episode_id: int,
     user: models.User = Depends(get_current_user),
@@ -16682,7 +16597,6 @@ def _ensure_storyboard_video_generation_slots_available(
             detail=_build_active_video_generation_limit_message(blocked_entries),
         )
 
-@app.post("/api/shots/{shot_id}/generate-video")
 async def generate_video(
     shot_id: int,
     request: GenerateVideoRequest = GenerateVideoRequest(),
@@ -16843,7 +16757,6 @@ async def generate_video(
             )
         status_code = 400 if str(e) in SEEDANCE_AUDIO_VALIDATION_ERRORS else 500
         raise HTTPException(status_code=status_code, detail=str(e))
-@app.get("/api/shots/{shot_id}/video-status")
 def check_shot_video_status(
     shot_id: int,
     db: Session = Depends(get_db)
@@ -17286,7 +17199,6 @@ def repair_managed_tasks_failed_by_query_errors(db: Session) -> dict:
     }
 
 
-@app.get("/api/shots/{shot_id}/export")
 async def export_shot_video(
     shot_id: int,
     db: Session = Depends(get_db)
@@ -18259,7 +18171,6 @@ def _apply_episode_storyboard_video_settings_to_shot(shot, episode) -> Dict[str,
     shot.provider = settings["provider"]
     return settings
 
-@app.post("/api/shots/{shot_id}/generate-storyboard-image")
 async def generate_storyboard_image(
     shot_id: int,
     request: GenerateStoryboardImageRequest,
@@ -18403,7 +18314,6 @@ async def generate_storyboard_image(
 
 # ==================== 镜头细化图片生成API ====================
 
-@app.post("/api/shots/{shot_id}/generate-detail-images")
 async def generate_detail_images(
     shot_id: int,
     request: Optional[GenerateDetailImagesRequest] = None,
@@ -18985,7 +18895,6 @@ def _process_detail_images_generation(
         db.close()
 
 
-@app.get("/api/shots/{shot_id}/detail-images")
 async def get_shot_detail_images(
     shot_id: int,
     user: models.User = Depends(get_current_user),
@@ -19030,7 +18939,6 @@ async def get_shot_detail_images(
     }
 
 
-@app.patch("/api/shots/{shot_id}/detail-images/cover")
 async def set_shot_detail_image_cover(
     shot_id: int,
     request: SetDetailImageCoverRequest,
@@ -19291,7 +19199,6 @@ def _resolve_selected_first_frame_reference_image_url(
     return ""
 
 
-@app.patch("/api/shots/{shot_id}/first-frame-reference")
 async def set_shot_first_frame_reference(
     shot_id: int,
     request: SetFirstFrameReferenceRequest,
@@ -19329,7 +19236,6 @@ async def set_shot_first_frame_reference(
     }
 
 
-@app.post("/api/shots/{shot_id}/first-frame-reference-image")
 async def upload_shot_first_frame_reference_image(
     shot_id: int,
     file: UploadFile = File(...),
@@ -19367,7 +19273,6 @@ async def upload_shot_first_frame_reference_image(
     }
 
 
-@app.post("/api/shots/{shot_id}/scene-image")
 async def upload_shot_scene_image(
     shot_id: int,
     file: UploadFile = File(...),
@@ -19406,7 +19311,6 @@ async def upload_shot_scene_image(
     }
 
 
-@app.patch("/api/shots/{shot_id}/scene-image-selection")
 async def set_shot_scene_image_selection(
     shot_id: int,
     request: SetShotSceneImageSelectionRequest,
@@ -19438,7 +19342,6 @@ async def set_shot_scene_image_selection(
 
 # ==================== 视频导出API ====================
 
-@app.get("/api/episodes/{episode_id}/export-all")
 async def export_all_videos(
     episode_id: int,
     db: Session = Depends(get_db)
@@ -19476,7 +19379,6 @@ async def export_all_videos(
     }
 
 # 重新处理视频（下载并上传到CDN）
-@app.post("/api/shots/{shot_id}/reprocess-video")
 async def reprocess_shot_video(
     shot_id: int,
     db: Session = Depends(get_db)
@@ -21218,7 +21120,6 @@ def _do_batch_generate_storyboard2_sora_prompts(
         db.close()
 
 
-@app.get("/api/episodes/{episode_id}/storyboard2")
 async def get_storyboard2_data(
     episode_id: int,
     initialize_if_empty: bool = True,
@@ -21367,7 +21268,6 @@ async def update_storyboard2_sub_shot(
     }
 
 
-@app.post("/api/episodes/{episode_id}/storyboard2/batch-generate-sora-prompts")
 async def batch_generate_storyboard2_sora_prompts(
     episode_id: int,
     request: Storyboard2BatchGenerateSoraPromptsRequest,
@@ -22213,390 +22113,43 @@ async def delete_storyboard2_image(
 
 # ==================== 爆款库 API ====================
 
-class HitDramaCreate(BaseModel):
-    drama_name: str
-    view_count: str = ""
-    opening_15_sentences: str = ""
-    first_episode_script: str = ""
-    online_time: str = ""
-
-class HitDramaUpdate(BaseModel):
-    drama_name: Optional[str] = None
-    view_count: Optional[str] = None
-    opening_15_sentences: Optional[str] = None
-    first_episode_script: Optional[str] = None
-    online_time: Optional[str] = None
-
-class HitDramaResponse(BaseModel):
-    id: int
-    drama_name: str
-    view_count: str
-    opening_15_sentences: str
-    first_episode_script: str
-    online_time: str
-    video_filename: Optional[str]
-    created_by: str
-    created_at: datetime
-    updated_at: datetime
-
-    class Config:
-        from_attributes = True
-
-class HitDramaHistoryResponse(BaseModel):
-    id: int
-    drama_id: int
-    action_type: str
-    field_name: Optional[str]
-    old_value: Optional[str]
-    new_value: Optional[str]
-    edited_by: str
-    edited_at: datetime
-    drama_name: Optional[str] = None
-
-    class Config:
-        from_attributes = True
 
 
-@app.get("/api/hit-dramas", response_model=List[HitDramaResponse])
-def get_hit_dramas(
-    user: models.User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """获取所有爆款库记录（不包括已删除）"""
-    dramas = db.query(models.HitDrama).filter(
-        models.HitDrama.is_deleted == False
-    ).order_by(
-        case(
-            (or_(models.HitDrama.online_time.is_(None), models.HitDrama.online_time == ""), 1),
-            else_=0
-        ),
-        models.HitDrama.online_time.desc(),
-        models.HitDrama.created_at.desc(),
-        models.HitDrama.id.desc()
-    ).all()
-    return dramas
 
 
-@app.post("/api/hit-dramas", response_model=HitDramaResponse)
-def create_hit_drama(
-    drama: HitDramaCreate,
-    user: models.User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """新增爆款库记录"""
-    try:
-        normalized_data = normalize_hit_drama_payload(drama.model_dump())
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
-    new_drama = models.HitDrama(
-        drama_name=normalized_data["drama_name"],
-        view_count=normalized_data["view_count"],
-        opening_15_sentences=normalized_data["opening_15_sentences"],
-        first_episode_script=normalized_data["first_episode_script"],
-        online_time=normalized_data["online_time"],
-        created_by=user.username
-    )
-    db.add(new_drama)
-    db.commit()
-    db.refresh(new_drama)
-
-    # 记录创建历史
-    history = models.HitDramaEditHistory(
-        drama_id=new_drama.id,
-        action_type="create",
-        field_name=None,
-        old_value=None,
-        new_value=f"创建记录：{normalized_data['drama_name']}",
-        edited_by=user.username
-    )
-    db.add(history)
-    db.commit()
-
-    return new_drama
 
 
-@app.put("/api/hit-dramas/{drama_id}", response_model=HitDramaResponse)
-def update_hit_drama(
-    drama_id: int,
-    drama_update: HitDramaUpdate,
-    user: models.User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """更新爆款库记录"""
-    drama = db.query(models.HitDrama).filter(
-        models.HitDrama.id == drama_id,
-        models.HitDrama.is_deleted == False
-    ).first()
-
-    if not drama:
-        raise HTTPException(status_code=404, detail="记录不存在")
-
-    # 记录变化的字段
-    changes = []
-    field_mapping = {
-        "drama_name": "剧名",
-        "view_count": "播放量",
-        "opening_15_sentences": "开头15句",
-        "first_episode_script": "第一集文案",
-        "online_time": "上线时间"
-    }
-
-    try:
-        normalized_update = normalize_hit_drama_payload(drama_update.model_dump(exclude_unset=True))
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
-    for field, value in normalized_update.items():
-        if value is not None:
-            old_value = getattr(drama, field)
-            if old_value != value:
-                # 记录历史
-                history = models.HitDramaEditHistory(
-                    drama_id=drama_id,
-                    action_type="update",
-                    field_name=field_mapping.get(field, field),
-                    old_value=str(old_value) if old_value else "",
-                    new_value=str(value),
-                    edited_by=user.username
-                )
-                db.add(history)
-                changes.append(field)
-
-                # 更新字段
-                setattr(drama, field, value)
-
-    if changes:
-        drama.updated_at = datetime.utcnow()
-        db.commit()
-        db.refresh(drama)
-
-    return drama
 
 
-@app.delete("/api/hit-dramas/{drama_id}")
-def delete_hit_drama(
-    drama_id: int,
-    user: models.User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """删除爆款库记录（软删除）"""
-    drama = db.query(models.HitDrama).filter(
-        models.HitDrama.id == drama_id,
-        models.HitDrama.is_deleted == False
-    ).first()
-
-    if not drama:
-        raise HTTPException(status_code=404, detail="记录不存在")
-
-    # 软删除
-    drama.is_deleted = True
-    drama.updated_at = datetime.utcnow()
-
-    # 记录删除历史
-    history = models.HitDramaEditHistory(
-        drama_id=drama_id,
-        action_type="delete",
-        field_name=None,
-        old_value=f"剧名：{drama.drama_name}",
-        new_value="已删除",
-        edited_by=user.username
-    )
-    db.add(history)
-    db.commit()
-
-    return {"message": "删除成功", "drama_id": drama_id}
 
 
-@app.get("/api/hit-dramas/history", response_model=List[HitDramaHistoryResponse])
-def get_hit_drama_history(
-    user_filter: Optional[str] = None,
-    drama_name_filter: Optional[str] = None,
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
-    user: models.User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """获取编辑历史（支持筛选）"""
-    query = db.query(models.HitDramaEditHistory).join(
-        models.HitDrama,
-        models.HitDramaEditHistory.drama_id == models.HitDrama.id
-    )
-
-    # 应用筛选条件
-    if user_filter:
-        query = query.filter(models.HitDramaEditHistory.edited_by.contains(user_filter))
-
-    if drama_name_filter:
-        query = query.filter(models.HitDrama.drama_name.contains(drama_name_filter))
-
-    if start_date:
-        try:
-            start_dt = datetime.fromisoformat(start_date)
-            query = query.filter(models.HitDramaEditHistory.edited_at >= start_dt)
-        except ValueError:
-            pass
-
-    if end_date:
-        try:
-            end_dt = datetime.fromisoformat(end_date)
-            query = query.filter(models.HitDramaEditHistory.edited_at <= end_dt)
-        except ValueError:
-            pass
-
-    histories = query.order_by(models.HitDramaEditHistory.edited_at.desc()).all()
-
-    # 添加剧名信息
-    result = []
-    for history in histories:
-        drama = db.query(models.HitDrama).filter(models.HitDrama.id == history.drama_id).first()
-        history_dict = {
-            "id": history.id,
-            "drama_id": history.drama_id,
-            "action_type": history.action_type,
-            "field_name": history.field_name,
-            "old_value": history.old_value,
-            "new_value": history.new_value,
-            "edited_by": history.edited_by,
-            "edited_at": history.edited_at,
-            "drama_name": drama.drama_name if drama else None
-        }
-        result.append(HitDramaHistoryResponse(**history_dict))
-
-    return result
 
 
-@app.post("/api/hit-dramas/upload-video")
-async def upload_hit_drama_video(
-    drama_id: int = Form(...),
-    file: UploadFile = File(...),
-    user: models.User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """上传爆款库视频"""
-    drama = db.query(models.HitDrama).filter(
-        models.HitDrama.id == drama_id,
-        models.HitDrama.is_deleted == False
-    ).first()
-
-    if not drama:
-        raise HTTPException(status_code=404, detail="记录不存在")
-
-    # 创建上传目录
-    upload_dir = os.path.join("uploads", "hit_drama_videos")
-    os.makedirs(upload_dir, exist_ok=True)
-
-    # 生成文件名
-    timestamp = int(time.time() * 1000)
-    file_ext = os.path.splitext(file.filename)[1]
-    filename = f"{timestamp}_{file.filename}"
-    file_path = os.path.join(upload_dir, filename)
-
-    # 保存文件
-    with open(file_path, "wb") as buffer:
-        content = await file.read()
-        buffer.write(content)
-
-    # 更新数据库
-    old_filename = drama.video_filename
-    drama.video_filename = filename
-    drama.updated_at = datetime.utcnow()
-
-    # 记录历史
-    history = models.HitDramaEditHistory(
-        drama_id=drama_id,
-        action_type="update",
-        field_name="视频",
-        old_value=old_filename if old_filename else "无",
-        new_value=filename,
-        edited_by=user.username
-    )
-    db.add(history)
-    db.commit()
-
-    return {"message": "上传成功", "filename": filename}
 
 
-@app.post("/api/hit-dramas/import-excel")
-async def import_hit_drama_excel(
-    file: UploadFile = File(...),
-    import_mode: str = Form("append"),
-    user: models.User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """导入Excel数据"""
-    try:
-        import pandas as pd
-        from io import BytesIO
 
-        # 读取Excel文件
-        content = await file.read()
-        df = pd.read_excel(BytesIO(content))
 
-        # 验证列名
-        required_columns = ["剧名", "播放量", "开头15句", "第一集文案", "上线时间"]
-        if not all(col in df.columns for col in required_columns):
-            raise HTTPException(status_code=400, detail="Excel格式不正确，缺少必要的列")
 
-        normalized_import_mode = str(import_mode or "append").strip().lower()
-        if normalized_import_mode not in {"append", "overwrite"}:
-            raise HTTPException(status_code=400, detail="导入模式不正确")
 
-        # 过滤空行
-        df_clean = df.dropna(how='all')
 
-        rows_to_import = []
-        for row_index, row in df_clean.iterrows():
-            # 跳过所有字段都为空的行
-            if pd.isna(row["剧名"]) or str(row["剧名"]).strip() == "":
-                continue
+app.include_router(episodes.router)
+app.include_router(shots.router)
+app.include_router(hit_dramas.router)
 
-            try:
-                rows_to_import.append(normalize_hit_drama_payload({
-                    "drama_name": str(row["剧名"]),
-                    "view_count": str(row["播放量"]) if not pd.isna(row["播放量"]) else "",
-                    "opening_15_sentences": str(row["开头15句"]) if not pd.isna(row["开头15句"]) else "",
-                    "first_episode_script": str(row["第一集文案"]) if not pd.isna(row["第一集文案"]) else "",
-                    "online_time": str(row["上线时间"]) if not pd.isna(row["上线时间"]) else "",
-                }))
-            except ValueError as exc:
-                try:
-                    excel_row_number = int(row_index) + 2
-                except (TypeError, ValueError):
-                    excel_row_number = "未知"
-                raise HTTPException(status_code=400, detail=f"第 {excel_row_number} 行：{exc}")
-
-        if normalized_import_mode == "overwrite":
-            db.query(models.HitDramaEditHistory).delete(synchronize_session=False)
-            db.query(models.HitDrama).delete(synchronize_session=False)
-
-        imported_count = 0
-        for row_data in rows_to_import:
-            new_drama = models.HitDrama(
-                drama_name=row_data["drama_name"],
-                view_count=row_data["view_count"],
-                opening_15_sentences=row_data["opening_15_sentences"],
-                first_episode_script=row_data["first_episode_script"],
-                online_time=row_data["online_time"],
-                created_by=user.username
-            )
-            db.add(new_drama)
-            imported_count += 1
-
-        db.commit()
-
-        action_label = "覆盖导入" if normalized_import_mode == "overwrite" else "追加导入"
-        return {
-            "message": f"{action_label}成功，共导入 {imported_count} 条记录",
-            "count": imported_count,
-            "import_mode": normalized_import_mode
-        }
-
-    except HTTPException:
-        db.rollback()
-        raise
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(status_code=500, detail=f"导入失败：{str(e)}")
-
+# Compatibility exports for direct callers while hit drama routes live in api.routers.hit_dramas.
+normalize_hit_drama_online_time = hit_dramas.normalize_hit_drama_online_time
+normalize_hit_drama_payload = hit_dramas.normalize_hit_drama_payload
+HitDramaCreate = hit_dramas.HitDramaCreate
+HitDramaUpdate = hit_dramas.HitDramaUpdate
+HitDramaResponse = hit_dramas.HitDramaResponse
+HitDramaHistoryResponse = hit_dramas.HitDramaHistoryResponse
+get_hit_dramas = hit_dramas.get_hit_dramas
+create_hit_drama = hit_dramas.create_hit_drama
+update_hit_drama = hit_dramas.update_hit_drama
+delete_hit_drama = hit_dramas.delete_hit_drama
+get_hit_drama_history = hit_dramas.get_hit_drama_history
+upload_hit_drama_video = hit_dramas.upload_hit_drama_video
+import_hit_drama_excel = hit_dramas.import_hit_drama_excel
 
 if __name__ == "__main__":
     import uvicorn

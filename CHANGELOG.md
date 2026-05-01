@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 This project uses a lightweight `Added`, `Changed`, `Fixed`, `Security`, and `Migration` structure.
 
+## 2026-05-02 - Episodes, Shots, and Hit Drama Router Extraction
+
+### Added
+
+- Added focused route tests for episodes, shots, and hit drama APIs covering ownership, auth-sensitive behavior, and payload defaults.
+
+### Changed
+
+- Moved the remaining episode/storyboard/voiceover/managed-generation/storyboard2 routes into `backend/api/routers/episodes.py`.
+- Moved the remaining shot CRUD, media, prompt, video, and export routes into `backend/api/routers/shots.py`.
+- Moved the hit drama CRUD, history, upload, and Excel import routes into `backend/api/routers/hit_dramas.py`.
+- Registered the new routers in `backend/main.py` and extended route ownership coverage in `tests/test_route_registry.py`.
+- Removed the old hit drama schema/helper/route bodies from `backend/main.py` while keeping compatibility exports for direct callers.
+
 ## 2026-05-01 - Model Config Router Extraction
 
 ### Added

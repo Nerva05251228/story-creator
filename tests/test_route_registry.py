@@ -26,6 +26,7 @@ from tests.env_defaults import apply_test_env_defaults  # noqa: E402
 apply_test_env_defaults()
 
 import main  # noqa: E402
+from api.routers import episodes, hit_dramas, shots  # noqa: E402
 
 
 IGNORED_AUTOMATIC_METHODS = {"HEAD", "OPTIONS"}
@@ -330,6 +331,34 @@ class RouteRegistryTests(unittest.TestCase):
         for method, path, qualified_name in expected_routes:
             with self.subTest(method=method, path=path):
                 self._assert_route_owned_by(method, path, qualified_name)
+
+    def test_episode_routes_are_owned_by_episodes_router(self):
+        self._assert_router_routes_owned_by(episodes.router)
+
+    def test_shot_routes_are_owned_by_shots_router(self):
+        self._assert_router_routes_owned_by(shots.router)
+
+    def test_hit_drama_routes_are_owned_by_hit_dramas_router(self):
+        self._assert_router_routes_owned_by(hit_dramas.router)
+
+    def _assert_router_routes_owned_by(self, router):
+        for route in router.routes:
+            methods = getattr(route, "methods", set()) or set()
+            path = getattr(route, "path", None)
+            endpoint = getattr(route, "endpoint", None)
+            if not methods or not path or endpoint is None:
+                continue
+
+            qualified_name = (
+                f"{getattr(endpoint, '__module__', '')}."
+                f"{getattr(endpoint, '__name__', '')}"
+            )
+
+            for method in methods:
+                if method in IGNORED_AUTOMATIC_METHODS:
+                    continue
+                with self.subTest(method=method, path=path):
+                    self._assert_route_owned_by(method, path, qualified_name)
 
     def _assert_get_route_owned_by(self, path, expected_qualified_name):
         self._assert_route_owned_by("GET", path, expected_qualified_name)
