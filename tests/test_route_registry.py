@@ -247,6 +247,34 @@ class RouteRegistryTests(unittest.TestCase):
             with self.subTest(method=method, path=path):
                 self._assert_route_owned_by(method, path, qualified_name)
 
+    def test_auth_routes_are_owned_by_auth_router(self):
+        expected_routes = [
+            (
+                "POST",
+                "/api/auth/login",
+                "api.routers.auth.login",
+            ),
+            (
+                "POST",
+                "/api/auth/verify",
+                "api.routers.auth.verify_token",
+            ),
+            (
+                "POST",
+                "/api/auth/change-password",
+                "api.routers.auth.change_password",
+            ),
+            (
+                "POST",
+                "/api/auth/verify-nerva-password",
+                "api.routers.auth.verify_nerva_password",
+            ),
+        ]
+
+        for method, path, qualified_name in expected_routes:
+            with self.subTest(method=method, path=path):
+                self._assert_route_owned_by(method, path, qualified_name)
+
     def _assert_get_route_owned_by(self, path, expected_qualified_name):
         self._assert_route_owned_by("GET", path, expected_qualified_name)
 

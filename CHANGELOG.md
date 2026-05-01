@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 This project uses a lightweight `Added`, `Changed`, `Fixed`, `Security`, and `Migration` structure.
 
+## 2026-05-01 - Auth Router Extraction
+
+### Added
+
+- Added focused auth route tests covering login, token verification, password change, and Nerva password validation behavior.
+
+### Changed
+
+- Moved the `/api/auth/login`, `/api/auth/verify`, `/api/auth/change-password`, and `/api/auth/verify-nerva-password` routes into `backend/api/routers/auth.py` while preserving the existing response shapes and authentication behavior.
+- Extracted auth password helpers into `backend/api/services/auth.py` and auth request models into `backend/api/schemas/auth.py`.
+- Kept `backend/main.py` compatibility callables for existing direct-call tests while registering the new auth router in the FastAPI app.
+
 ## 2026-05-01 - Card Media Router Extraction
 
 ### Added

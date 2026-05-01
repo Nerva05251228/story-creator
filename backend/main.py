@@ -23,6 +23,7 @@ from datetime import timedelta
 from concurrent.futures import ThreadPoolExecutor
 
 from api.routers import (
+    auth,
     card_media,
     image_generation,
     libraries,
@@ -4123,6 +4124,7 @@ app.include_router(video.router)
 app.include_router(libraries.router)
 app.include_router(subject_cards.router)
 app.include_router(card_media.router)
+app.include_router(auth.router)
 
 # AI调试信息保存函数
 def save_ai_debug(
@@ -6152,7 +6154,6 @@ def generate_collage_image(shot_id: int, db: Session, include_scenes: bool = Fal
 
 # ==================== API路由 ====================
 
-@app.post("/api/auth/login")
 async def login(request: LoginRequest, db: Session = Depends(get_db)):
     """通过用户名 + 密码登录"""
     user = db.query(models.User).filter(models.User.username == request.username).first()
@@ -6184,7 +6185,6 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
         "created_at": user.created_at
     }
 
-@app.post("/api/auth/verify")
 async def verify_token(user: models.User = Depends(get_current_user)):
     """验证token是否有效"""
     return {
@@ -6200,7 +6200,6 @@ class ChangePasswordRequest(BaseModel):
     new_password: str
 
 
-@app.post("/api/auth/change-password")
 async def change_password(request: ChangePasswordRequest, db: Session = Depends(get_db)):
     """修改密码（需要验证原密码）"""
     user = db.query(models.User).filter(models.User.username == request.username).first()
@@ -6218,7 +6217,6 @@ async def change_password(request: ChangePasswordRequest, db: Session = Depends(
     db.commit()
     return {"message": "密码修改成功"}
 
-@app.post("/api/auth/verify-nerva-password")
 async def verify_nerva_password(request: PasswordVerifyRequest):
     """验证nerva用户密码"""
     nerva_password = _get_private_password_env("NERVA_PASSWORD")
