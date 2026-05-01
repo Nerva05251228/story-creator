@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 This project uses a lightweight `Added`, `Changed`, `Fixed`, `Security`, and `Migration` structure.
 
+## 2026-05-01 - Subject Card Router Extraction
+
+### Added
+
+- Added focused subject card route tests covering CRUD, list filtering, ownership checks, deletion cleanup, and prompt task submission behavior.
+
+### Changed
+
+- Moved the seven subject card CRUD and AI prompt routes into `backend/api/routers/subject_cards.py` while preserving existing paths, methods, auth behavior, and response shapes.
+- Extracted subject card request/response schemas into `backend/api/schemas/subject_cards.py` for reuse by the moved routes and remaining card media endpoints.
+
 ## 2026-04-30 - Phase 1A Config, Startup, and Runtime Fixes
 
 ### Added

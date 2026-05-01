@@ -156,6 +156,49 @@ class RouteRegistryTests(unittest.TestCase):
             "api.routers.libraries.delete_library",
         )
 
+    def test_subject_card_routes_are_owned_by_subject_cards_router(self):
+        expected_routes = [
+            (
+                "POST",
+                "/api/libraries/{library_id}/cards",
+                "api.routers.subject_cards.create_card",
+            ),
+            (
+                "GET",
+                "/api/libraries/{library_id}/cards",
+                "api.routers.subject_cards.get_library_cards",
+            ),
+            (
+                "PUT",
+                "/api/cards/{card_id}",
+                "api.routers.subject_cards.update_card",
+            ),
+            (
+                "DELETE",
+                "/api/cards/{card_id}",
+                "api.routers.subject_cards.delete_card",
+            ),
+            (
+                "GET",
+                "/api/cards/{card_id}",
+                "api.routers.subject_cards.get_card",
+            ),
+            (
+                "POST",
+                "/api/cards/{card_id}/generate-ai-prompt",
+                "api.routers.subject_cards.generate_card_ai_prompt",
+            ),
+            (
+                "POST",
+                "/api/libraries/{library_id}/batch-generate-prompts",
+                "api.routers.subject_cards.batch_generate_prompts",
+            ),
+        ]
+
+        for method, path, qualified_name in expected_routes:
+            with self.subTest(method=method, path=path):
+                self._assert_route_owned_by(method, path, qualified_name)
+
     def _assert_get_route_owned_by(self, path, expected_qualified_name):
         self._assert_route_owned_by("GET", path, expected_qualified_name)
 
