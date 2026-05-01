@@ -275,6 +275,62 @@ class RouteRegistryTests(unittest.TestCase):
             with self.subTest(method=method, path=path):
                 self._assert_route_owned_by(method, path, qualified_name)
 
+    def test_dashboard_task_routes_are_owned_by_dashboard_router(self):
+        expected_routes = [
+            (
+                "GET",
+                "/api/dashboard/tasks",
+                "api.routers.dashboard.list_dashboard_tasks",
+            ),
+            (
+                "GET",
+                "/api/dashboard/tasks/{task_id}",
+                "api.routers.dashboard.get_dashboard_task_detail",
+            ),
+            (
+                "POST",
+                "/api/dashboard/tasks/{task_id}/query-status",
+                "api.routers.dashboard.query_dashboard_task_status",
+            ),
+            (
+                "DELETE",
+                "/api/dashboard/tasks/{task_id}",
+                "api.routers.dashboard.delete_dashboard_task",
+            ),
+            (
+                "POST",
+                "/api/dashboard/tasks/bulk-delete",
+                "api.routers.dashboard.bulk_delete_dashboard_tasks",
+            ),
+        ]
+
+        for method, path, qualified_name in expected_routes:
+            with self.subTest(method=method, path=path):
+                self._assert_route_owned_by(method, path, qualified_name)
+
+    def test_model_config_routes_are_owned_by_model_configs_router(self):
+        expected_routes = [
+            (
+                "GET",
+                "/api/admin/model-configs",
+                "api.routers.model_configs.get_model_configs",
+            ),
+            (
+                "POST",
+                "/api/admin/model-configs/sync-models",
+                "api.routers.model_configs.sync_model_cache",
+            ),
+            (
+                "PUT",
+                "/api/admin/model-config/{function_key}",
+                "api.routers.model_configs.update_model_config",
+            ),
+        ]
+
+        for method, path, qualified_name in expected_routes:
+            with self.subTest(method=method, path=path):
+                self._assert_route_owned_by(method, path, qualified_name)
+
     def _assert_get_route_owned_by(self, path, expected_qualified_name):
         self._assert_route_owned_by("GET", path, expected_qualified_name)
 
@@ -293,12 +349,15 @@ class RouteRegistryTests(unittest.TestCase):
         self.fail(f"{method} {path} is not registered")
 
 
-    def test_admin_routes_verify_admin_password_header(self):
+    def test_admin_and_dashboard_routes_verify_admin_password_header(self):
         missing = []
         for route in main.app.routes:
             path = getattr(route, "path", "")
             endpoint = getattr(route, "endpoint", None)
-            if not path.startswith("/api/admin") or endpoint is None:
+            if (
+                not path.startswith(("/api/admin", "/api/dashboard"))
+                or endpoint is None
+            ):
                 continue
 
             signature = inspect.signature(endpoint)

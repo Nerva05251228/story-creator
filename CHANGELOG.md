@@ -4,6 +4,30 @@ All notable changes to this project will be documented in this file.
 
 This project uses a lightweight `Added`, `Changed`, `Fixed`, `Security`, and `Migration` structure.
 
+## 2026-05-01 - Model Config Router Extraction
+
+### Added
+
+- Added focused model config route tests covering admin password rejection, cache listing and sync, update behavior, and missing function-key handling.
+
+### Changed
+
+- Moved the `/api/admin/model-configs`, `/api/admin/model-configs/sync-models`, and `/api/admin/model-config/{function_key}` routes into `backend/api/routers/model_configs.py` while preserving paths, methods, response shapes, and admin header behavior.
+- Extracted model config defaults and persistence helpers into `backend/api/services/model_configs.py` and the update request schema into `backend/api/schemas/model_configs.py`.
+- Kept `backend/main.py` compatibility wrappers for older direct-call tests while registering the new model config router in the FastAPI app.
+
+## 2026-05-01 - Dashboard Task Router Extraction
+
+### Added
+
+- Added focused dashboard task route tests covering admin password rejection, list filtering and pagination, detail payload parsing, query-status mapping, single delete, and bulk delete behavior.
+
+### Changed
+
+- Moved the dashboard task list, detail, query-status, delete, and bulk-delete routes into `backend/api/routers/dashboard.py` while preserving paths, methods, response shapes, and admin header behavior.
+- Extracted dashboard task list and serialization helpers into `backend/api/routers/dashboard.py`, moved `DashboardBulkDeleteRequest` into `backend/api/schemas/dashboard.py`, and shared the admin password helper through `backend/api/services/admin_auth.py`.
+- Registered the new dashboard router in `backend/main.py` while keeping the existing `main._verify_admin_panel_password` compatibility path for older direct-call tests.
+
 ## 2026-05-01 - Auth Router Extraction
 
 ### Added

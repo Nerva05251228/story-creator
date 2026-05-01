@@ -25,9 +25,11 @@ from concurrent.futures import ThreadPoolExecutor
 from api.routers import (
     auth,
     card_media,
+    dashboard,
     image_generation,
     libraries,
     media,
+    model_configs,
     pages,
     public,
     subject_cards,
@@ -39,6 +41,7 @@ from api.services.card_media import (
     save_and_upload_to_cdn,
     save_audio_and_upload_to_cdn,
 )
+from api.services import model_configs as model_configs_service
 from env_config import get_env, is_placeholder_env_value, load_app_env
 
 
@@ -63,8 +66,6 @@ from startup_runtime import should_enable_background_pollers
 from startup_schema_policy import should_apply_runtime_postgres_alter
 from auth import get_current_user, verify_library_owner
 from ai_config import (
-    DEFAULT_TEXT_MODEL_ID,
-    RELAY_PROVIDER_KEY,
     build_ai_debug_config,
     get_ai_config,
     get_ai_provider_catalog,
@@ -72,12 +73,9 @@ from ai_config import (
     get_default_ai_provider_key,
     get_provider_model_options,
     normalize_ai_provider_key,
-    resolve_ai_model_option,
 )
 from text_relay_service import (
-    get_cached_models_payload,
     submit_and_persist_text_task,
-    sync_models_from_upstream,
     text_relay_poller,
 )
 from ai_service import (
@@ -98,11 +96,8 @@ from storyboard_variant import (
     choose_storyboard_reference_source,
 )
 from dashboard_service import (
-    DASHBOARD_STATUS_LABELS,
-    DASHBOARD_TASK_TYPE_LABELS,
     log_debug_task_event,
     log_file_task_event,
-    summarize_dashboard_batch_events,
     sync_managed_task_to_dashboard,
     sync_voiceover_tts_task_to_dashboard,
 )
@@ -130,10 +125,7 @@ from image_generation_service import (
     submit_moti_standard_image_generation, get_image_submit_api_url,
     get_image_status_api_url, resolve_jimeng_actual_model
 )
-from dashboard_query_service import (
-    is_dashboard_task_query_supported,
-    query_dashboard_task,
-)
+
 from managed_generation_service import managed_poller, ACTIVE_MANAGED_SESSION_STATUSES
 from model_pricing_poller import model_pricing_poller
 from text_llm_queue import run_text_llm_request
@@ -4124,6 +4116,8 @@ app.include_router(video.router)
 app.include_router(libraries.router)
 app.include_router(subject_cards.router)
 app.include_router(card_media.router)
+app.include_router(dashboard.router)
+app.include_router(model_configs.router)
 app.include_router(auth.router)
 
 # AI调试信息保存函数
@@ -6594,17 +6588,6 @@ class CreateUserRequest(BaseModel):
     username: str
 
 
-class DashboardBulkDeleteRequest(BaseModel):
-    ids: List[int] = []
-    status: Optional[str] = None
-    task_type: Optional[str] = None
-    creator_username: Optional[str] = None
-    keyword: Optional[str] = None
-    date_from: Optional[str] = None
-    date_to: Optional[str] = None
-    delete_all: bool = False
-
-
 def _verify_admin_panel_password(x_admin_password: Optional[str]) -> None:
     admin_panel_password = (ADMIN_PANEL_PASSWORD or "").strip()
     if (
@@ -6612,214 +6595,6 @@ def _verify_admin_panel_password(x_admin_password: Optional[str]) -> None:
         or (x_admin_password or "").strip() != admin_panel_password
     ):
         raise HTTPException(status_code=403, detail="管理员密码错误")
-
-
-def _parse_dashboard_date(date_text: Optional[str], *, end_exclusive: bool = False) -> Optional[datetime]:
-    text_value = str(date_text or "").strip()
-    if not text_value:
-        return None
-    try:
-        parsed = datetime.strptime(text_value, "%Y-%m-%d")
-        if end_exclusive:
-            return parsed + timedelta(days=1)
-        return parsed
-    except ValueError:
-        raise HTTPException(status_code=400, detail=f"日期格式错误: {text_value}，请使用 YYYY-MM-DD")
-
-
-def _apply_dashboard_query_filters(
-    query,
-    *,
-    status: Optional[str] = None,
-    task_type: Optional[str] = None,
-    creator_username: Optional[str] = None,
-    keyword: Optional[str] = None,
-    date_from: Optional[str] = None,
-    date_to: Optional[str] = None,
-):
-    if status:
-        query = query.filter(models.DashboardTaskLog.status == str(status).strip())
-    if task_type:
-        query = query.filter(models.DashboardTaskLog.task_type == str(task_type).strip())
-    if creator_username:
-        query = query.filter(models.DashboardTaskLog.creator_username.ilike(f"%{str(creator_username).strip()}%"))
-    if keyword:
-        like = f"%{str(keyword).strip()}%"
-        query = query.filter(or_(
-            models.DashboardTaskLog.title.ilike(like),
-            models.DashboardTaskLog.task_key.ilike(like),
-            models.DashboardTaskLog.script_name.ilike(like),
-            models.DashboardTaskLog.episode_name.ilike(like),
-            models.DashboardTaskLog.creator_username.ilike(like),
-            models.DashboardTaskLog.error_message.ilike(like),
-            models.DashboardTaskLog.result_summary.ilike(like),
-            models.DashboardTaskLog.api_url.ilike(like),
-        ))
-
-    start_dt = _parse_dashboard_date(date_from, end_exclusive=False)
-    end_dt = _parse_dashboard_date(date_to, end_exclusive=True)
-    if start_dt:
-        query = query.filter(models.DashboardTaskLog.created_at >= start_dt)
-    if end_dt:
-        query = query.filter(models.DashboardTaskLog.created_at < end_dt)
-    return query
-
-
-def _safe_parse_dashboard_json(payload_text: Any, default_value: Any):
-    if not payload_text:
-        return default_value
-    if isinstance(payload_text, (dict, list)):
-        return payload_text
-    try:
-        return json.loads(payload_text)
-    except Exception:
-        return payload_text
-
-
-SIMPLE_STORYBOARD_TIMEOUT_SECONDS = 3600
-SIMPLE_STORYBOARD_TIMEOUT_ERROR = "简单分镜生成超时（超过 1 小时），已自动标记为失败，请重新生成。"
-DASHBOARD_SIMPLE_STORYBOARD_TIMEOUT_ERROR = "简单分镜任务超时（超过 1 小时），已自动标记为失败。"
-
-
-def _mark_simple_storyboard_timeout_if_needed(episode: Optional[models.Episode], db: Session) -> bool:
-    if not episode or not bool(getattr(episode, "simple_storyboard_generating", False)):
-        return False
-    reference_time = getattr(episode, "updated_at", None) or getattr(episode, "created_at", None)
-    if not reference_time:
-        return False
-    if (datetime.utcnow() - reference_time).total_seconds() < SIMPLE_STORYBOARD_TIMEOUT_SECONDS:
-        return False
-    batch_rows = _get_simple_storyboard_batch_rows(int(getattr(episode, "id", 0) or 0), db)
-    if batch_rows:
-        for row in batch_rows:
-            if str(getattr(row, "status", "") or "").strip() in {"completed", "failed"}:
-                continue
-            row.status = "failed"
-            if not str(getattr(row, "error_message", "") or "").strip():
-                row.error_message = SIMPLE_STORYBOARD_TIMEOUT_ERROR
-            row.updated_at = datetime.utcnow()
-        _refresh_episode_simple_storyboard_from_batches(episode, db)
-        if not str(getattr(episode, "simple_storyboard_error", "") or "").strip():
-            episode.simple_storyboard_error = SIMPLE_STORYBOARD_TIMEOUT_ERROR
-    else:
-        episode.simple_storyboard_generating = False
-        if not str(getattr(episode, "simple_storyboard_error", "") or "").strip():
-            episode.simple_storyboard_error = SIMPLE_STORYBOARD_TIMEOUT_ERROR
-    db.commit()
-    db.refresh(episode)
-    return True
-
-
-def _mark_dashboard_simple_storyboard_timeout_if_needed(row: Optional[models.DashboardTaskLog], db: Session) -> bool:
-    if not row:
-        return False
-    if str(getattr(row, "task_type", "") or "").strip() != "simple_storyboard":
-        return False
-    if str(getattr(row, "status", "") or "").strip() != "submitting":
-        return False
-    created_at = getattr(row, "created_at", None)
-    if not created_at:
-        return False
-    if (datetime.utcnow() - created_at).total_seconds() < SIMPLE_STORYBOARD_TIMEOUT_SECONDS:
-        return False
-    row.status = "failed"
-    if not str(getattr(row, "error_message", "") or "").strip():
-        row.error_message = DASHBOARD_SIMPLE_STORYBOARD_TIMEOUT_ERROR
-    if not str(getattr(row, "result_summary", "") or "").strip():
-        row.result_summary = DASHBOARD_SIMPLE_STORYBOARD_TIMEOUT_ERROR
-    row.updated_at = datetime.utcnow()
-    db.commit()
-    db.refresh(row)
-    return True
-
-
-def _build_dashboard_batch_summary(events: Any, fallback_status: str) -> Dict[str, Any]:
-    summary = summarize_dashboard_batch_events(events, fallback_status=fallback_status)
-    if not summary.get("has_batches"):
-        return summary
-
-    items = summary.get("items") or []
-    summary_lines: List[str] = []
-    counts = summary.get("counts") or {}
-    header_parts = [f"Batch {int(counts.get('total') or 0)}"]
-    for status_key in ("completed", "processing", "submitting", "failed", "cancelled"):
-        count = int(counts.get(status_key) or 0)
-        if count <= 0:
-            continue
-        header_parts.append(f"{DASHBOARD_STATUS_LABELS.get(status_key, status_key)} {count}")
-    summary_lines.append(" | ".join(header_parts))
-
-    for item in items:
-        status = str(item.get("latest_status") or "")
-        batch_line_parts = [f"Batch {item.get('batch_id')}", DASHBOARD_STATUS_LABELS.get(status, status)]
-        latest_attempt = item.get("latest_attempt")
-        if latest_attempt is not None:
-            batch_line_parts.append(f"尝试 {latest_attempt}")
-        shots_count = item.get("shots_count")
-        if shots_count is not None and status == "completed":
-            batch_line_parts.append(f"{shots_count} 镜头")
-        last_error = str(item.get("last_error") or "").strip()
-        line = " | ".join(part for part in batch_line_parts if str(part).strip())
-        if last_error and status != "completed":
-            line = f"{line} | {last_error}"
-        summary_lines.append(line)
-
-    summary["summary_text"] = "\n".join(summary_lines)
-    return summary
-
-
-def _serialize_dashboard_task(row: models.DashboardTaskLog, include_payloads: bool = False) -> dict:
-    parsed_events = _safe_parse_dashboard_json(row.events_json, [])
-    batch_summary = _build_dashboard_batch_summary(parsed_events, row.status)
-    resolved_status = batch_summary.get("overall_status") if batch_summary.get("has_batches") else row.status
-    data = {
-        "id": row.id,
-        "task_key": row.task_key,
-        "task_folder": row.task_folder,
-        "source_type": row.source_type,
-        "source_record_type": row.source_record_type,
-        "source_record_id": row.source_record_id,
-        "task_type": row.task_type,
-        "task_type_label": DASHBOARD_TASK_TYPE_LABELS.get(row.task_type, row.task_type or "任务"),
-        "stage": row.stage,
-        "title": row.title,
-        "status": resolved_status,
-        "status_label": DASHBOARD_STATUS_LABELS.get(resolved_status, resolved_status),
-        "stored_status": row.status,
-        "stored_status_label": DASHBOARD_STATUS_LABELS.get(row.status, row.status),
-        "creator_user_id": row.creator_user_id,
-        "creator_username": row.creator_username,
-        "script_id": row.script_id,
-        "script_name": row.script_name,
-        "episode_id": row.episode_id,
-        "episode_name": row.episode_name,
-        "shot_id": row.shot_id,
-        "shot_number": row.shot_number,
-        "batch_id": row.batch_id,
-        "provider": row.provider,
-        "model_name": row.model_name,
-        "api_url": row.api_url,
-        "status_api_url": row.status_api_url,
-        "external_task_id": row.external_task_id,
-        "query_supported": is_dashboard_task_query_supported(row),
-        "error_message": row.error_message,
-        "result_summary": row.result_summary,
-        "batch_summary": batch_summary if batch_summary.get("has_batches") else None,
-        "batch_summary_text": batch_summary.get("summary_text", ""),
-        "latest_filename": row.latest_filename,
-        "created_at": row.created_at.isoformat() if row.created_at else "",
-        "updated_at": row.updated_at.isoformat() if row.updated_at else "",
-    }
-    if include_payloads:
-        data.update({
-            "input_payload": _safe_parse_dashboard_json(row.input_payload, {}),
-            "output_payload": _safe_parse_dashboard_json(row.output_payload, {}),
-            "raw_response_payload": _safe_parse_dashboard_json(row.raw_response_payload, {}),
-            "result_payload": _safe_parse_dashboard_json(row.result_payload, {}),
-            "latest_event_payload": _safe_parse_dashboard_json(row.latest_event_payload, {}),
-            "events": parsed_events,
-        })
-    return data
 
 
 def _get_today_video_counts_by_user(db: Session) -> Dict[int, int]:
@@ -7029,285 +6804,51 @@ async def impersonate_user_admin(
     }
 
 
-@app.get("/api/dashboard/tasks")
-async def list_dashboard_tasks(
-    status: Optional[str] = None,
-    task_type: Optional[str] = None,
-    creator_username: Optional[str] = None,
-    keyword: Optional[str] = None,
-    date_from: Optional[str] = None,
-    date_to: Optional[str] = None,
-    page: int = 1,
-    size: int = 100,
-    x_admin_password: Optional[str] = Header(None, alias="X-Admin-Password"),
-    db: Session = Depends(get_db),
-):
-    _verify_admin_panel_password(x_admin_password)
-    normalized_page = max(1, int(page or 1))
-    normalized_size = max(1, min(int(size or 100), 500))
-
-    filtered_query = _apply_dashboard_query_filters(
-        db.query(models.DashboardTaskLog),
-        status=status,
-        task_type=task_type,
-        creator_username=creator_username,
-        keyword=keyword,
-        date_from=date_from,
-        date_to=date_to,
-    )
-
-    stale_rows = filtered_query.filter(
-        models.DashboardTaskLog.task_type == "simple_storyboard",
-        models.DashboardTaskLog.status == "submitting",
-    ).all()
-    for stale_row in stale_rows:
-        _mark_dashboard_simple_storyboard_timeout_if_needed(stale_row, db)
-
-    filtered_query = _apply_dashboard_query_filters(
-        db.query(models.DashboardTaskLog),
-        status=status,
-        task_type=task_type,
-        creator_username=creator_username,
-        keyword=keyword,
-        date_from=date_from,
-        date_to=date_to,
-    )
-
-    total = filtered_query.count()
-    rows = filtered_query.order_by(
-        models.DashboardTaskLog.created_at.desc(),
-        models.DashboardTaskLog.id.desc(),
-    ).offset((normalized_page - 1) * normalized_size).limit(normalized_size).all()
-
-    status_rows = db.query(models.DashboardTaskLog.status).distinct().all()
-    task_type_rows = db.query(models.DashboardTaskLog.task_type).distinct().all()
-
-    return {
-        "items": [_serialize_dashboard_task(row) for row in rows],
-        "total": int(total or 0),
-        "page": normalized_page,
-        "size": normalized_size,
-        "status_options": sorted({str(item[0] or "").strip() for item in status_rows if str(item[0] or "").strip()}),
-        "task_type_options": sorted({str(item[0] or "").strip() for item in task_type_rows if str(item[0] or "").strip()}),
-        "status_labels": DASHBOARD_STATUS_LABELS,
-        "task_type_labels": DASHBOARD_TASK_TYPE_LABELS,
-    }
-
-
-@app.get("/api/dashboard/tasks/{task_id}")
-async def get_dashboard_task_detail(
-    task_id: int,
-    x_admin_password: Optional[str] = Header(None, alias="X-Admin-Password"),
-    db: Session = Depends(get_db),
-):
-    _verify_admin_panel_password(x_admin_password)
-    row = db.query(models.DashboardTaskLog).filter(models.DashboardTaskLog.id == task_id).first()
-    if not row:
-        raise HTTPException(status_code=404, detail="任务不存在")
-    _mark_dashboard_simple_storyboard_timeout_if_needed(row, db)
-    return _serialize_dashboard_task(row, include_payloads=True)
-
-
-@app.post("/api/dashboard/tasks/{task_id}/query-status")
-async def query_dashboard_task_status(
-    task_id: int,
-    x_admin_password: Optional[str] = Header(None, alias="X-Admin-Password"),
-    db: Session = Depends(get_db),
-):
-    _verify_admin_panel_password(x_admin_password)
-    row = db.query(models.DashboardTaskLog).filter(models.DashboardTaskLog.id == task_id).first()
-    if not row:
-        raise HTTPException(status_code=404, detail="任务不存在")
-    try:
-        return query_dashboard_task(row)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
-
-
-@app.delete("/api/dashboard/tasks/{task_id}")
-async def delete_dashboard_task(
-    task_id: int,
-    x_admin_password: Optional[str] = Header(None, alias="X-Admin-Password"),
-    db: Session = Depends(get_db),
-):
-    _verify_admin_panel_password(x_admin_password)
-    row = db.query(models.DashboardTaskLog).filter(models.DashboardTaskLog.id == task_id).first()
-    if not row:
-        raise HTTPException(status_code=404, detail="任务不存在")
-    db.delete(row)
-    db.commit()
-    return {"message": "任务记录已删除", "deleted_count": 1}
-
-
-@app.post("/api/dashboard/tasks/bulk-delete")
-async def bulk_delete_dashboard_tasks(
-    request: DashboardBulkDeleteRequest,
-    x_admin_password: Optional[str] = Header(None, alias="X-Admin-Password"),
-    db: Session = Depends(get_db),
-):
-    _verify_admin_panel_password(x_admin_password)
-    query = db.query(models.DashboardTaskLog)
-
-    normalized_ids = [int(item) for item in (request.ids or []) if str(item).strip()]
-    if normalized_ids:
-        query = query.filter(models.DashboardTaskLog.id.in_(normalized_ids))
-    else:
-        query = _apply_dashboard_query_filters(
-            query,
-            status=request.status,
-            task_type=request.task_type,
-            creator_username=request.creator_username,
-            keyword=request.keyword,
-            date_from=request.date_from,
-            date_to=request.date_to,
-        )
-        has_filters = any([
-            request.status,
-            request.task_type,
-            request.creator_username,
-            request.keyword,
-            request.date_from,
-            request.date_to,
-        ])
-        if not has_filters and not request.delete_all:
-            raise HTTPException(status_code=400, detail="未指定删除条件")
-
-    deleted_count = query.delete(synchronize_session=False)
-    db.commit()
-    return {"message": "任务记录已删除", "deleted_count": int(deleted_count or 0)}
-
-
-
-# ==================== 模型选择 API ====================
-
-FUNCTION_MODEL_DEFAULTS = [
-    {"function_key": "detailed_storyboard_s1",  "function_name": "详细分镜生成（Stage 1 初始分析）"},
-    {"function_key": "detailed_storyboard_s2",  "function_name": "详细分镜生成（Stage 2 主体提示词）"},
-    {"function_key": "video_prompt",            "function_name": "Sora 视频提示词生成"},
-    {"function_key": "opening",                 "function_name": "精彩开头生成"},
-    {"function_key": "narration",               "function_name": "旁白/解说剧转换"},
-    {"function_key": "managed_prompt_optimize", "function_name": "托管重试提示词优化"},
-    {"function_key": "subject_prompt",          "function_name": "主体提示词生成"},
-]
-
-OBSOLETE_FUNCTION_MODEL_KEYS = {"simple_storyboard"}
-
-LEGACY_TEXT_PROVIDER_KEYS = {"", "openrouter", "yyds"}
-LEGACY_TEXT_MODEL_VALUES = {
-    "",
-    "google/gemini-3.1-pro-preview",
-    "google/gemini-3-pro-preview",
-    "gemini-3.1-pro-preview",
-    "gemini-3.1-pro-high",
-    "gemini-3.0-pro",
-    "gemini_pro_preview",
-    "gemini_pro_high",
-    "gemini_pro_3_0",
-}
+# Compatibility helpers for the extracted model config module.
+FUNCTION_MODEL_DEFAULTS = model_configs_service.FUNCTION_MODEL_DEFAULTS
+OBSOLETE_FUNCTION_MODEL_KEYS = model_configs_service.OBSOLETE_FUNCTION_MODEL_KEYS
+LEGACY_TEXT_PROVIDER_KEYS = model_configs_service.LEGACY_TEXT_PROVIDER_KEYS
+LEGACY_TEXT_MODEL_VALUES = model_configs_service.LEGACY_TEXT_MODEL_VALUES
 
 
 def _get_function_model_default_selection(function_key: str) -> Dict[str, Optional[str]]:
-    _ = str(function_key or "").strip()
-    return {
-        "provider_key": RELAY_PROVIDER_KEY,
-        "model_key": DEFAULT_TEXT_MODEL_ID,
-        "model_id": DEFAULT_TEXT_MODEL_ID,
-    }
+    return model_configs_service._get_function_model_default_selection(function_key)
 
 
 def _normalize_function_model_id(row: models.FunctionModelConfig) -> str:
-    provider_key = str(getattr(row, "provider_key", None) or "").strip().lower()
-    model_id = str(getattr(row, "model_id", None) or "").strip()
-    model_key = str(getattr(row, "model_key", None) or "").strip()
-
-    if provider_key and provider_key != RELAY_PROVIDER_KEY:
-        return DEFAULT_TEXT_MODEL_ID
-
-    candidate = model_id or model_key
-    if not candidate or candidate in LEGACY_TEXT_MODEL_VALUES:
-        return DEFAULT_TEXT_MODEL_ID
-    return candidate
+    return model_configs_service._normalize_function_model_id(row)
 
 
 def _ensure_function_model_configs(db):
-    """确保所有功能配置行都存在，并统一迁移到 model_id-only 结构。"""
-    if OBSOLETE_FUNCTION_MODEL_KEYS:
-        db.query(models.FunctionModelConfig).filter(
-            models.FunctionModelConfig.function_key.in_(tuple(OBSOLETE_FUNCTION_MODEL_KEYS))
-        ).delete(synchronize_session=False)
-    for item in FUNCTION_MODEL_DEFAULTS:
-        default_selection = _get_function_model_default_selection(item["function_key"])
-        row = db.query(models.FunctionModelConfig).filter(
-            models.FunctionModelConfig.function_key == item["function_key"]
-        ).first()
-        if not row:
-            db.add(models.FunctionModelConfig(
-                function_key=item["function_key"],
-                function_name=item["function_name"],
-                provider_key=default_selection["provider_key"],
-                model_key=default_selection["model_key"],
-                model_id=default_selection["model_id"]
-            ))
-            continue
-
-        row.function_name = item["function_name"]
-        normalized_model_id = _normalize_function_model_id(row)
-        row.provider_key = RELAY_PROVIDER_KEY
-        row.model_key = normalized_model_id
-        row.model_id = normalized_model_id
-    db.commit()
+    return model_configs_service._ensure_function_model_configs(db)
 
 
 def _serialize_function_model_config(row: models.FunctionModelConfig, db: Session) -> Dict[str, Any]:
-    resolved = resolve_ai_model_option(RELAY_PROVIDER_KEY, getattr(row, "model_id", None), db=db)
-    return {
-        "function_key": row.function_key,
-        "function_name": row.function_name,
-        "model_id": str(getattr(row, "model_id", None) or "").strip() or DEFAULT_TEXT_MODEL_ID,
-        "resolved_model_key": resolved["model_key"],
-        "resolved_model_id": resolved["model_id"],
-        "resolved_model_label": resolved["label"],
-    }
+    return model_configs_service._serialize_function_model_config(row, db)
 
 
-@app.get("/api/admin/model-configs")
 async def get_model_configs(
     x_admin_password: Optional[str] = Header(None, alias="X-Admin-Password"),
     db: Session = Depends(get_db),
 ):
-    """返回模型选择页需要的缓存模型与功能分配。"""
     _verify_admin_panel_password(x_admin_password)
-    _ensure_function_model_configs(db)
-    rows = db.query(models.FunctionModelConfig).order_by(
-        models.FunctionModelConfig.id.asc()
-    ).all()
-    cache_payload = get_cached_models_payload(db)
-    return {
-        "default_model": DEFAULT_TEXT_MODEL_ID,
-        "models": cache_payload.get("models", []),
-        "last_synced_at": cache_payload.get("last_synced_at"),
-        "configs": [
-            _serialize_function_model_config(r, db)
-            for r in rows
-        ]
-    }
+    return model_configs_service.get_model_configs_payload(db)
 
 
 class UpdateModelConfigRequest(BaseModel):
     model_id: str = ""
 
 
-@app.post("/api/admin/model-configs/sync-models")
 async def sync_model_cache(
     x_admin_password: Optional[str] = Header(None, alias="X-Admin-Password"),
     db: Session = Depends(get_db),
 ):
     _verify_admin_panel_password(x_admin_password)
-    sync_result = sync_models_from_upstream(db)
+    sync_result = model_configs_service.sync_models_from_upstream(db)
     db.commit()
-    cache_payload = get_cached_models_payload(db)
+    cache_payload = model_configs_service.get_cached_models_payload(db)
     return {
-        "message": "模型缓存已同步",
+        "message": "???????",
         "count": int(sync_result.get("count") or 0),
         "last_synced_at": cache_payload.get("last_synced_at"),
         "models": cache_payload.get("models", []),
@@ -7340,31 +6881,33 @@ class BillingPriceRuleRequest(BaseModel):
     effective_to: Optional[str] = None
 
 
-@app.put("/api/admin/model-config/{function_key}")
 async def update_model_config(
     function_key: str,
     request: UpdateModelConfigRequest,
     x_admin_password: Optional[str] = Header(None, alias="X-Admin-Password"),
     db: Session = Depends(get_db),
 ):
-    """更新某功能的 model 分配。"""
     _verify_admin_panel_password(x_admin_password)
-    _ensure_function_model_configs(db)
+    model_configs_service._ensure_function_model_configs(db)
     row = db.query(models.FunctionModelConfig).filter(
         models.FunctionModelConfig.function_key == function_key
     ).first()
     if not row:
-        raise HTTPException(status_code=404, detail="功能配置不存在")
+        raise HTTPException(status_code=404, detail="???????")
 
-    explicit_model_id = str(request.model_id or "").strip() or DEFAULT_TEXT_MODEL_ID
-    resolved = resolve_ai_model_option(RELAY_PROVIDER_KEY, explicit_model_id, db=db)
+    explicit_model_id = str(request.model_id or "").strip() or model_configs_service.DEFAULT_TEXT_MODEL_ID
+    resolved = model_configs_service.resolve_ai_model_option(
+        model_configs_service.RELAY_PROVIDER_KEY,
+        explicit_model_id,
+        db=db,
+    )
 
-    row.provider_key = RELAY_PROVIDER_KEY
+    row.provider_key = model_configs_service.RELAY_PROVIDER_KEY
     row.model_key = resolved["model_id"]
     row.model_id = resolved["model_id"]
     db.commit()
     db.refresh(row)
-    return _serialize_function_model_config(row, db)
+    return model_configs_service._serialize_function_model_config(row, db)
 
 
 @app.get("/api/billing/users")
