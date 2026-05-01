@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 This project uses a lightweight `Added`, `Changed`, `Fixed`, `Security`, and `Migration` structure.
 
+## 2026-05-01 - Card Media Router Extraction
+
+### Added
+
+- Added focused card media route tests covering image upload/delete, audio upload/list/delete, generated image listing, reference selection, and generated image deletion behavior.
+
+### Changed
+
+- Moved the card image, audio, generated image, and reference image routes into `backend/api/routers/card_media.py` while preserving existing paths, methods, auth behavior, and response shapes.
+- Extracted card media upload and audio duration helpers into `backend/api/services/card_media.py` and updated `backend/main.py` to register the new router.
+
 ## 2026-05-01 - Subject Card Router Extraction
 
 ### Added

@@ -199,6 +199,54 @@ class RouteRegistryTests(unittest.TestCase):
             with self.subTest(method=method, path=path):
                 self._assert_route_owned_by(method, path, qualified_name)
 
+    def test_card_media_routes_are_owned_by_card_media_router(self):
+        expected_routes = [
+            (
+                "POST",
+                "/api/cards/{card_id}/images",
+                "api.routers.card_media.upload_image",
+            ),
+            (
+                "DELETE",
+                "/api/images/{image_id}",
+                "api.routers.card_media.delete_image",
+            ),
+            (
+                "POST",
+                "/api/cards/{card_id}/audios",
+                "api.routers.card_media.upload_card_audio",
+            ),
+            (
+                "GET",
+                "/api/cards/{card_id}/audios",
+                "api.routers.card_media.get_card_audios",
+            ),
+            (
+                "DELETE",
+                "/api/cards/{card_id}/audios/{audio_id}",
+                "api.routers.card_media.delete_card_audio",
+            ),
+            (
+                "GET",
+                "/api/cards/{card_id}/generated-images",
+                "api.routers.card_media.get_card_generated_images",
+            ),
+            (
+                "PUT",
+                "/api/cards/{card_id}/reference-images",
+                "api.routers.card_media.set_reference_images",
+            ),
+            (
+                "DELETE",
+                "/api/generated-images/{generated_image_id}",
+                "api.routers.card_media.delete_generated_image",
+            ),
+        ]
+
+        for method, path, qualified_name in expected_routes:
+            with self.subTest(method=method, path=path):
+                self._assert_route_owned_by(method, path, qualified_name)
+
     def _assert_get_route_owned_by(self, path, expected_qualified_name):
         self._assert_route_owned_by("GET", path, expected_qualified_name)
 
