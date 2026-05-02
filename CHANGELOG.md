@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 This project uses a lightweight `Added`, `Changed`, `Fixed`, `Security`, and `Migration` structure.
 
+## 2026-05-02 - Script Episode Route Extraction
+
+### Added
+
+- Added focused episode router coverage for `POST/GET /api/scripts/{script_id}/episodes`, owner-only access, automatic story library creation, response defaults, and route ownership.
+
+### Changed
+
+- Moved script-scoped episode create/list routes from `backend/main.py` into `backend/api/routers/episodes.py` while preserving paths, response models, ownership checks, and main-module compatibility exports.
+- Replaced duplicate `EpisodeCreate` and `EpisodeResponse` definitions in `backend/main.py` with aliases to the extracted episode schemas.
+
 ## 2026-05-02 - Card Image Generation Route Extraction
 
 ### Added

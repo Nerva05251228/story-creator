@@ -37,6 +37,8 @@ from api.schemas.episodes import (  # noqa: E402
 
 
 EXPECTED_EPISODE_ROUTES = {
+    ("POST", "/api/scripts/{script_id}/episodes"),
+    ("GET", "/api/scripts/{script_id}/episodes"),
     ("GET", "/api/episodes/{episode_id}"),
     ("PUT", "/api/episodes/{episode_id}"),
     ("GET", "/api/episodes/{episode_id}/poll-status"),
@@ -158,6 +160,20 @@ class EpisodeRouterTests(unittest.TestCase):
         finally:
             db.close()
 
+    def _seed_script_for_owner(self):
+        db = self.Session()
+        try:
+            owner = models.User(username="owner", token="owner-token")
+            other = models.User(username="other", token="other-token")
+            db.add_all([owner, other])
+            db.flush()
+            script = models.Script(user_id=owner.id, name="Script")
+            db.add(script)
+            db.commit()
+            return owner, other, script.id
+        finally:
+            db.close()
+
     def test_router_owns_episode_routes_without_shot_crud_routes(self):
         registered = set()
         for route in episodes.router.routes:
@@ -219,6 +235,44 @@ class EpisodeRouterTests(unittest.TestCase):
         forbidden_response = self.client.get(f"/api/episodes/{episode_id}")
         self.assertEqual(forbidden_response.status_code, 403)
         self.assertEqual(forbidden_response.json(), {"detail": "无权限"})
+
+    def test_script_episode_create_and_list_preserve_owner_behavior(self):
+        owner, other, script_id = self._seed_script_for_owner()
+
+        self.current_user = owner
+        create_response = self.client.post(
+            f"/api/scripts/{script_id}/episodes",
+            json={"name": "Episode 1", "content": "Opening content"},
+        )
+
+        self.assertEqual(create_response.status_code, 200)
+        created = create_response.json()
+        self.assertEqual(created["script_id"], script_id)
+        self.assertEqual(created["name"], "Episode 1")
+        self.assertEqual(created["content"], "Opening content")
+
+        db = self.Session()
+        try:
+            library = db.query(models.StoryLibrary).filter_by(
+                episode_id=created["id"]
+            ).one()
+            library_id = library.id
+            self.assertEqual(library.user_id, owner.id)
+        finally:
+            db.close()
+
+        list_response = self.client.get(f"/api/scripts/{script_id}/episodes")
+
+        self.assertEqual(list_response.status_code, 200)
+        listed = list_response.json()
+        self.assertEqual(len(listed), 1)
+        self.assertEqual(listed[0]["id"], created["id"])
+        self.assertEqual(listed[0]["library_id"], library_id)
+        self.assertEqual(listed[0]["storyboard_video_model"], "Seedance 2.0 Fast")
+
+        self.current_user = other
+        blocked_response = self.client.get(f"/api/scripts/{script_id}/episodes")
+        self.assertEqual(blocked_response.status_code, 403)
 
     def test_storyboard_status_counts_json_shots(self):
         owner, _, episode_id = self._seed_episode()

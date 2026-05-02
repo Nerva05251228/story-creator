@@ -26,6 +26,7 @@ from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 import billing_service
+import image_platform_client
 import models
 from ai_config import get_ai_config
 from ai_service import get_prompt_by_key
@@ -57,6 +58,7 @@ from video_service import (
     is_transient_video_status_error,
     process_and_upload_video_with_cover,
 )
+from image_generation_service import normalize_image_model_key
 from api.schemas.episodes import (
     DEFAULT_STORYBOARD_VIDEO_MODEL,
     AnalyzeStoryboardRequest,
@@ -1337,6 +1339,324 @@ def _load_simple_storyboard_rule_config_for_duration(duration: int, db: Session)
 def _normalize_storyboard_video_appoint_account(value: Any, default_value: str = "") -> str:
     raw = str(value if value is not None else default_value or "").strip()
     return raw
+
+
+_DETAIL_IMAGES_MODEL_CONFIG = {
+    "seedream-4.0": {},
+    "seedream-4.1": {},
+    "seedream-4.5": {},
+    "seedream-4.6": {},
+    "nano-banana-2": {},
+    "nano-banana-pro": {},
+    "gpt-image-2": {},
+}
+
+
+def _get_pydantic_fields_set(payload: Any) -> set:
+    fields_set = getattr(payload, "model_fields_set", None)
+    if fields_set is None:
+        fields_set = getattr(payload, "__fields_set__", set())
+    return set(fields_set or set())
+
+
+def _normalize_detail_images_provider(
+    value: Optional[str],
+    default_provider: str = "",
+) -> str:
+    aliases = {
+        "jimeng": "jimeng",
+        "momo": "momo",
+        "banana": "momo",
+        "moti": "momo",
+        "moapp": "momo",
+        "gettoken": "momo",
+    }
+    raw = str(value or "").strip().lower()
+    if raw:
+        return aliases.get(raw, raw)
+    fallback = str(default_provider or "").strip().lower()
+    return aliases.get(fallback, fallback)
+
+
+def _resolve_episode_detail_images_provider(
+    episode: Optional[models.Episode],
+    default_provider: str = "",
+) -> str:
+    return _normalize_detail_images_provider(
+        getattr(episode, "detail_images_provider", None) if episode is not None else None,
+        default_provider=default_provider,
+    )
+
+
+def _normalize_detail_images_model(
+    value: Optional[str],
+    default_model: str = "seedream-4.0",
+) -> str:
+    raw = str(value or "").strip()
+    fallback_raw = str(default_model or "").strip() or "seedream-4.0"
+    normalized = normalize_image_model_key(raw or fallback_raw)
+    try:
+        route = image_platform_client.resolve_image_route(normalized)
+        return str(route.get("key") or normalized)
+    except Exception:
+        if raw and normalized in _DETAIL_IMAGES_MODEL_CONFIG:
+            return normalized
+        fallback = normalize_image_model_key(fallback_raw)
+        try:
+            route = image_platform_client.resolve_image_route(fallback)
+            return str(route.get("key") or fallback)
+        except Exception:
+            return fallback or "seedream-4.0"
+
+
+def _normalize_storyboard2_video_duration(value: Optional[int], default_value: int = 6) -> int:
+    allowed = {6, 10}
+    try:
+        parsed = int(value) if value is not None else int(default_value)
+    except Exception:
+        parsed = int(default_value) if default_value in allowed else 6
+    if parsed in allowed:
+        return parsed
+    return int(default_value) if default_value in allowed else 6
+
+
+def _normalize_storyboard2_image_cw(value: Optional[int], default_value: int = 50) -> int:
+    try:
+        parsed = int(value) if value is not None else int(default_value)
+    except Exception:
+        parsed = int(default_value) if default_value is not None else 50
+    return max(1, min(100, parsed))
+
+
+def _get_first_episode_for_storyboard_defaults(script_id: int, db: Session):
+    return db.query(models.Episode).filter(
+        models.Episode.script_id == script_id
+    ).order_by(
+        models.Episode.created_at.asc(),
+        models.Episode.id.asc()
+    ).first()
+
+
+def _build_episode_storyboard_sora_create_values(
+    script_id: int,
+    episode_payload: Any,
+    db: Session,
+) -> Dict[str, Any]:
+    fields_set = _get_pydantic_fields_set(episode_payload)
+    source_episode = _get_first_episode_for_storyboard_defaults(script_id, db)
+
+    def resolve_value(field_name: str, fallback: Any = None):
+        if field_name in fields_set:
+            return getattr(episode_payload, field_name, fallback)
+        if source_episode is not None:
+            return getattr(source_episode, field_name, fallback)
+        return getattr(episode_payload, field_name, fallback)
+
+    raw_model = _normalize_storyboard_video_model(
+        resolve_value("storyboard_video_model", DEFAULT_STORYBOARD_VIDEO_MODEL),
+        default_model=DEFAULT_STORYBOARD_VIDEO_MODEL
+    )
+    raw_aspect_ratio = _normalize_storyboard_video_aspect_ratio(
+        resolve_value("storyboard_video_aspect_ratio", None),
+        model=raw_model,
+        default_ratio=_STORYBOARD_VIDEO_MODEL_CONFIG[raw_model]["default_ratio"]
+    )
+    raw_duration = _normalize_storyboard_video_duration(
+        resolve_value("storyboard_video_duration", None),
+        model=raw_model,
+        default_duration=_STORYBOARD_VIDEO_MODEL_CONFIG[raw_model]["default_duration"]
+    )
+    raw_shot_image_size = _normalize_jimeng_ratio(
+        resolve_value("shot_image_size", raw_aspect_ratio),
+        default_ratio=raw_aspect_ratio
+    )
+
+    raw_video_style_template_id = resolve_value("video_style_template_id", None)
+    try:
+        normalized_video_style_template_id = int(raw_video_style_template_id) if raw_video_style_template_id else None
+    except Exception:
+        normalized_video_style_template_id = None
+
+    return {
+        "shot_image_size": raw_shot_image_size,
+        "detail_images_model": _normalize_detail_images_model(
+            resolve_value("detail_images_model", "seedream-4.0"),
+            default_model="seedream-4.0"
+        ),
+        "detail_images_provider": _normalize_detail_images_provider(
+            resolve_value("detail_images_provider", ""),
+        ),
+        "storyboard2_image_cw": _normalize_storyboard2_image_cw(
+            resolve_value("storyboard2_image_cw", 50),
+            default_value=50
+        ),
+        "storyboard2_include_scene_references": bool(
+            resolve_value("storyboard2_include_scene_references", False)
+        ),
+        "storyboard_video_model": raw_model,
+        "storyboard_video_aspect_ratio": raw_aspect_ratio,
+        "storyboard_video_duration": raw_duration,
+        "storyboard_video_resolution_name": _normalize_storyboard_video_resolution_name(
+            resolve_value("storyboard_video_resolution_name", None),
+            model=raw_model,
+            default_resolution=_STORYBOARD_VIDEO_MODEL_CONFIG[raw_model].get("default_resolution", "")
+        ),
+        "storyboard_video_appoint_account": _normalize_storyboard_video_appoint_account(
+            resolve_value("storyboard_video_appoint_account", "")
+        ),
+        "video_style_template_id": normalized_video_style_template_id,
+    }
+
+
+def _serialize_script_episode(episode: models.Episode, db: Session) -> Dict[str, Any]:
+    library = db.query(models.StoryLibrary).filter(
+        models.StoryLibrary.episode_id == episode.id
+    ).first()
+    storyboard_video_model = _normalize_storyboard_video_model(
+        getattr(episode, "storyboard_video_model", None),
+        default_model=DEFAULT_STORYBOARD_VIDEO_MODEL
+    )
+    return {
+        "id": episode.id,
+        "script_id": episode.script_id,
+        "name": episode.name,
+        "content": episode.content,
+        "video_prompt_template": getattr(episode, "video_prompt_template", "") or "",
+        "shot_image_size": _normalize_jimeng_ratio(getattr(episode, "shot_image_size", None), default_ratio="9:16"),
+        "detail_images_model": _normalize_detail_images_model(
+            getattr(episode, "detail_images_model", None),
+            default_model="seedream-4.0"
+        ),
+        "detail_images_provider": _resolve_episode_detail_images_provider(episode),
+        "storyboard2_video_duration": _normalize_storyboard2_video_duration(
+            getattr(episode, "storyboard2_video_duration", None),
+            default_value=6
+        ),
+        "storyboard2_image_cw": _normalize_storyboard2_image_cw(
+            getattr(episode, "storyboard2_image_cw", None),
+            default_value=50
+        ),
+        "storyboard2_include_scene_references": bool(
+            getattr(episode, "storyboard2_include_scene_references", False)
+        ),
+        "storyboard_video_model": storyboard_video_model,
+        "storyboard_video_aspect_ratio": _normalize_storyboard_video_aspect_ratio(
+            getattr(episode, "storyboard_video_aspect_ratio", None),
+            model=storyboard_video_model,
+            default_ratio="16:9"
+        ),
+        "storyboard_video_duration": _normalize_storyboard_video_duration(
+            getattr(episode, "storyboard_video_duration", None),
+            model=storyboard_video_model,
+            default_duration=15
+        ),
+        "storyboard_video_resolution_name": _normalize_storyboard_video_resolution_name(
+            getattr(episode, "storyboard_video_resolution_name", None),
+            model=storyboard_video_model,
+            default_resolution="720p"
+        ),
+        "storyboard_video_appoint_account": _normalize_storyboard_video_appoint_account(
+            getattr(episode, "storyboard_video_appoint_account", "")
+        ),
+        "video_style_template_id": getattr(episode, "video_style_template_id", None),
+        "batch_generating_prompts": episode.batch_generating_prompts,
+        "batch_generating_storyboard2_prompts": bool(getattr(episode, "batch_generating_storyboard2_prompts", False)),
+        "narration_converting": episode.narration_converting,
+        "narration_error": episode.narration_error,
+        "opening_content": episode.opening_content or "",
+        "opening_generating": episode.opening_generating or False,
+        "opening_error": episode.opening_error or "",
+        "library_id": library.id if library else None,
+        "created_at": episode.created_at,
+    }
+
+
+@router.post("/api/scripts/{script_id}/episodes", response_model=EpisodeResponse)
+async def create_episode(
+    script_id: int,
+    episode: EpisodeCreate,
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    script = db.query(models.Script).filter(models.Script.id == script_id).first()
+    if not script:
+        raise HTTPException(status_code=404, detail="剧本不存在")
+    if script.user_id != user.id:
+        raise HTTPException(status_code=403, detail="无权限")
+
+    storyboard_sora_defaults = _build_episode_storyboard_sora_create_values(
+        script_id,
+        episode,
+        db,
+    )
+
+    new_episode = models.Episode(
+        script_id=script_id,
+        name=episode.name,
+        content=episode.content,
+        billing_version=1,
+        video_prompt_template=episode.video_prompt_template or "",
+        batch_size=episode.batch_size or 500,
+        shot_image_size=storyboard_sora_defaults["shot_image_size"],
+        detail_images_model=storyboard_sora_defaults["detail_images_model"],
+        detail_images_provider=storyboard_sora_defaults["detail_images_provider"],
+        storyboard2_duration=int(getattr(episode, "storyboard2_duration", 15)),
+        storyboard2_video_duration=_normalize_storyboard2_video_duration(
+            getattr(episode, "storyboard2_video_duration", None),
+            default_value=6
+        ),
+        storyboard2_image_cw=storyboard_sora_defaults["storyboard2_image_cw"],
+        storyboard2_include_scene_references=storyboard_sora_defaults["storyboard2_include_scene_references"],
+        storyboard_video_model=storyboard_sora_defaults["storyboard_video_model"],
+        storyboard_video_aspect_ratio=storyboard_sora_defaults["storyboard_video_aspect_ratio"],
+        storyboard_video_duration=storyboard_sora_defaults["storyboard_video_duration"],
+        storyboard_video_resolution_name=storyboard_sora_defaults["storyboard_video_resolution_name"],
+        storyboard_video_appoint_account=storyboard_sora_defaults["storyboard_video_appoint_account"],
+        video_style_template_id=storyboard_sora_defaults["video_style_template_id"],
+    )
+    db.add(new_episode)
+    db.commit()
+    db.refresh(new_episode)
+
+    library = models.StoryLibrary(
+        user_id=user.id,
+        episode_id=new_episode.id,
+        name=f"{episode.name} - 主体库",
+        description=f"{script.name} 的剧集主体库",
+    )
+    db.add(library)
+    db.commit()
+
+    return new_episode
+
+
+@router.get("/api/scripts/{script_id}/episodes", response_model=List[EpisodeResponse])
+async def get_script_episodes(
+    script_id: int,
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    script = db.query(models.Script).filter(models.Script.id == script_id).first()
+    if not script:
+        raise HTTPException(status_code=404, detail="剧本不存在")
+    if script.user_id != user.id:
+        raise HTTPException(status_code=403, detail="无权限")
+
+    episode_rows = db.query(models.Episode).filter(
+        models.Episode.script_id == script_id
+    ).order_by(models.Episode.created_at.asc()).all()
+
+    any_runtime_flag_changed = False
+    result = []
+    for episode in episode_rows:
+        any_runtime_flag_changed = _reconcile_episode_runtime_flags(episode, db) or any_runtime_flag_changed
+        result.append(_serialize_script_episode(episode, db))
+
+    if any_runtime_flag_changed:
+        db.commit()
+
+    return result
+
 
 @router.get("/api/episodes/{episode_id}", response_model=EpisodeResponse)
 
