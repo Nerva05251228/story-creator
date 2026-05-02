@@ -1658,6 +1658,217 @@ async def get_script_episodes(
     return result
 
 
+def _resolve_narration_template(episode: models.Episode, db: Session, custom_template: Optional[str] = None) -> str:
+    template = str(custom_template or "").strip()
+    if template:
+        return template
+    if episode.script and episode.script.narration_template:
+        template = str(episode.script.narration_template or "").strip()
+        if template:
+            return template
+    template_setting = db.query(models.GlobalSettings).filter(
+        models.GlobalSettings.key == "narration_conversion_template"
+    ).first()
+    return str(getattr(template_setting, "value", "") or "").strip()
+
+
+def _resolve_opening_template(db: Session, custom_template: Optional[str] = None) -> str:
+    template = str(custom_template or "").strip()
+    if template:
+        return template
+    template_setting = db.query(models.GlobalSettings).filter(
+        models.GlobalSettings.key == "opening_generation_template"
+    ).first()
+    template = str(getattr(template_setting, "value", "") or "").strip()
+    if template:
+        return template
+    return "我想把这个片段做成一个短视频，需要一个精彩吸引人的开头，请你帮我写一个开头"
+
+
+def _submit_episode_text_relay_task(
+    db: Session,
+    *,
+    episode: models.Episode,
+    task_type: str,
+    function_key: str,
+    prompt: str,
+    response_format_json: bool = False,
+):
+    config = get_ai_config(function_key)
+    request_payload = {
+        "model": config["model"],
+        "messages": [
+            {
+                "role": "user",
+                "content": prompt,
+            }
+        ],
+        "stream": False,
+    }
+    if response_format_json:
+        request_payload["response_format"] = {"type": "json_object"}
+
+    task_payload = {
+        "episode_id": int(episode.id),
+        "task_type": task_type,
+        "function_key": function_key,
+    }
+
+    return submit_and_persist_text_task(
+        db,
+        task_type=task_type,
+        owner_type="episode",
+        owner_id=int(episode.id),
+        stage_key=task_type,
+        function_key=function_key,
+        request_payload=request_payload,
+        task_payload=task_payload,
+    )
+
+
+def _get_owned_script_episode(
+    db: Session,
+    *,
+    script_id: int,
+    episode_id: int,
+    user: models.User,
+):
+    script = db.query(models.Script).filter(models.Script.id == script_id).first()
+    if not script:
+        raise HTTPException(status_code=404, detail="剧本不存在")
+    if script.user_id != user.id:
+        raise HTTPException(status_code=403, detail="无权限")
+
+    episode = db.query(models.Episode).filter(
+        models.Episode.id == episode_id,
+        models.Episode.script_id == script_id,
+    ).first()
+    if not episode:
+        raise HTTPException(status_code=404, detail="片段不存在")
+    return episode
+
+
+@router.post("/api/scripts/{script_id}/episodes/{episode_id}/convert-to-narration")
+async def convert_to_narration(
+    script_id: int,
+    episode_id: int,
+    request: dict,
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    episode = _get_owned_script_episode(
+        db,
+        script_id=script_id,
+        episode_id=episode_id,
+        user=user,
+    )
+
+    if episode.narration_converting:
+        raise HTTPException(status_code=400, detail="正在转换中，请稍后")
+
+    content = request.get("content", "")
+    if content and content.strip():
+        episode.content = content.strip()
+
+    if not episode.content or not episode.content.strip():
+        raise HTTPException(status_code=400, detail="文本内容不能为空")
+
+    resolved_template = _resolve_narration_template(
+        episode,
+        db,
+        request.get("template", None),
+    )
+    if not resolved_template:
+        raise HTTPException(status_code=400, detail="提示词模板未配置")
+
+    full_prompt = f"{resolved_template}\n\n原文本：\n{episode.content.strip()}"
+
+    episode.narration_converting = True
+    episode.narration_error = ""
+    try:
+        relay_task = _submit_episode_text_relay_task(
+            db,
+            episode=episode,
+            task_type="narration",
+            function_key="narration",
+            prompt=full_prompt,
+            response_format_json=False,
+        )
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        episode = db.query(models.Episode).filter(models.Episode.id == episode_id).first()
+        if episode:
+            episode.narration_converting = False
+            episode.narration_error = str(exc)
+            db.commit()
+        raise HTTPException(status_code=502, detail=f"提交文本任务失败: {str(exc)}")
+
+    return {
+        "success": True,
+        "message": "文本转解说剧任务已启动",
+        "episode_id": episode_id,
+        "task_id": relay_task.external_task_id,
+    }
+
+
+@router.post("/api/scripts/{script_id}/episodes/{episode_id}/generate-opening")
+async def generate_opening(
+    script_id: int,
+    episode_id: int,
+    request: dict,
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    episode = _get_owned_script_episode(
+        db,
+        script_id=script_id,
+        episode_id=episode_id,
+        user=user,
+    )
+
+    if episode.opening_generating:
+        raise HTTPException(status_code=400, detail="正在生成中，请稍后")
+
+    content = request.get("content", "")
+    if content and content.strip():
+        episode.content = content.strip()
+
+    if not episode.content or not episode.content.strip():
+        raise HTTPException(status_code=400, detail="文本内容不能为空")
+
+    resolved_template = _resolve_opening_template(db, request.get("template", None))
+    full_prompt = f"{resolved_template}\n\n原文本：\n{episode.content.strip()}"
+
+    episode.opening_generating = True
+    episode.opening_error = ""
+    try:
+        relay_task = _submit_episode_text_relay_task(
+            db,
+            episode=episode,
+            task_type="opening",
+            function_key="opening",
+            prompt=full_prompt,
+            response_format_json=False,
+        )
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        episode = db.query(models.Episode).filter(models.Episode.id == episode_id).first()
+        if episode:
+            episode.opening_generating = False
+            episode.opening_error = str(exc)
+            db.commit()
+        raise HTTPException(status_code=502, detail=f"提交文本任务失败: {str(exc)}")
+
+    return {
+        "success": True,
+        "message": "精彩开头生成任务已启动",
+        "episode_id": episode_id,
+        "task_id": relay_task.external_task_id,
+    }
+
+
 @router.get("/api/episodes/{episode_id}", response_model=EpisodeResponse)
 
 def get_episode(

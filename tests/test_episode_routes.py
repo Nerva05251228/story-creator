@@ -2,6 +2,8 @@ import os
 import sys
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -39,6 +41,8 @@ from api.schemas.episodes import (  # noqa: E402
 EXPECTED_EPISODE_ROUTES = {
     ("POST", "/api/scripts/{script_id}/episodes"),
     ("GET", "/api/scripts/{script_id}/episodes"),
+    ("POST", "/api/scripts/{script_id}/episodes/{episode_id}/convert-to-narration"),
+    ("POST", "/api/scripts/{script_id}/episodes/{episode_id}/generate-opening"),
     ("GET", "/api/episodes/{episode_id}"),
     ("PUT", "/api/episodes/{episode_id}"),
     ("GET", "/api/episodes/{episode_id}/poll-status"),
@@ -174,6 +178,27 @@ class EpisodeRouterTests(unittest.TestCase):
         finally:
             db.close()
 
+    def _seed_script_episode_for_owner(self):
+        db = self.Session()
+        try:
+            owner = models.User(username="owner", token="owner-token")
+            other = models.User(username="other", token="other-token")
+            db.add_all([owner, other])
+            db.flush()
+            script = models.Script(user_id=owner.id, name="Script")
+            db.add(script)
+            db.flush()
+            episode = models.Episode(
+                script_id=script.id,
+                name="Episode 1",
+                content="Original content",
+            )
+            db.add(episode)
+            db.commit()
+            return owner, other, script.id, episode.id
+        finally:
+            db.close()
+
     def test_router_owns_episode_routes_without_shot_crud_routes(self):
         registered = set()
         for route in episodes.router.routes:
@@ -273,6 +298,59 @@ class EpisodeRouterTests(unittest.TestCase):
         self.current_user = other
         blocked_response = self.client.get(f"/api/scripts/{script_id}/episodes")
         self.assertEqual(blocked_response.status_code, 403)
+
+    def test_script_episode_text_relay_endpoints_submit_tasks_and_set_flags(self):
+        owner, _other, script_id, episode_id = self._seed_script_episode_for_owner()
+        self.current_user = owner
+        submitted = []
+
+        def fake_submit(_db, **kwargs):
+            submitted.append(kwargs)
+            return SimpleNamespace(external_task_id=f"relay-{len(submitted)}")
+
+        with patch.object(
+            episodes,
+            "get_ai_config",
+            return_value={"model": "test-model"},
+        ), patch.object(
+            episodes,
+            "submit_and_persist_text_task",
+            side_effect=fake_submit,
+        ):
+            narration_response = self.client.post(
+                f"/api/scripts/{script_id}/episodes/{episode_id}/convert-to-narration",
+                json={"content": "Narration source", "template": "Narrate:"},
+            )
+            opening_response = self.client.post(
+                f"/api/scripts/{script_id}/episodes/{episode_id}/generate-opening",
+                json={"template": "Open:"},
+            )
+
+        self.assertEqual(narration_response.status_code, 200)
+        self.assertEqual(opening_response.status_code, 200)
+        self.assertEqual(narration_response.json()["task_id"], "relay-1")
+        self.assertEqual(opening_response.json()["task_id"], "relay-2")
+        self.assertEqual([item["task_type"] for item in submitted], ["narration", "opening"])
+        self.assertEqual([item["function_key"] for item in submitted], ["narration", "opening"])
+        self.assertIn(
+            "Narrate:",
+            submitted[0]["request_payload"]["messages"][0]["content"],
+        )
+        self.assertIn(
+            "Narration source",
+            submitted[1]["request_payload"]["messages"][0]["content"],
+        )
+
+        db = self.Session()
+        try:
+            episode = db.query(models.Episode).filter_by(id=episode_id).one()
+            self.assertEqual(episode.content, "Narration source")
+            self.assertTrue(episode.narration_converting)
+            self.assertEqual(episode.narration_error, "")
+            self.assertTrue(episode.opening_generating)
+            self.assertEqual(episode.opening_error, "")
+        finally:
+            db.close()
 
     def test_storyboard_status_counts_json_shots(self):
         owner, _, episode_id = self._seed_episode()

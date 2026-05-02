@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 This project uses a lightweight `Added`, `Changed`, `Fixed`, `Security`, and `Migration` structure.
 
+## 2026-05-02 - Episode Text Relay Route Extraction
+
+### Added
+
+- Added focused episode text relay route coverage for narration conversion and opening generation task submission, prompt payloads, task IDs, and episode runtime flags.
+
+### Changed
+
+- Moved `POST /api/scripts/{script_id}/episodes/{episode_id}/convert-to-narration` and `POST /api/scripts/{script_id}/episodes/{episode_id}/generate-opening` from `backend/main.py` into `backend/api/routers/episodes.py`.
+- Moved the related template resolution and episode text relay submission helpers into the episode router while keeping `backend/main.py` compatibility exports.
+
 ## 2026-05-02 - Script Episode Route Extraction
 
 ### Added
