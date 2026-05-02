@@ -31,6 +31,7 @@ from api.routers import (  # noqa: E402
     billing,
     episodes,
     hit_dramas,
+    scripts,
     settings,
     shots,
     templates,
@@ -351,6 +352,20 @@ class RouteRegistryTests(unittest.TestCase):
 
     def test_billing_routes_are_owned_by_billing_router(self):
         self._assert_router_routes_owned_by(billing.router)
+
+    def test_script_routes_are_owned_by_scripts_router(self):
+        expected_routes = [
+            ("POST", "/api/scripts", "api.routers.scripts.create_script"),
+            ("GET", "/api/scripts/my", "api.routers.scripts.get_my_scripts"),
+            ("GET", "/api/scripts/{script_id}", "api.routers.scripts.get_script"),
+            ("PUT", "/api/scripts/{script_id}", "api.routers.scripts.update_script"),
+            ("DELETE", "/api/scripts/{script_id}", "api.routers.scripts.delete_script"),
+            ("POST", "/api/scripts/{script_id}/copy", "api.routers.scripts.copy_script"),
+        ]
+
+        for method, path, qualified_name in expected_routes:
+            with self.subTest(method=method, path=path):
+                self._assert_route_owned_by(method, path, qualified_name)
 
     def test_episode_routes_are_owned_by_episodes_router(self):
         self._assert_router_routes_owned_by(episodes.router)

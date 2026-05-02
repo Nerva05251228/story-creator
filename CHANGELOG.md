@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 This project uses a lightweight `Added`, `Changed`, `Fixed`, `Security`, and `Migration` structure.
 
+## 2026-05-02 - Script Router Extraction
+
+### Added
+
+- Added focused script route tests covering authenticated CRUD behavior, owner 403/404 handling, script delete cleanup, and copy-script deep-copy behavior for episodes, libraries, cards, media, and storyboard shot ID remapping.
+
+### Changed
+
+- Moved script CRUD and copy routes from `backend/main.py` into `backend/api/routers/scripts.py` with request/response schemas in `backend/api/schemas/scripts.py`.
+- Extracted shared episode dependency cleanup into `backend/api/services/episode_cleanup.py` and reused it from admin user deletion and script deletion.
+- Registered the new script router in `backend/main.py`, retained compatibility exports for direct callers, and extended route ownership coverage in `tests/test_route_registry.py`.
+
 ## 2026-05-02 - Admin User and Billing Router Extraction
 
 ### Added
