@@ -33,6 +33,7 @@ import models  # noqa: E402
 
 
 CARD_MEDIA_SERVICE = "api.services.card_media"
+CARD_IMAGE_GENERATION_SERVICE = "api.services.card_image_generation"
 
 
 class SubjectCardMediaRouteTests(unittest.TestCase):
@@ -111,6 +112,21 @@ class SubjectCardMediaRouteTests(unittest.TestCase):
         finally:
             db.close()
 
+    def _seed_card_with_prompt(self, library_id, name="Card", card_type="瑙掕壊", ai_prompt=""):
+        db = self.Session()
+        try:
+            card = models.SubjectCard(
+                library_id=library_id,
+                name=name,
+                card_type=card_type,
+                ai_prompt=ai_prompt,
+            )
+            db.add(card)
+            db.commit()
+            return card
+        finally:
+            db.close()
+
     def _seed_generated_image(
         self,
         card_id,
@@ -182,6 +198,89 @@ class SubjectCardMediaRouteTests(unittest.TestCase):
             audio = db.query(models.SubjectCardAudio).filter_by(id=audio_id).one()
             audio.created_at = created_at
             db.commit()
+        finally:
+            db.close()
+
+    def test_generate_image_for_card_submits_task_and_creates_processing_row(self):
+        owner, _ = self._seed_users()
+        library = self._seed_library(owner.id)
+        card = self._seed_card_with_prompt(
+            library.id,
+            "Hero",
+            ai_prompt="hero visual prompt",
+        )
+
+        with patch(
+            f"{CARD_IMAGE_GENERATION_SERVICE}.submit_image_generation",
+            return_value="card-task-1",
+        ) as submit_task, patch(
+            f"{CARD_IMAGE_GENERATION_SERVICE}.save_ai_debug",
+            return_value="debug-folder",
+        ):
+            response = self.client.post(
+                f"/api/cards/{card.id}/generate-image",
+                json={
+                    "provider": "momo",
+                    "model": "banana2",
+                    "size": "1:1",
+                    "resolution": "2K",
+                    "n": 2,
+                    "generation_mode": "default",
+                },
+                headers=self._auth_headers(owner.token),
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["task_id"], "card-task-1")
+        self.assertIsInstance(payload["generated_image_id"], int)
+        self.assertEqual(submit_task.call_count, 1)
+
+        db = self.Session()
+        try:
+            generated = (
+                db.query(models.GeneratedImage)
+                .filter_by(id=payload["generated_image_id"])
+                .one()
+            )
+            updated_card = db.query(models.SubjectCard).filter_by(id=card.id).one()
+            self.assertEqual(generated.card_id, card.id)
+            self.assertEqual(generated.status, "processing")
+            self.assertEqual(generated.task_id, "card-task-1")
+            self.assertEqual(generated.model_name, "nano-banana-2")
+            self.assertFalse(generated.is_reference)
+            self.assertTrue(updated_card.is_generating_images)
+            self.assertEqual(updated_card.generating_count, 2)
+        finally:
+            db.close()
+
+    def test_generate_image_for_card_rejects_non_owner_and_missing_prompt(self):
+        owner, other = self._seed_users()
+        library = self._seed_library(owner.id)
+        card = self._seed_card_with_prompt(
+            library.id,
+            "Hero",
+            ai_prompt="hero visual prompt",
+        )
+        promptless_card = self._seed_card(library.id, "Blank")
+
+        blocked_response = self.client.post(
+            f"/api/cards/{card.id}/generate-image",
+            json={"model": "banana2"},
+            headers=self._auth_headers(other.token),
+        )
+        missing_prompt_response = self.client.post(
+            f"/api/cards/{promptless_card.id}/generate-image",
+            json={"model": "banana2"},
+            headers=self._auth_headers(owner.token),
+        )
+
+        self.assertEqual(blocked_response.status_code, 403)
+        self.assertEqual(missing_prompt_response.status_code, 400)
+
+        db = self.Session()
+        try:
+            self.assertEqual(db.query(models.GeneratedImage).count(), 0)
         finally:
             db.close()
 

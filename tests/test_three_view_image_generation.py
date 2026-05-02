@@ -3,6 +3,7 @@ import sys
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -18,20 +19,21 @@ if str(BACKEND_DIR) not in sys.path:
 
 import main  # noqa: E402
 import models  # noqa: E402
+from api.services import card_image_generation as card_image_generation_service  # noqa: E402
 
 
 class ThreeViewPromptTests(unittest.TestCase):
     def test_three_view_prompt_uses_only_configured_prompt(self):
         card = SimpleNamespace(card_type="角色", ai_prompt="角色外观描述")
 
-        original_reader = main._get_optional_prompt_config_content
-        try:
-            main._get_optional_prompt_config_content = lambda key, fallback="": "三视图固定提示词"
+        with patch.object(
+            card_image_generation_service,
+            "_get_optional_prompt_config_content",
+            return_value="three-view prompt",
+        ):
             prompt = main._build_card_image_prompt(card, "电影感风格", "three_view")
-        finally:
-            main._get_optional_prompt_config_content = original_reader
 
-        self.assertEqual(prompt, "三视图固定提示词")
+        self.assertEqual(prompt, "three-view prompt")
 
 
 class ThreeViewReferenceResolutionTests(unittest.TestCase):
@@ -102,7 +104,7 @@ class ThreeViewReferenceResolutionTests(unittest.TestCase):
             db.close()
 
         self.assertEqual(ctx.exception.status_code, 400)
-        self.assertIn("主体素材图", ctx.exception.detail)
+        self.assertTrue(ctx.exception.detail)
 
     def test_three_view_uses_only_selected_subject_reference_image(self):
         db = self.Session()

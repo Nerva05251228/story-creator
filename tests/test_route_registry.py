@@ -222,6 +222,11 @@ class RouteRegistryTests(unittest.TestCase):
                 "api.routers.card_media.upload_image",
             ),
             (
+                "POST",
+                "/api/cards/{card_id}/generate-image",
+                "api.routers.card_media.generate_image_for_card",
+            ),
+            (
                 "DELETE",
                 "/api/images/{image_id}",
                 "api.routers.card_media.delete_image",

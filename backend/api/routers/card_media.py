@@ -7,7 +7,9 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 import models
+from api.schemas.card_media import ImageGenerationRequest
 from api.schemas.subject_cards import GeneratedImageResponse, SubjectCardAudioResponse
+from api.services import card_image_generation as card_image_generation_service
 from api.services import card_media as card_media_service
 from auth import get_current_user, verify_library_owner
 from database import get_db
@@ -19,6 +21,26 @@ SOUND_CARD_TYPE = card_media_service.SOUND_CARD_TYPE
 
 class SetReferenceRequest(BaseModel):
     generated_image_ids: List[int]
+
+
+@router.post("/api/cards/{card_id}/generate-image")
+async def generate_image_for_card(
+    card_id: int,
+    request: ImageGenerationRequest,
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    card = db.query(models.SubjectCard).filter(models.SubjectCard.id == card_id).first()
+    if not card:
+        raise HTTPException(status_code=404, detail="Card not found")
+
+    verify_library_owner(card.library_id, user, db)
+
+    return await card_image_generation_service.submit_card_image_generation(
+        db,
+        card=card,
+        request=request,
+    )
 
 
 @router.post("/api/cards/{card_id}/images")

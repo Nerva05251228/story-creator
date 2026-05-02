@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 This project uses a lightweight `Added`, `Changed`, `Fixed`, `Security`, and `Migration` structure.
 
+## 2026-05-02 - Card Image Generation Route Extraction
+
+### Added
+
+- Added focused card image generation route coverage for owner submission, non-owner rejection, missing prompt rejection, processing row creation, card generation counters, three-view helper compatibility, and route ownership.
+
+### Changed
+
+- Moved `POST /api/cards/{card_id}/generate-image` from `backend/main.py` into `backend/api/routers/card_media.py`.
+- Extracted card image generation request schema and helper logic into `backend/api/schemas/card_media.py` and `backend/api/services/card_image_generation.py`, while keeping `backend/main.py` compatibility exports for direct callers.
+
 ## 2026-05-02 - Subject Card Prompt Route Extraction
 
 ### Added
