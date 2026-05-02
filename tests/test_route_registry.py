@@ -26,7 +26,15 @@ from tests.env_defaults import apply_test_env_defaults  # noqa: E402
 apply_test_env_defaults()
 
 import main  # noqa: E402
-from api.routers import episodes, hit_dramas, settings, shots, templates  # noqa: E402
+from api.routers import (  # noqa: E402
+    admin_users,
+    billing,
+    episodes,
+    hit_dramas,
+    settings,
+    shots,
+    templates,
+)
 
 
 IGNORED_AUTOMATIC_METHODS = {"HEAD", "OPTIONS"}
@@ -338,6 +346,12 @@ class RouteRegistryTests(unittest.TestCase):
     def test_template_routes_are_owned_by_templates_router(self):
         self._assert_router_routes_owned_by(templates.router)
 
+    def test_admin_user_routes_are_owned_by_admin_users_router(self):
+        self._assert_router_routes_owned_by(admin_users.router)
+
+    def test_billing_routes_are_owned_by_billing_router(self):
+        self._assert_router_routes_owned_by(billing.router)
+
     def test_episode_routes_are_owned_by_episodes_router(self):
         self._assert_router_routes_owned_by(episodes.router)
 
@@ -390,7 +404,7 @@ class RouteRegistryTests(unittest.TestCase):
             path = getattr(route, "path", "")
             endpoint = getattr(route, "endpoint", None)
             if (
-                not path.startswith(("/api/admin", "/api/dashboard"))
+                not path.startswith(("/api/admin", "/api/dashboard", "/api/billing"))
                 or endpoint is None
             ):
                 continue

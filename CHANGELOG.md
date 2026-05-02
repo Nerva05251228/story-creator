@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 This project uses a lightweight `Added`, `Changed`, `Fixed`, `Security`, and `Migration` structure.
 
+## 2026-05-02 - Admin User and Billing Router Extraction
+
+### Added
+
+- Added focused admin user route tests covering admin password enforcement, hidden-account filtering, default-password creation, reset/impersonation behavior, and delete handling.
+- Added focused billing route tests covering bearer plus admin-header auth, summary/detail wrapper response shapes, reimbursement export normalization, and billing rule create/update rollback behavior.
+
+### Changed
+
+- Moved `/api/admin/users*` routes into `backend/api/routers/admin_users.py` with request schema in `backend/api/schemas/admin_users.py`.
+- Moved `/api/billing*` routes into `backend/api/routers/billing.py` with billing rule request schema in `backend/api/schemas/billing.py`.
+- Registered the new routers in `backend/main.py`, removed the migrated inline route bodies from `backend/main.py`, and extended route ownership coverage in `tests/test_route_registry.py`.
+
 ## 2026-05-02 - Template and Settings Router Extraction
 
 ### Added
