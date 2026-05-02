@@ -26,7 +26,7 @@ from tests.env_defaults import apply_test_env_defaults  # noqa: E402
 apply_test_env_defaults()
 
 import main  # noqa: E402
-from api.routers import episodes, hit_dramas, shots  # noqa: E402
+from api.routers import episodes, hit_dramas, settings, shots, templates  # noqa: E402
 
 
 IGNORED_AUTOMATIC_METHODS = {"HEAD", "OPTIONS"}
@@ -331,6 +331,12 @@ class RouteRegistryTests(unittest.TestCase):
         for method, path, qualified_name in expected_routes:
             with self.subTest(method=method, path=path):
                 self._assert_route_owned_by(method, path, qualified_name)
+
+    def test_settings_routes_are_owned_by_settings_router(self):
+        self._assert_router_routes_owned_by(settings.router)
+
+    def test_template_routes_are_owned_by_templates_router(self):
+        self._assert_router_routes_owned_by(templates.router)
 
     def test_episode_routes_are_owned_by_episodes_router(self):
         self._assert_router_routes_owned_by(episodes.router)

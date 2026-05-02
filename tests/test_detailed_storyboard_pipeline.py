@@ -30,6 +30,7 @@ import ai_service  # noqa: E402
 import dashboard_service  # noqa: E402
 import main  # noqa: E402
 import models  # noqa: E402
+from api.routers import settings  # noqa: E402
 import text_llm_queue  # noqa: E402
 import simple_storyboard_rules  # noqa: E402
 
@@ -234,7 +235,7 @@ class ShotDurationTemplateConfigTests(unittest.TestCase):
             db.commit()
 
             with self.assertRaises(Exception):
-                asyncio.run(main.update_shot_duration_template(
+                asyncio.run(settings.update_shot_duration_template(
                     25,
                     {
                         "simple_storyboard_config": {
@@ -831,7 +832,7 @@ class PromptConfigDisplayOrderTests(unittest.TestCase):
             db.add_all(configs)
             db.commit()
 
-            payload = asyncio.run(main.get_prompt_configs(db=db))
+            payload = asyncio.run(settings.get_prompt_configs(db=db))
         finally:
             db.close()
 

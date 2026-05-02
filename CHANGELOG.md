@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 This project uses a lightweight `Added`, `Changed`, `Fixed`, `Security`, and `Migration` structure.
 
+## 2026-05-02 - Template and Settings Router Extraction
+
+### Added
+
+- Added focused route tests for template APIs and global settings APIs covering route registration, style template CRUD behavior, video rule updates, prompt template updates, prompt config ordering, and shot duration validation.
+
+### Changed
+
+- Moved prompt templates, image style templates, video style templates, large shot templates, and storyboard image templates into `backend/api/routers/templates.py`.
+- Moved video generation rules, Sora rules, global prompt settings, prompt configs, and shot duration template routes into `backend/api/routers/settings.py`.
+- Extracted template and settings request/response schemas into `backend/api/schemas/templates.py` and `backend/api/schemas/settings.py`.
+- Extracted style-template prompt cleanup helpers into `backend/api/services/style_templates.py` while preserving existing compatibility helpers in `backend/main.py`.
+- Registered the new routers in `backend/main.py` and extended route ownership coverage in `tests/test_route_registry.py`.
+
 ## 2026-05-02 - Episodes, Shots, and Hit Drama Router Extraction
 
 ### Added

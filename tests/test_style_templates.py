@@ -18,6 +18,7 @@ if str(BACKEND_DIR) not in sys.path:
 
 import main  # noqa: E402
 import models  # noqa: E402
+from api.routers import templates  # noqa: E402
 
 
 class StyleTemplateBehaviorTests(unittest.TestCase):
@@ -65,7 +66,7 @@ class StyleTemplateBehaviorTests(unittest.TestCase):
             )
             db.commit()
 
-            payload = asyncio.run(main.get_style_templates(db=db))
+            payload = asyncio.run(templates.get_style_templates(db=db))
         finally:
             db.close()
 
