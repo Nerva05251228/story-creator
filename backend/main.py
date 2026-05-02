@@ -124,7 +124,6 @@ from video_api_config import (
     get_video_api_headers,
     get_video_task_create_url,
     get_video_task_status_url,
-    get_video_tasks_cancel_url,
 )
 from image_generation_service import (
     image_poller, MODEL_CONFIGS, submit_image_generation,
@@ -10246,9 +10245,6 @@ class ShotVideoResponse(BaseModel):
 class GenerateVideoRequest(BaseModel):
     appoint_account: Optional[str] = None
 
-class CancelVideoTasksRequest(BaseModel):
-    task_ids: List[str]
-
 class ThumbnailUpdate(BaseModel):
     video_id: int
 
@@ -14093,154 +14089,6 @@ def check_shot_video_status(
         "status": shot.video_status,  # idle/processing/completed/failed
         "video_path": shot.video_path,
         "task_id": shot.task_id
-    }
-
-
-@app.get("/api/tasks/{task_id}/status")
-async def query_task_status(
-    task_id: str,
-    user: models.User = Depends(get_current_user)
-):
-    """根据task_id查询Sora任务状态（返回服务商原始响应）"""
-    from video_service import check_video_status, is_transient_video_status_error
-
-    try:
-        # return_raw=True 表示返回服务商的原始JSON响应
-        status_info = check_video_status(task_id, return_raw=True)
-        return status_info
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"查询失败: {str(e)}")
-
-
-def _normalize_video_task_ids(task_ids: List[str]) -> List[str]:
-    normalized_task_ids = []
-    seen_task_ids = set()
-    for task_id in task_ids or []:
-        normalized_task_id = str(task_id or "").strip()
-        if normalized_task_id and normalized_task_id not in seen_task_ids:
-            normalized_task_ids.append(normalized_task_id)
-            seen_task_ids.add(normalized_task_id)
-    return normalized_task_ids
-
-
-def _get_user_cancelable_video_task_ids(
-    task_ids: List[str],
-    user: models.User,
-    db: Session
-) -> set:
-    if not task_ids or not user:
-        return set()
-
-    active_shot_statuses = ["submitting", "preparing", "processing"]
-    active_managed_task_statuses = ["pending", "processing"]
-
-    owned_task_ids = {
-        task_id
-        for (task_id,) in db.query(models.StoryboardShot.task_id).join(
-            models.Episode,
-            models.StoryboardShot.episode_id == models.Episode.id
-        ).join(
-            models.Script,
-            models.Episode.script_id == models.Script.id
-        ).filter(
-            models.Script.user_id == user.id,
-            models.StoryboardShot.task_id.in_(task_ids),
-            models.StoryboardShot.video_status.in_(active_shot_statuses),
-        ).all()
-        if task_id
-    }
-
-    owned_task_ids.update({
-        task_id
-        for (task_id,) in db.query(models.ManagedTask.task_id).join(
-            models.ManagedSession,
-            models.ManagedTask.session_id == models.ManagedSession.id
-        ).join(
-            models.Episode,
-            models.ManagedSession.episode_id == models.Episode.id
-        ).join(
-            models.Script,
-            models.Episode.script_id == models.Script.id
-        ).filter(
-            models.Script.user_id == user.id,
-            models.ManagedTask.task_id.in_(task_ids),
-            models.ManagedTask.status.in_(active_managed_task_statuses),
-            models.ManagedSession.status.in_(ACTIVE_MANAGED_SESSION_STATUSES),
-        ).all()
-        if task_id
-    })
-
-    return owned_task_ids
-
-
-@app.post("/api/video/tasks/cancel")
-async def cancel_video_tasks(
-    request: CancelVideoTasksRequest,
-    user: models.User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """代理取消上游视频生成任务。"""
-    task_ids = _normalize_video_task_ids(request.task_ids)
-    if not task_ids:
-        raise HTTPException(status_code=400, detail="缺少任务ID")
-
-    owned_task_ids = _get_user_cancelable_video_task_ids(task_ids, user, db)
-    unauthorized_task_ids = [
-        task_id for task_id in task_ids
-        if task_id not in owned_task_ids
-    ]
-    if unauthorized_task_ids:
-        raise HTTPException(status_code=403, detail="无权取消任务")
-
-    try:
-        loop = asyncio.get_event_loop()
-        cancel_result = await loop.run_in_executor(
-            executor,
-            _cancel_upstream_video_tasks,
-            task_ids
-        )
-    except requests.RequestException as e:
-        raise HTTPException(status_code=502, detail=f"取消任务失败: {str(e)}")
-
-    if not cancel_result.get("ok", False):
-        response_payload = cancel_result.get("response") or {}
-        detail = response_payload.get("detail") if isinstance(response_payload, dict) else None
-        raise HTTPException(status_code=502, detail=detail or "取消任务失败")
-
-    return cancel_result
-
-
-
-def _cancel_upstream_video_tasks(task_ids: List[str]) -> dict:
-    normalized_task_ids = [
-        str(task_id or "").strip()
-        for task_id in (task_ids or [])
-        if str(task_id or "").strip()
-    ]
-    if not normalized_task_ids:
-        return {
-            "requested_count": 0,
-            "status_code": None,
-            "ok": True,
-            "response": {}
-        }
-
-    response = requests.post(
-        get_video_tasks_cancel_url(),
-        headers=get_video_api_headers(),
-        json={"task_ids": normalized_task_ids},
-        timeout=30
-    )
-    try:
-        payload = response.json()
-    except Exception:
-        payload = {"raw_text": response.text}
-
-    return {
-        "requested_count": len(normalized_task_ids),
-        "status_code": response.status_code,
-        "ok": response.status_code == 200,
-        "response": payload
     }
 
 
@@ -19459,6 +19307,26 @@ app.include_router(episodes.router)
 app.include_router(scripts.router)
 app.include_router(shots.router)
 app.include_router(hit_dramas.router)
+
+# Compatibility exports for direct callers while video task routes live in api.routers.video.
+CancelVideoTasksRequest = video.CancelVideoTasksRequest
+query_task_status = video.query_task_status
+_normalize_video_task_ids = video._normalize_video_task_ids
+_get_user_cancelable_video_task_ids = video._get_user_cancelable_video_task_ids
+_cancel_upstream_video_tasks = video._cancel_upstream_video_tasks
+
+
+async def cancel_video_tasks(
+    request: CancelVideoTasksRequest,
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return await video._cancel_video_tasks_impl(
+        request,
+        user,
+        db,
+        _cancel_upstream_video_tasks,
+    )
 
 # Compatibility exports for direct callers while script routes live in api.routers.scripts.
 ScriptCreate = scripts.ScriptCreate

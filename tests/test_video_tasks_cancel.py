@@ -27,6 +27,7 @@ if str(BACKEND_DIR) not in sys.path:
 
 import main  # noqa: E402
 import models  # noqa: E402
+from api.routers import video as video_router  # noqa: E402
 
 
 class VideoTasksCancelTests(unittest.TestCase):
@@ -77,7 +78,7 @@ class VideoTasksCancelTests(unittest.TestCase):
         user_id, _shot_id = self._create_user_episode_and_shot("tester", "task-a")
         db = self.Session()
         captured = {}
-        original_cancel = main._cancel_upstream_video_tasks
+        original_cancel = video_router._cancel_upstream_video_tasks
 
         def fake_cancel(task_ids):
             captured["task_ids"] = task_ids
@@ -89,18 +90,18 @@ class VideoTasksCancelTests(unittest.TestCase):
             }
 
         try:
-            main._cancel_upstream_video_tasks = fake_cancel
+            video_router._cancel_upstream_video_tasks = fake_cancel
             other_user_id, _other_shot_id = self._create_user_episode_and_shot("tester-2", "task-b")
             _ = other_user_id
             result = asyncio.run(
-                main.cancel_video_tasks(
-                    main.CancelVideoTasksRequest(task_ids=["task-a"]),
+                video_router.cancel_video_tasks(
+                    video_router.CancelVideoTasksRequest(task_ids=["task-a"]),
                     user=self._get_user(db, user_id),
                     db=db,
                 )
             )
         finally:
-            main._cancel_upstream_video_tasks = original_cancel
+            video_router._cancel_upstream_video_tasks = original_cancel
             db.close()
 
         self.assertEqual(captured["task_ids"], ["task-a"])
@@ -114,8 +115,8 @@ class VideoTasksCancelTests(unittest.TestCase):
         try:
             with self.assertRaises(HTTPException) as ctx:
                 asyncio.run(
-                    main.cancel_video_tasks(
-                        main.CancelVideoTasksRequest(task_ids=["other-task"]),
+                    video_router.cancel_video_tasks(
+                        video_router.CancelVideoTasksRequest(task_ids=["other-task"]),
                         user=self._get_user(db, user_id),
                         db=db,
                     )
@@ -130,7 +131,7 @@ class VideoTasksCancelTests(unittest.TestCase):
         _other_user_id, _other_shot_id = self._create_user_episode_and_shot("other", "other-task")
         db = self.Session()
         called = False
-        original_cancel = main._cancel_upstream_video_tasks
+        original_cancel = video_router._cancel_upstream_video_tasks
 
         def fake_cancel(_task_ids):
             nonlocal called
@@ -138,17 +139,17 @@ class VideoTasksCancelTests(unittest.TestCase):
             return {"requested_count": 0, "status_code": 200, "ok": True, "response": {}}
 
         try:
-            main._cancel_upstream_video_tasks = fake_cancel
+            video_router._cancel_upstream_video_tasks = fake_cancel
             with self.assertRaises(HTTPException) as ctx:
                 asyncio.run(
-                    main.cancel_video_tasks(
-                        main.CancelVideoTasksRequest(task_ids=["owner-task", "other-task"]),
+                    video_router.cancel_video_tasks(
+                        video_router.CancelVideoTasksRequest(task_ids=["owner-task", "other-task"]),
                         user=self._get_user(db, user_id),
                         db=db,
                     )
                 )
         finally:
-            main._cancel_upstream_video_tasks = original_cancel
+            video_router._cancel_upstream_video_tasks = original_cancel
             db.close()
 
         self.assertEqual(ctx.exception.status_code, 403)
@@ -157,7 +158,7 @@ class VideoTasksCancelTests(unittest.TestCase):
     def test_cancel_video_tasks_raises_when_upstream_cancel_fails(self):
         user_id, _shot_id = self._create_user_episode_and_shot("tester", "task-a")
         db = self.Session()
-        original_cancel = main._cancel_upstream_video_tasks
+        original_cancel = video_router._cancel_upstream_video_tasks
 
         def fake_cancel(_task_ids):
             return {
@@ -168,17 +169,17 @@ class VideoTasksCancelTests(unittest.TestCase):
             }
 
         try:
-            main._cancel_upstream_video_tasks = fake_cancel
+            video_router._cancel_upstream_video_tasks = fake_cancel
             with self.assertRaises(HTTPException) as ctx:
                 asyncio.run(
-                    main.cancel_video_tasks(
-                        main.CancelVideoTasksRequest(task_ids=["task-a"]),
+                    video_router.cancel_video_tasks(
+                        video_router.CancelVideoTasksRequest(task_ids=["task-a"]),
                         user=self._get_user(db, user_id),
                         db=db,
                     )
                 )
         finally:
-            main._cancel_upstream_video_tasks = original_cancel
+            video_router._cancel_upstream_video_tasks = original_cancel
             db.close()
 
         self.assertEqual(ctx.exception.status_code, 502)
@@ -188,7 +189,7 @@ class VideoTasksCancelTests(unittest.TestCase):
         db = self.Session()
         caller_thread_id = threading.get_ident()
         called_thread_id = None
-        original_cancel = main._cancel_upstream_video_tasks
+        original_cancel = video_router._cancel_upstream_video_tasks
 
         def fake_cancel(task_ids):
             nonlocal called_thread_id
@@ -201,8 +202,43 @@ class VideoTasksCancelTests(unittest.TestCase):
             }
 
         try:
-            main._cancel_upstream_video_tasks = fake_cancel
+            video_router._cancel_upstream_video_tasks = fake_cancel
             asyncio.run(
+                video_router.cancel_video_tasks(
+                    video_router.CancelVideoTasksRequest(task_ids=["task-a"]),
+                    user=self._get_user(db, user_id),
+                    db=db,
+                )
+            )
+        finally:
+            video_router._cancel_upstream_video_tasks = original_cancel
+            db.close()
+
+        self.assertIsNotNone(called_thread_id)
+        self.assertNotEqual(called_thread_id, caller_thread_id)
+
+    def test_main_exports_video_task_cancel_compatibility_aliases(self):
+        self.assertIs(main.CancelVideoTasksRequest, video_router.CancelVideoTasksRequest)
+        self.assertIs(main._cancel_upstream_video_tasks, video_router._cancel_upstream_video_tasks)
+
+    def test_main_cancel_video_tasks_uses_main_upstream_cancel_override(self):
+        user_id, _shot_id = self._create_user_episode_and_shot("tester", "task-a")
+        db = self.Session()
+        captured = {}
+        original_cancel = main._cancel_upstream_video_tasks
+
+        def fake_cancel(task_ids):
+            captured["task_ids"] = task_ids
+            return {
+                "requested_count": len(task_ids),
+                "status_code": 200,
+                "ok": True,
+                "response": {"cancelled": task_ids},
+            }
+
+        try:
+            main._cancel_upstream_video_tasks = fake_cancel
+            result = asyncio.run(
                 main.cancel_video_tasks(
                     main.CancelVideoTasksRequest(task_ids=["task-a"]),
                     user=self._get_user(db, user_id),
@@ -213,8 +249,8 @@ class VideoTasksCancelTests(unittest.TestCase):
             main._cancel_upstream_video_tasks = original_cancel
             db.close()
 
-        self.assertIsNotNone(called_thread_id)
-        self.assertNotEqual(called_thread_id, caller_thread_id)
+        self.assertEqual(captured["task_ids"], ["task-a"])
+        self.assertTrue(result["ok"])
 
 
 if __name__ == "__main__":

@@ -35,6 +35,7 @@ from api.routers import (  # noqa: E402
     settings,
     shots,
     templates,
+    video,
 )
 
 
@@ -130,6 +131,24 @@ class RouteRegistryTests(unittest.TestCase):
             "/api/video-model-pricing",
             "api.routers.video.get_video_model_pricing",
         )
+
+    def test_video_task_routes_are_owned_by_video_router(self):
+        expected_routes = [
+            (
+                "GET",
+                "/api/tasks/{task_id}/status",
+                "api.routers.video.query_task_status",
+            ),
+            (
+                "POST",
+                "/api/video/tasks/cancel",
+                "api.routers.video.cancel_video_tasks",
+            ),
+        ]
+
+        for method, path, qualified_name in expected_routes:
+            with self.subTest(method=method, path=path):
+                self._assert_route_owned_by(method, path, qualified_name)
 
     def test_story_library_create_route_is_owned_by_libraries_router(self):
         self._assert_route_owned_by(

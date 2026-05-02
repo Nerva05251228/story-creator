@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 This project uses a lightweight `Added`, `Changed`, `Fixed`, `Security`, and `Migration` structure.
 
+## 2026-05-02 - Video Task Route Extraction
+
+### Added
+
+- Added focused video task route coverage for route ownership, raw upstream status proxying, upstream error wrapping, cancellation authorization, and main-module compatibility aliases.
+
+### Changed
+
+- Moved `GET /api/tasks/{task_id}/status` and `POST /api/video/tasks/cancel` from `backend/main.py` into `backend/api/routers/video.py`.
+- Moved video task ID normalization, user-owned cancelable task lookup, and upstream cancel proxy helpers into the video router while keeping `backend/main.py` compatibility exports.
+
 ## 2026-05-02 - Episode Text Relay Route Extraction
 
 ### Added

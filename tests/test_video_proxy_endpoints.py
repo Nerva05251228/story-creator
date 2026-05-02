@@ -1,3 +1,4 @@
+import asyncio
 import inspect
 import os
 import sys
@@ -5,6 +6,8 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
+
+from fastapi import HTTPException
 
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
@@ -32,6 +35,7 @@ class VideoProxyEndpointTests(unittest.TestCase):
     def test_video_proxy_endpoints_are_sync_routes(self):
         self.assertFalse(inspect.iscoroutinefunction(video_router.get_video_provider_stats))
         self.assertFalse(inspect.iscoroutinefunction(video_router.get_video_quota))
+        self.assertTrue(inspect.iscoroutinefunction(video_router.query_task_status))
 
     def test_provider_stats_proxy_shapes_upstream_list_payload(self):
         class DummyResponse:
@@ -66,6 +70,26 @@ class VideoProxyEndpointTests(unittest.TestCase):
             headers={"Authorization": "Bearer test-api-token", "Content-Type": "application/json"},
             timeout=5,
         )
+
+    def test_query_task_status_returns_raw_upstream_payload(self):
+        with mock.patch.object(
+            video_router,
+            "check_video_status",
+            return_value={"status": "completed", "task_id": "task-1"},
+        ) as status_mock:
+            result = asyncio.run(
+                video_router.query_task_status("task-1", user=SimpleNamespace(id=1))
+            )
+
+        self.assertEqual(result, {"status": "completed", "task_id": "task-1"})
+        status_mock.assert_called_once_with("task-1", return_raw=True)
+
+    def test_query_task_status_wraps_upstream_errors(self):
+        with mock.patch.object(video_router, "check_video_status", side_effect=RuntimeError("boom")):
+            with self.assertRaises(HTTPException) as ctx:
+                asyncio.run(video_router.query_task_status("task-1", user=SimpleNamespace(id=1)))
+
+        self.assertEqual(ctx.exception.status_code, 500)
 
 
 if __name__ == "__main__":
