@@ -31,6 +31,7 @@ import models
 from ai_config import get_ai_config
 from ai_service import get_prompt_by_key
 from auth import get_current_user
+from dashboard_service import sync_managed_task_to_dashboard
 from database import SessionLocal, get_db
 from managed_generation_service import ACTIVE_MANAGED_SESSION_STATUSES
 from simple_storyboard_rules import (
@@ -5651,6 +5652,65 @@ async def stop_managed_generation(
             + (f"（本次补齐 {reserved_count} 个旧任务槽位）" if reserved_count > 0 else "")
         )
     }
+
+@router.get("/api/managed-sessions/{session_id}/tasks")
+def get_managed_tasks(
+    session_id: int,
+    status_filter: Optional[str] = None,  # all/pending/processing/completed/failed
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """获取托管会话的任务列表。"""
+    session = db.query(models.ManagedSession).filter(
+        models.ManagedSession.id == session_id
+    ).first()
+
+    if not session:
+        raise HTTPException(status_code=404, detail="会话不存在")
+
+    episode = db.query(models.Episode).filter(models.Episode.id == session.episode_id).first()
+    script = db.query(models.Script).filter(models.Script.id == episode.script_id).first()
+    if script.user_id != user.id:
+        raise HTTPException(status_code=403, detail="无权限")
+
+    query = db.query(models.ManagedTask).filter(
+        models.ManagedTask.session_id == session_id
+    )
+
+    if status_filter and status_filter != "all":
+        query = query.filter(models.ManagedTask.status == status_filter)
+
+    tasks = query.order_by(models.ManagedTask.created_at.asc()).all()
+
+    result = []
+    for task in tasks:
+        shot = db.query(models.StoryboardShot).filter(
+            models.StoryboardShot.id == task.shot_id
+        ).first() if task.shot_id > 0 else None
+
+        original_shot = db.query(models.StoryboardShot).filter(
+            models.StoryboardShot.stable_id == task.shot_stable_id,
+            models.StoryboardShot.variant_index == 0
+        ).first()
+
+        result.append({
+            "id": task.id,
+            "session_id": task.session_id,
+            "shot_id": task.shot_id,
+            "shot_stable_id": task.shot_stable_id,
+            "shot_number": shot.shot_number if shot else 0,
+            "variant_index": shot.variant_index if shot else 0,
+            "original_shot_number": original_shot.shot_number if original_shot else 0,
+            "video_path": task.video_path,
+            "status": task.status,
+            "error_message": task.error_message,
+            "task_id": task.task_id,
+            "prompt_text": task.prompt_text or "",
+            "created_at": task.created_at,
+            "completed_at": task.completed_at
+        })
+
+    return result
 
 @router.get("/api/episodes/{episode_id}/managed-session-status", response_model=ManagedSessionStatusResponse)
 

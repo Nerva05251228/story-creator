@@ -1,6 +1,7 @@
 import os
 import sys
 import unittest
+from datetime import datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -80,6 +81,7 @@ EXPECTED_EPISODE_ROUTES = {
     ("POST", "/api/episodes/{episode_id}/start-managed-generation"),
     ("POST", "/api/episodes/{episode_id}/stop-managed-generation"),
     ("GET", "/api/episodes/{episode_id}/managed-session-status"),
+    ("GET", "/api/managed-sessions/{session_id}/tasks"),
     ("POST", "/api/episodes/{episode_id}/refresh-videos"),
     ("POST", "/api/episodes/{episode_id}/import-storyboard"),
     ("GET", "/api/episodes/{episode_id}/export-storyboard"),
@@ -199,6 +201,83 @@ class EpisodeRouterTests(unittest.TestCase):
         finally:
             db.close()
 
+    def _seed_managed_session_with_tasks(self):
+        db = self.Session()
+        try:
+            owner = models.User(username="owner", token="owner-token")
+            other = models.User(username="other", token="other-token")
+            db.add_all([owner, other])
+            db.flush()
+            script = models.Script(user_id=owner.id, name="Script")
+            db.add(script)
+            db.flush()
+            episode = models.Episode(script_id=script.id, name="Episode 1")
+            db.add(episode)
+            db.flush()
+            original_a = models.StoryboardShot(
+                episode_id=episode.id,
+                shot_number=7,
+                stable_id="stable-a",
+                variant_index=0,
+            )
+            variant_a = models.StoryboardShot(
+                episode_id=episode.id,
+                shot_number=9,
+                stable_id="stable-a",
+                variant_index=2,
+            )
+            original_b = models.StoryboardShot(
+                episode_id=episode.id,
+                shot_number=3,
+                stable_id="stable-b",
+                variant_index=0,
+            )
+            variant_b = models.StoryboardShot(
+                episode_id=episode.id,
+                shot_number=4,
+                stable_id="stable-b",
+                variant_index=1,
+            )
+            db.add_all([original_a, variant_a, original_b, variant_b])
+            db.flush()
+            session = models.ManagedSession(
+                episode_id=episode.id,
+                status="running",
+                total_shots=2,
+                completed_shots=1,
+            )
+            db.add(session)
+            db.flush()
+            created_at = datetime(2026, 5, 2, 10, 0, 0)
+            pending_task = models.ManagedTask(
+                session_id=session.id,
+                shot_id=variant_a.id,
+                shot_stable_id="stable-a",
+                video_path="",
+                status="pending",
+                error_message="",
+                task_id="task-pending",
+                prompt_text="prompt pending",
+                created_at=created_at + timedelta(minutes=5),
+            )
+            completed_task = models.ManagedTask(
+                session_id=session.id,
+                shot_id=variant_b.id,
+                shot_stable_id="stable-b",
+                video_path="video.mp4",
+                status="completed",
+                error_message="",
+                task_id="task-completed",
+                prompt_text="prompt completed",
+                created_at=created_at,
+                completed_at=created_at + timedelta(minutes=10),
+            )
+            db.add_all([pending_task, completed_task])
+            db.commit()
+            return owner, other, session.id
+        finally:
+            db.close()
+
     def test_router_owns_episode_routes_without_shot_crud_routes(self):
         registered = set()
         for route in episodes.router.routes:
@@ -231,6 +310,57 @@ class EpisodeRouterTests(unittest.TestCase):
             ).status,
             "none",
         )
+
+    def test_get_managed_tasks_preserves_payload_ordering_and_status_filter(self):
+        owner, _, session_id = self._seed_managed_session_with_tasks()
+        self.current_user = owner
+
+        response = self.client.get(f"/api/managed-sessions/{session_id}/tasks")
+        self.assertEqual(response.status_code, 200)
+        tasks = response.json()
+
+        self.assertEqual([task["task_id"] for task in tasks], ["task-completed", "task-pending"])
+        self.assertEqual(tasks[0]["prompt_text"], "prompt completed")
+        self.assertEqual(tasks[0]["shot_number"], 4)
+        self.assertEqual(tasks[0]["variant_index"], 1)
+        self.assertEqual(tasks[0]["original_shot_number"], 3)
+        self.assertEqual(tasks[1]["prompt_text"], "prompt pending")
+        self.assertEqual(tasks[1]["shot_number"], 9)
+        self.assertEqual(tasks[1]["variant_index"], 2)
+        self.assertEqual(tasks[1]["original_shot_number"], 7)
+
+        filtered_response = self.client.get(
+            f"/api/managed-sessions/{session_id}/tasks?status_filter=completed"
+        )
+        self.assertEqual(filtered_response.status_code, 200)
+        self.assertEqual(
+            [task["task_id"] for task in filtered_response.json()],
+            ["task-completed"],
+        )
+
+    def test_get_managed_tasks_preserves_missing_session_and_owner_errors(self):
+        owner, other, session_id = self._seed_managed_session_with_tasks()
+
+        self.current_user = owner
+        missing_response = self.client.get("/api/managed-sessions/999/tasks")
+        self.assertEqual(missing_response.status_code, 404)
+
+        self.current_user = other
+        forbidden_response = self.client.get(f"/api/managed-sessions/{session_id}/tasks")
+        self.assertEqual(forbidden_response.status_code, 403)
+
+    def test_start_managed_generation_keeps_dashboard_task_sync_available(self):
+        owner, _, episode_id = self._seed_episode()
+        self.current_user = owner
+
+        with patch.object(episodes, "sync_managed_task_to_dashboard") as sync_mock:
+            response = self.client.post(
+                f"/api/episodes/{episode_id}/start-managed-generation",
+                json={"variant_count": 1},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        sync_mock.assert_called_once()
 
     def test_get_update_poll_status_and_total_cost_preserve_owner_behavior(self):
         owner, other, episode_id = self._seed_episode()

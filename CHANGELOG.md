@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 This project uses a lightweight `Added`, `Changed`, `Fixed`, `Security`, and `Migration` structure.
 
+## 2026-05-02 - Managed Task List Route Extraction
+
+### Added
+
+- Added focused episode router coverage for managed task list route ownership, created-time ordering, status filtering, owner-only access, missing-session handling, `prompt_text`, and `original_shot_number`.
+
+### Changed
+
+- Moved `GET /api/managed-sessions/{session_id}/tasks` from `backend/main.py` into `backend/api/routers/episodes.py`.
+- Preserved the existing bare-array response payload used by the legacy frontend, including `prompt_text` and `original_shot_number`, while keeping a `backend/main.py` compatibility export.
+
+### Fixed
+
+- Restored the dashboard task sync import used by the extracted `start-managed-generation` episode route.
+
 ## 2026-05-02 - Video Task Route Extraction
 
 ### Added
