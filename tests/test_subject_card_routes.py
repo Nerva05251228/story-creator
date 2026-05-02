@@ -367,6 +367,33 @@ class SubjectCardRouteTests(unittest.TestCase):
             },
         )
 
+    def test_update_card_prompt_requires_owner_and_persists_prompt(self):
+        owner, other = self._seed_users()
+        library = self._seed_library(owner.id)
+        card = self._seed_card(library.id, "Lead", ai_prompt="old prompt")
+
+        owner_response = self.client.put(
+            f"/api/cards/{card.id}/prompt",
+            json={"prompt": "new visual prompt"},
+            headers=self._auth_headers(owner.token),
+        )
+        blocked_response = self.client.put(
+            f"/api/cards/{card.id}/prompt",
+            json={"prompt": "other prompt"},
+            headers=self._auth_headers(other.token),
+        )
+
+        self.assertEqual(owner_response.status_code, 200)
+        self.assertEqual(owner_response.json()["ai_prompt"], "new visual prompt")
+        self.assertEqual(blocked_response.status_code, 403)
+
+        db = self.Session()
+        try:
+            updated = db.query(models.SubjectCard).filter_by(id=card.id).one()
+            self.assertEqual(updated.ai_prompt, "new visual prompt")
+        finally:
+            db.close()
+
     def test_generate_ai_prompt_marks_card_generating_and_returns_task_id(self):
         owner, _ = self._seed_users()
         library = self._seed_library(owner.id)

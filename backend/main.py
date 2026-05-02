@@ -10872,26 +10872,7 @@ async def create_from_storyboard(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"创建失败: {str(e)}")
 
-# 更新卡片的ai_prompt
-@app.put("/api/cards/{card_id}/prompt")
-async def update_card_prompt(
-    card_id: int,
-    prompt_data: dict,
-    user: models.User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """更新卡片的AI prompt"""
-    card = db.query(models.SubjectCard).filter(models.SubjectCard.id == card_id).first()
-    if not card:
-        raise HTTPException(status_code=404, detail="卡片不存在")
-
-    # 验证权限
-    verify_library_owner(card.library_id, user, db)
-
-    card.ai_prompt = prompt_data.get('prompt', '')
-    db.commit()
-
-    return {"message": "更新成功", "ai_prompt": card.ai_prompt}
+update_card_prompt = subject_cards.update_card_prompt
 
 # ==================== 提示词模板API ====================
 

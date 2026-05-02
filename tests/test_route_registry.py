@@ -194,6 +194,11 @@ class RouteRegistryTests(unittest.TestCase):
                 "api.routers.subject_cards.get_card",
             ),
             (
+                "PUT",
+                "/api/cards/{card_id}/prompt",
+                "api.routers.subject_cards.update_card_prompt",
+            ),
+            (
                 "POST",
                 "/api/cards/{card_id}/generate-ai-prompt",
                 "api.routers.subject_cards.generate_card_ai_prompt",

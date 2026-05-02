@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 This project uses a lightweight `Added`, `Changed`, `Fixed`, `Security`, and `Migration` structure.
 
+## 2026-05-02 - Subject Card Prompt Route Extraction
+
+### Added
+
+- Added focused subject card prompt route coverage for owner updates, non-owner rejection, persistence, and route ownership.
+
+### Changed
+
+- Moved `PUT /api/cards/{card_id}/prompt` from `backend/main.py` into `backend/api/routers/subject_cards.py` while preserving the existing `{ "prompt": "..." }` request shape and response payload.
+- Kept the `backend/main.py` compatibility export for direct callers and extended route registry coverage.
+
 ## 2026-05-02 - Script Router Extraction
 
 ### Added

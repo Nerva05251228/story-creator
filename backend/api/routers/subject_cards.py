@@ -428,6 +428,26 @@ async def get_card(
     }
 
 
+@router.put("/api/cards/{card_id}/prompt")
+async def update_card_prompt(
+    card_id: int,
+    prompt_data: dict,
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """鏇存柊鍗＄墖鐨凙I prompt"""
+    card = db.query(models.SubjectCard).filter(models.SubjectCard.id == card_id).first()
+    if not card:
+        raise HTTPException(status_code=404, detail="卡片不存在")
+
+    verify_library_owner(card.library_id, user, db)
+
+    card.ai_prompt = prompt_data.get("prompt", "")
+    db.commit()
+
+    return {"message": "更新成功", "ai_prompt": card.ai_prompt}
+
+
 @router.post("/api/cards/{card_id}/generate-ai-prompt")
 async def generate_card_ai_prompt(
     card_id: int,
