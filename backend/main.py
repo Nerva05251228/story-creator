@@ -37,6 +37,7 @@ from api.routers import (
     public,
     settings,
     scripts,
+    simple_storyboard,
     subject_cards,
     templates,
     video,
@@ -147,7 +148,6 @@ from managed_generation_service import managed_poller, ACTIVE_MANAGED_SESSION_ST
 from model_pricing_poller import model_pricing_poller
 from text_llm_queue import run_text_llm_request
 from simple_storyboard_rules import (
-    generate_simple_storyboard_shots,
     get_default_rule_config,
     normalize_rule_config,
 )
@@ -5110,20 +5110,6 @@ async def update_model_config(
 # ==================== 时长配置模板API ====================
 
 
-def _load_simple_storyboard_rule_config_for_duration(duration: int, db: Session):
-    template = db.query(models.ShotDurationTemplate).filter(
-        models.ShotDurationTemplate.duration == int(duration or 15)
-    ).first()
-    if template:
-        raw_text = str(getattr(template, "simple_storyboard_config_json", "") or "").strip()
-        if raw_text:
-            try:
-                return normalize_rule_config(json.loads(raw_text), int(duration or 15))
-            except Exception:
-                pass
-    return get_default_rule_config(duration)
-
-
 
 
 # ==================== 剧本管理API ====================
@@ -6573,215 +6559,6 @@ class CreateStoryboardRequest(BaseModel):
 class SimpleStoryboardRequest(BaseModel):
     content: Optional[str] = None  # 可选的自定义文案内容
     batch_size: Optional[int] = 500  # 分批字数，默认500
-
-async def generate_simple_storyboard_api(
-    episode_id: int,
-    request: SimpleStoryboardRequest = None,
-    user: models.User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """同步生成简单分镜（程序化规则） 
-
-    可选参数：
-    - content: 自定义文案内容。如果不提供，则使用片段的content
-    - batch_size: 批次展示阈值，默认500
-    """
-    episode = db.query(models.Episode).filter(models.Episode.id == episode_id).first()
-    if not episode:
-        raise HTTPException(status_code=404, detail="片段不存在")
-
-    script = db.query(models.Script).filter(models.Script.id == episode.script_id).first()
-    if script.user_id != user.id:
-        raise HTTPException(status_code=403, detail="无权限")
-
-    # 使用自定义内容或片段内容
-    if request and request.content:
-        episode_content = request.content
-    else:
-        episode_content = episode.content
-
-    # 获取分批字数（优先使用请求参数，否则使用episode设置，最后使用默认值）
-    if request and request.batch_size:
-        batch_size = request.batch_size
-    else:
-        batch_size = episode.batch_size or 500
-
-    duration = 25 if int(episode.storyboard2_duration or 15) == 25 else 15
-
-    def mark_simple_storyboard_request_started():
-        episode.batch_size = batch_size
-        episode.simple_storyboard_data = None
-        episode.simple_storyboard_generating = True
-        episode.simple_storyboard_error = ""
-
-    commit_with_retry(
-        db,
-        prepare_fn=mark_simple_storyboard_request_started,
-        context=f"simple_storyboard_request episode={episode_id}"
-    )
-
-    try:
-        rule_config = _load_simple_storyboard_rule_config_for_duration(duration, db)
-        shots = generate_simple_storyboard_shots(
-            episode_content,
-            duration,
-            rule_override=rule_config,
-        )
-        _persist_programmatic_simple_storyboard_batches(
-            episode_id,
-            shots,
-            batch_size,
-            db,
-        )
-        episode.simple_storyboard_data = json.dumps({"shots": shots}, ensure_ascii=False)
-        episode.simple_storyboard_generating = False
-        episode.simple_storyboard_error = ""
-        summary = _refresh_episode_simple_storyboard_from_batches(episode, db)
-        db.commit()
-        print(
-            f"[SimpleStoryboard][generate] episode_id={episode_id} duration={duration} "
-            f"content_len={len(str(episode_content or ''))} shots={len(shots)} "
-            f"total_batches={int(summary.get('total_batches') or 0)} "
-            f"completed_batches={int(summary.get('completed_batches') or 0)} "
-            f"failed_batches={int(summary.get('failed_batches') or 0)}"
-        )
-    except Exception as exc:
-        db.rollback()
-        episode = db.query(models.Episode).filter(models.Episode.id == episode_id).first()
-        if episode:
-            episode.simple_storyboard_generating = False
-            episode.simple_storyboard_error = str(exc)
-            db.commit()
-        raise HTTPException(status_code=500, detail=f"简单分镜生成失败: {str(exc)}")
-
-    return {
-        "message": "简单分镜生成完成",
-        "generating": False,
-        "submitted_batches": int(summary.get("total_batches") or 0),
-        "error": episode.simple_storyboard_error or "",
-        "shots": summary.get("shots") or [],
-        "batch_size": int(episode.batch_size or batch_size or 500),
-        "total_batches": int(summary.get("total_batches") or 0),
-        "completed_batches": int(summary.get("completed_batches") or 0),
-        "failed_batches": int(summary.get("failed_batches") or 0),
-        "submitting_batches": int(summary.get("submitting_batches") or 0),
-        "has_failures": bool(summary.get("has_failures")),
-        "failed_batch_errors": summary.get("failed_batch_errors") or [],
-        "batches": summary.get("batches") or [],
-    }
-
-
-def get_simple_storyboard(
-    episode_id: int,
-    user: models.User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """获取片段的简单分镜数据"""
-    episode = db.query(models.Episode).filter(models.Episode.id == episode_id).first()
-    if not episode:
-        raise HTTPException(status_code=404, detail="片段不存在")
-
-    script = db.query(models.Script).filter(models.Script.id == episode.script_id).first()
-    if script.user_id != user.id:
-        raise HTTPException(status_code=403, detail="无权限")
-
-    _mark_simple_storyboard_timeout_if_needed(episode, db)
-    if _reconcile_episode_runtime_flags(episode, db):
-        db.commit()
-
-    # 解析简单分镜数据
-    shots = []
-    if episode.simple_storyboard_data:
-        try:
-            data = json.loads(episode.simple_storyboard_data)
-            shots = data.get("shots", [])
-        except:
-            shots = []
-
-    summary = _get_simple_storyboard_batch_summary(episode_id, db)
-    print(
-        f"[SimpleStoryboard][fetch] episode_id={episode_id} generating={bool(episode.simple_storyboard_generating)} "
-        f"error={bool(episode.simple_storyboard_error)} shots={len(shots)} "
-        f"total_batches={int(summary.get('total_batches') or 0)} "
-        f"completed_batches={int(summary.get('completed_batches') or 0)} "
-        f"failed_batches={int(summary.get('failed_batches') or 0)} "
-        f"submitting_batches={int(summary.get('submitting_batches') or 0)}"
-    )
-    return {
-        "generating": episode.simple_storyboard_generating,
-        "error": episode.simple_storyboard_error or "",
-        "shots": shots,
-        "batch_size": episode.batch_size or 500,
-        "total_batches": int(summary.get("total_batches") or 0),
-        "completed_batches": int(summary.get("completed_batches") or 0),
-        "failed_batches": int(summary.get("failed_batches") or 0),
-        "submitting_batches": int(summary.get("submitting_batches") or 0),
-        "has_failures": bool(summary.get("has_failures")),
-        "failed_batch_errors": summary.get("failed_batch_errors") or [],
-        "batches": summary.get("batches") or [],
-    }
-
-
-def get_simple_storyboard_status(
-    episode_id: int,
-    user: models.User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    episode = _verify_episode_permission(episode_id, user, db)
-    _mark_simple_storyboard_timeout_if_needed(episode, db)
-    if _reconcile_episode_runtime_flags(episode, db):
-        db.commit()
-    summary = _get_simple_storyboard_batch_summary(episode_id, db)
-    return {
-        "generating": bool(episode.simple_storyboard_generating),
-        "error": episode.simple_storyboard_error or "",
-        "shots_count": _count_storyboard_items(episode.simple_storyboard_data),
-        "total_batches": int(summary.get("total_batches") or 0),
-        "completed_batches": int(summary.get("completed_batches") or 0),
-        "failed_batches": int(summary.get("failed_batches") or 0),
-        "submitting_batches": int(summary.get("submitting_batches") or 0),
-        "failed_batch_errors": summary.get("failed_batch_errors") or [],
-        "batches": summary.get("batches") or [],
-    }
-
-
-async def retry_failed_simple_storyboard_batches_api(
-    episode_id: int,
-    background_tasks: BackgroundTasks = None,
-    user: models.User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    _verify_episode_permission(episode_id, user, db)
-    raise HTTPException(status_code=400, detail="失败批次重试已移除，请重新发起整次简单分镜生成")
-
-
-async def update_simple_storyboard(
-    episode_id: int,
-    data: dict,
-    user: models.User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """更新简单分镜数据（用户手动编辑后保存）"""
-    episode = db.query(models.Episode).filter(models.Episode.id == episode_id).first()
-    if not episode:
-        raise HTTPException(status_code=404, detail="片段不存在")
-
-    script = db.query(models.Script).filter(models.Script.id == episode.script_id).first()
-    if script.user_id != user.id:
-        raise HTTPException(status_code=403, detail="无权限")
-
-    batch_rows = _get_simple_storyboard_batch_rows(episode_id, db)
-    for row in batch_rows:
-        row.status = "completed"
-        row.error_message = ""
-        row.shots_data = ""
-    # 保存更新后的简单分镜数据
-    episode.simple_storyboard_data = json.dumps(data, ensure_ascii=False)
-    episode.simple_storyboard_generating = False
-    episode.simple_storyboard_error = ""
-    db.commit()
-
-    return {"message": "简单分镜数据已更新"}
 
 
 async def generate_detailed_storyboard_api(
@@ -14255,12 +14032,20 @@ def _save_detail_images_debug(debug_dir: Optional[str], filename: str, payload: 
 
 app.include_router(episodes.router)
 app.include_router(voiceover.router)
+app.include_router(simple_storyboard.router)
 app.include_router(scripts.router)
 app.include_router(shots.router)
 app.include_router(hit_dramas.router)
 
 # Compatibility exports for direct callers while managed task routes live in api.routers.episodes.
 get_managed_tasks = episodes.get_managed_tasks
+
+# Compatibility exports for direct callers while simple storyboard routes live in api.routers.simple_storyboard.
+generate_simple_storyboard_api = simple_storyboard.generate_simple_storyboard_api
+get_simple_storyboard = simple_storyboard.get_simple_storyboard
+get_simple_storyboard_status = simple_storyboard.get_simple_storyboard_status
+retry_failed_simple_storyboard_batches_api = simple_storyboard.retry_failed_simple_storyboard_batches_api
+update_simple_storyboard = simple_storyboard.update_simple_storyboard
 
 # Compatibility exports for direct callers while storyboard2 routes live in api.routers.episodes.
 Storyboard2SetCurrentImageRequest = episodes.Storyboard2SetCurrentImageRequest

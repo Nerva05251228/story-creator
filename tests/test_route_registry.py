@@ -32,6 +32,7 @@ from api.routers import (  # noqa: E402
     episodes,
     hit_dramas,
     scripts,
+    simple_storyboard,
     settings,
     shots,
     templates,
@@ -400,6 +401,39 @@ class RouteRegistryTests(unittest.TestCase):
     def test_episode_routes_are_owned_by_episodes_router(self):
         self._assert_router_routes_owned_by(episodes.router)
 
+    def test_simple_storyboard_routes_are_owned_by_simple_storyboard_router(self):
+        expected_routes = [
+            (
+                "POST",
+                "/api/episodes/{episode_id}/generate-simple-storyboard",
+                "api.routers.simple_storyboard.generate_simple_storyboard_api",
+            ),
+            (
+                "GET",
+                "/api/episodes/{episode_id}/simple-storyboard",
+                "api.routers.simple_storyboard.get_simple_storyboard",
+            ),
+            (
+                "GET",
+                "/api/episodes/{episode_id}/simple-storyboard/status",
+                "api.routers.simple_storyboard.get_simple_storyboard_status",
+            ),
+            (
+                "POST",
+                "/api/episodes/{episode_id}/simple-storyboard/retry-failed-batches",
+                "api.routers.simple_storyboard.retry_failed_simple_storyboard_batches_api",
+            ),
+            (
+                "PUT",
+                "/api/episodes/{episode_id}/simple-storyboard",
+                "api.routers.simple_storyboard.update_simple_storyboard",
+            ),
+        ]
+
+        for method, path, qualified_name in expected_routes:
+            with self.subTest(method=method, path=path):
+                self._assert_route_owned_by(method, path, qualified_name)
+
     def test_voiceover_routes_are_owned_by_voiceover_router(self):
         expected_routes = [
             ("PUT", "/api/episodes/{episode_id}/voiceover", "api.routers.voiceover.update_voiceover_data"),
@@ -493,6 +527,23 @@ class RouteRegistryTests(unittest.TestCase):
             ("post", "/api/episodes/{episode_id}/voiceover/lines/{line_id}/generate"),
             ("post", "/api/episodes/{episode_id}/voiceover/generate-all"),
             ("get", "/api/episodes/{episode_id}/voiceover/tts-status"),
+        }
+
+        missing = [
+            (method, path)
+            for method, path in sorted(expected_routes)
+            if path not in paths or method not in paths[path]
+        ]
+        self.assertEqual(missing, [])
+
+    def test_simple_storyboard_openapi_paths_are_preserved(self):
+        paths = main.app.openapi()["paths"]
+        expected_routes = {
+            ("post", "/api/episodes/{episode_id}/generate-simple-storyboard"),
+            ("get", "/api/episodes/{episode_id}/simple-storyboard"),
+            ("get", "/api/episodes/{episode_id}/simple-storyboard/status"),
+            ("post", "/api/episodes/{episode_id}/simple-storyboard/retry-failed-batches"),
+            ("put", "/api/episodes/{episode_id}/simple-storyboard"),
         }
 
         missing = [

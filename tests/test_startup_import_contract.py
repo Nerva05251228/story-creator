@@ -626,6 +626,46 @@ class StartupImportContractTests(unittest.TestCase):
             },
         )
 
+    def test_simple_storyboard_route_module_owns_simple_storyboard_routes(self):
+        main_source = MAIN_PATH.read_text(encoding="utf-8-sig")
+        episodes_source = (BACKEND_DIR / "api" / "routers" / "episodes.py").read_text(encoding="utf-8-sig")
+        simple_storyboard_path = BACKEND_DIR / "api" / "routers" / "simple_storyboard.py"
+        simple_storyboard_source = simple_storyboard_path.read_text(encoding="utf-8-sig")
+
+        self.assertTrue(simple_storyboard_path.exists())
+        self.assertIn("router = APIRouter()", simple_storyboard_source)
+        self.assertIn("simple_storyboard,", main_source)
+        self.assertIn("app.include_router(simple_storyboard.router)", main_source)
+        self.assertEqual(
+            {
+                path
+                for path in _router_decorator_paths(episodes_source)
+                if "simple-storyboard" in path or "generate-simple-storyboard" in path
+            },
+            set(),
+        )
+        self.assertEqual(
+            {
+                path
+                for path in _router_decorator_paths(simple_storyboard_source)
+                if "simple-storyboard" in path or "generate-simple-storyboard" in path
+            },
+            {
+                "/api/episodes/{episode_id}/generate-simple-storyboard",
+                "/api/episodes/{episode_id}/simple-storyboard",
+                "/api/episodes/{episode_id}/simple-storyboard/status",
+                "/api/episodes/{episode_id}/simple-storyboard/retry-failed-batches",
+            },
+        )
+        for name in {
+            "generate_simple_storyboard_api",
+            "get_simple_storyboard",
+            "get_simple_storyboard_status",
+            "retry_failed_simple_storyboard_batches_api",
+            "update_simple_storyboard",
+        }:
+            self.assertIn(f"{name} = simple_storyboard.{name}", main_source)
+
     def test_web_startup_event_excludes_schema_bootstrap_and_preflight_responsibilities(self):
         source = MAIN_PATH.read_text(encoding="utf-8-sig")
         startup_node = _function_node(source, "startup_event")

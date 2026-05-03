@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 This project uses a lightweight `Added`, `Changed`, `Fixed`, `Security`, and `Migration` structure.
 
+## 2026-05-04 - Simple Storyboard Router Extraction
+
+### Added
+
+- Added `backend/api/routers/simple_storyboard.py` as the owner for simple storyboard generation, fetch, status, retry, and update routes.
+- Added focused simple storyboard router, route registry, OpenAPI preservation, and startup import-contract tests.
+
+### Changed
+
+- Moved `/api/episodes/{episode_id}/generate-simple-storyboard` and `/api/episodes/{episode_id}/simple-storyboard*` route handlers out of the episodes router without changing API paths, response fields, or authorization behavior.
+- Registered the simple storyboard router in `backend/main.py` and kept legacy direct-call compatibility aliases.
+
 ## 2026-05-04 - Storyboard Sync Service Extraction
 
 ### Added

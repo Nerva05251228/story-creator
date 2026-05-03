@@ -30,7 +30,7 @@ import ai_service  # noqa: E402
 import dashboard_service  # noqa: E402
 import main  # noqa: E402
 import models  # noqa: E402
-from api.routers import settings  # noqa: E402
+from api.routers import settings, simple_storyboard  # noqa: E402
 from api.services import simple_storyboard_batches  # noqa: E402
 import text_llm_queue  # noqa: E402
 import simple_storyboard_rules  # noqa: E402
@@ -326,9 +326,9 @@ class ProgrammaticSimpleStoryboardApiTests(unittest.TestCase):
     def test_generate_simple_storyboard_api_completes_synchronously_without_relay_task(self):
         with self.Session() as db:
             user = db.query(models.User).filter(models.User.id == self.user_id).first()
-            payload = asyncio.run(main.generate_simple_storyboard_api(
+            payload = asyncio.run(simple_storyboard.generate_simple_storyboard_api(
                 self.episode_id,
-                request=main.SimpleStoryboardRequest(),
+                request=simple_storyboard.SimpleStoryboardRequest(),
                 user=user,
                 db=db,
             ))
