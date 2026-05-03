@@ -204,6 +204,11 @@ _normalize_storyboard_video_resolution_name = storyboard_video_settings.normaliz
 _resolve_storyboard_video_provider = storyboard_video_settings.resolve_storyboard_video_provider
 _is_moti_storyboard_video_model = storyboard_video_settings.is_moti_storyboard_video_model
 _resolve_storyboard_video_model_by_provider = storyboard_video_settings.resolve_storyboard_video_model_by_provider
+_map_storyboard_prompt_template_duration = storyboard_video_settings.map_storyboard_prompt_template_duration
+_is_storyboard_shot_duration_override_enabled = storyboard_video_settings.is_storyboard_shot_duration_override_enabled
+_is_storyboard_shot_model_override_enabled = storyboard_video_settings.is_storyboard_shot_model_override_enabled
+_get_episode_storyboard_video_settings = storyboard_video_settings.get_episode_storyboard_video_settings
+_get_effective_storyboard_video_settings_for_shot = storyboard_video_settings.get_effective_storyboard_video_settings_for_shot
 _build_unified_storyboard_video_task_payload = storyboard_video_payload._build_unified_storyboard_video_task_payload
 
 def _rollback_quietly(db: Session):
@@ -6185,20 +6190,6 @@ def _normalize_jimeng_ratio(value: Optional[str], default_ratio: str = "9:16") -
     fallback = legacy_map.get((default_ratio or "").strip(), (default_ratio or "").strip())
     return fallback if fallback in allowed_ratios else "9:16"
 
-def _map_storyboard_prompt_template_duration(duration: Optional[int]) -> int:
-    try:
-        parsed = int(duration or 0)
-    except Exception:
-        parsed = 15
-    if parsed <= 6:
-        return 6
-    if parsed <= 10:
-        return 10
-    if parsed <= 15:
-        return 15
-    return 25
-
-
 def _build_storyboard_video_text_and_images_content(full_prompt: str, image_urls: List[str]) -> list:
     content = [{"type": "text", "text": full_prompt}]
     for url in image_urls or []:
@@ -6207,88 +6198,6 @@ def _build_storyboard_video_text_and_images_content(full_prompt: str, image_urls
             content.append({"type": "image_url", "image_url": image_url})
     return content
 
-
-def _is_storyboard_shot_duration_override_enabled(shot) -> bool:
-    return bool(getattr(shot, "duration_override_enabled", False))
-
-def _is_storyboard_shot_model_override_enabled(shot) -> bool:
-    return bool(getattr(shot, "storyboard_video_model_override_enabled", False))
-
-def _get_episode_storyboard_video_settings(episode) -> Dict[str, Any]:
-    model = _normalize_storyboard_video_model(
-        getattr(episode, "storyboard_video_model", None),
-        default_model=DEFAULT_STORYBOARD_VIDEO_MODEL
-    )
-    aspect_ratio = _normalize_storyboard_video_aspect_ratio(
-        getattr(episode, "storyboard_video_aspect_ratio", None),
-        model=model,
-        default_ratio=_STORYBOARD_VIDEO_MODEL_CONFIG[model]["default_ratio"]
-    )
-    duration = _normalize_storyboard_video_duration(
-        getattr(episode, "storyboard_video_duration", None),
-        model=model,
-        default_duration=_STORYBOARD_VIDEO_MODEL_CONFIG[model]["default_duration"]
-    )
-    provider = _resolve_storyboard_video_provider(model)
-    resolution_name = _normalize_storyboard_video_resolution_name(
-        getattr(episode, "storyboard_video_resolution_name", None),
-        model=model,
-        default_resolution=_STORYBOARD_VIDEO_MODEL_CONFIG[model].get("default_resolution", "")
-    )
-    appoint_account = _normalize_storyboard_video_appoint_account(
-        getattr(episode, "storyboard_video_appoint_account", "") if episode is not None else ""
-    )
-    return {
-        "model": model,
-        "aspect_ratio": aspect_ratio,
-        "duration": duration,
-        "resolution_name": resolution_name,
-        "provider": provider,
-        "appoint_account": appoint_account,
-    }
-
-def _get_effective_storyboard_video_settings_for_shot(shot, episode) -> Dict[str, Any]:
-    episode_settings = _get_episode_storyboard_video_settings(episode)
-    model_override_enabled = _is_storyboard_shot_model_override_enabled(shot)
-    effective_model = episode_settings["model"]
-    if model_override_enabled:
-        effective_model = _normalize_storyboard_video_model(
-            getattr(shot, "storyboard_video_model", None),
-            default_model=episode_settings["model"]
-        )
-    aspect_ratio = _normalize_storyboard_video_aspect_ratio(
-        episode_settings["aspect_ratio"],
-        model=effective_model,
-        default_ratio=episode_settings["aspect_ratio"]
-    )
-    resolution_name = _normalize_storyboard_video_resolution_name(
-        episode_settings.get("resolution_name", ""),
-        model=effective_model,
-        default_resolution=episode_settings.get("resolution_name", "")
-    )
-    duration_override_enabled = _is_storyboard_shot_duration_override_enabled(shot)
-    effective_duration = _normalize_storyboard_video_duration(
-        episode_settings["duration"],
-        model=effective_model,
-        default_duration=episode_settings["duration"]
-    )
-    if duration_override_enabled:
-        effective_duration = _normalize_storyboard_video_duration(
-            getattr(shot, "duration", None),
-            model=effective_model,
-            default_duration=episode_settings["duration"]
-        )
-    return {
-        "model": effective_model,
-        "aspect_ratio": aspect_ratio,
-        "duration": effective_duration,
-        "resolution_name": resolution_name,
-        "provider": _resolve_storyboard_video_provider(effective_model),
-        "appoint_account": episode_settings.get("appoint_account", ""),
-        "model_override_enabled": model_override_enabled,
-        "duration_override_enabled": duration_override_enabled,
-        "prompt_template_duration": _map_storyboard_prompt_template_duration(effective_duration),
-    }
 
 def _apply_episode_storyboard_video_settings_to_shot(shot, episode) -> Dict[str, Any]:
     settings = _get_effective_storyboard_video_settings_for_shot(shot, episode)

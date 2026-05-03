@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 This project uses a lightweight `Added`, `Changed`, `Fixed`, `Security`, and `Migration` structure.
 
+## 2026-05-03 - Storyboard Video Effective Settings Service Extraction
+
+### Added
+
+- Added service-level tests for episode storyboard video defaults, shot model overrides, duration overrides, provider resolution, and prompt-template duration mapping.
+- Added import-contract coverage so pure storyboard video effective-setting helpers stay in `backend/api/services/storyboard_video_settings.py`.
+
+### Changed
+
+- Moved pure storyboard video effective-setting helper logic out of `backend/main.py` and the episodes router while keeping compatibility aliases in both modules.
+- Kept the shot-mutating apply helper local so ORM state changes remain explicit at the router/main boundary.
+
 ## 2026-05-03 - Storyboard Video Payload Service Extraction
 
 ### Added

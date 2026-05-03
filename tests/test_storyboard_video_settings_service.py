@@ -1,6 +1,7 @@
 import sys
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
@@ -76,6 +77,58 @@ class StoryboardVideoSettingsServiceTests(unittest.TestCase):
             storyboard_video_settings.normalize_storyboard_video_appoint_account("  account-a  "),
             "account-a",
         )
+
+    def test_effective_settings_use_episode_defaults(self):
+        episode = SimpleNamespace(
+            storyboard_video_model="grok",
+            storyboard_video_aspect_ratio="1:2",
+            storyboard_video_duration=30,
+            storyboard_video_resolution_name="480P",
+            storyboard_video_appoint_account=" account-a ",
+        )
+        shot = SimpleNamespace(
+            storyboard_video_model="Seedance 2.0",
+            storyboard_video_model_override_enabled=False,
+            duration=5,
+            duration_override_enabled=False,
+        )
+
+        settings = storyboard_video_settings.get_effective_storyboard_video_settings_for_shot(shot, episode)
+
+        self.assertEqual(settings["model"], "grok")
+        self.assertEqual(settings["aspect_ratio"], "9:16")
+        self.assertEqual(settings["duration"], 30)
+        self.assertEqual(settings["resolution_name"], "480p")
+        self.assertEqual(settings["provider"], "yijia")
+        self.assertEqual(settings["appoint_account"], "account-a")
+        self.assertFalse(settings["model_override_enabled"])
+        self.assertFalse(settings["duration_override_enabled"])
+        self.assertEqual(settings["prompt_template_duration"], 25)
+
+    def test_effective_settings_apply_shot_model_and_duration_overrides(self):
+        episode = SimpleNamespace(
+            storyboard_video_model="Seedance 2.0",
+            storyboard_video_aspect_ratio="16:9",
+            storyboard_video_duration=10,
+            storyboard_video_resolution_name="",
+            storyboard_video_appoint_account="account-a",
+        )
+        shot = SimpleNamespace(
+            storyboard_video_model="grok",
+            storyboard_video_model_override_enabled=True,
+            duration=20,
+            duration_override_enabled=True,
+        )
+
+        settings = storyboard_video_settings.get_effective_storyboard_video_settings_for_shot(shot, episode)
+
+        self.assertEqual(settings["model"], "grok")
+        self.assertEqual(settings["aspect_ratio"], "16:9")
+        self.assertEqual(settings["duration"], 20)
+        self.assertEqual(settings["provider"], "yijia")
+        self.assertTrue(settings["model_override_enabled"])
+        self.assertTrue(settings["duration_override_enabled"])
+        self.assertEqual(settings["prompt_template_duration"], 25)
 
 
 if __name__ == "__main__":

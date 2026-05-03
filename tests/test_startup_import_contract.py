@@ -284,6 +284,11 @@ class StartupImportContractTests(unittest.TestCase):
             "_resolve_storyboard_video_provider",
             "_is_moti_storyboard_video_model",
             "_resolve_storyboard_video_model_by_provider",
+            "_map_storyboard_prompt_template_duration",
+            "_is_storyboard_shot_duration_override_enabled",
+            "_is_storyboard_shot_model_override_enabled",
+            "_get_episode_storyboard_video_settings",
+            "_get_effective_storyboard_video_settings_for_shot",
         }
 
         self.assertIn("from api.services import storyboard_video_settings", main_source)
