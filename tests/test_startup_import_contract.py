@@ -314,6 +314,37 @@ class StartupImportContractTests(unittest.TestCase):
         }:
             self.assertIn(f"{name} = storyboard_video_settings.{name[1:]}", scripts_source)
 
+    def test_storyboard_video_payload_helpers_live_in_service_module(self):
+        main_source = MAIN_PATH.read_text(encoding="utf-8-sig")
+        episodes_source = (BACKEND_DIR / "api" / "routers" / "episodes.py").read_text(encoding="utf-8-sig")
+        main_delegated_names = {
+            "_get_seedance_audio_validation_error",
+            "_collect_moti_v2_reference_assets",
+            "_build_moti_v2_content",
+            "_build_storyboard_video_text_and_images_content",
+            "_build_grok_video_content",
+            "_build_unified_storyboard_video_task_payload",
+        }
+        main_aliases = {
+            "_get_seedance_audio_validation_error": "get_seedance_audio_validation_error",
+            "_collect_moti_v2_reference_assets": "_collect_moti_v2_reference_assets",
+            "_build_moti_v2_content": "_build_moti_v2_content",
+            "_build_storyboard_video_text_and_images_content": "build_storyboard_video_reference_content",
+            "_build_grok_video_content": "_build_grok_video_content",
+            "_build_unified_storyboard_video_task_payload": "_build_unified_storyboard_video_task_payload",
+        }
+
+        self.assertIn("from api.services import storyboard_video_payload", main_source)
+        self.assertIn("from api.services import storyboard_video_payload", episodes_source)
+        self.assertEqual(_top_level_definition_names(main_source) & main_delegated_names, set())
+        for name, service_name in main_aliases.items():
+            self.assertIn(f"{name} = storyboard_video_payload.{service_name}", main_source)
+        self.assertNotIn("def _build_unified_storyboard_video_task_payload", episodes_source)
+        self.assertIn(
+            "_build_unified_storyboard_video_task_payload = storyboard_video_payload._build_unified_storyboard_video_task_payload",
+            episodes_source,
+        )
+
     def test_web_startup_event_excludes_schema_bootstrap_and_preflight_responsibilities(self):
         source = MAIN_PATH.read_text(encoding="utf-8-sig")
         startup_node = _function_node(source, "startup_event")

@@ -38,6 +38,7 @@ from managed_generation_service import ACTIVE_MANAGED_SESSION_STATUSES
 from api.services import billing_charges
 from api.services import storyboard_defaults
 from api.services import storyboard_video_settings
+from api.services import storyboard_video_payload
 from api.services.simple_storyboard_batches import (
     _get_simple_storyboard_batch_rows,
     _get_simple_storyboard_batch_summary,
@@ -203,6 +204,7 @@ _normalize_storyboard_video_resolution_name = storyboard_video_settings.normaliz
 _resolve_storyboard_video_provider = storyboard_video_settings.resolve_storyboard_video_provider
 _is_moti_storyboard_video_model = storyboard_video_settings.is_moti_storyboard_video_model
 _resolve_storyboard_video_model_by_provider = storyboard_video_settings.resolve_storyboard_video_model_by_provider
+_build_unified_storyboard_video_task_payload = storyboard_video_payload._build_unified_storyboard_video_task_payload
 
 def _rollback_quietly(db: Session):
     try:

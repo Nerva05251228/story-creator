@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 This project uses a lightweight `Added`, `Changed`, `Fixed`, `Security`, and `Migration` structure.
 
+## 2026-05-03 - Storyboard Video Payload Service Extraction
+
+### Added
+
+- Added `backend/api/services/storyboard_video_payload.py` for shared Moti/Grok/Sora storyboard video task payload construction and reference asset assembly.
+- Added focused payload service tests for Moti appointed accounts, Grok reference-image content, and Sora prompt/image URL payloads.
+- Added import-contract coverage so the payload builder stays out of `backend/main.py`.
+
+### Changed
+
+- Updated `backend/main.py` to keep compatibility aliases while delegating storyboard video payload helpers to the service.
+
+### Fixed
+
+- Wired the episodes router to the shared storyboard video payload builder so batch video generation no longer references an undefined helper at runtime.
+
 ## 2026-05-03 - Storyboard Video Settings Service Extraction
 
 ### Added
