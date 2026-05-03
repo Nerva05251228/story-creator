@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 This project uses a lightweight `Added`, `Changed`, `Fixed`, `Security`, and `Migration` structure.
 
+## 2026-05-03 - Storyboard Defaults Service Extraction
+
+### Added
+
+- Added `backend/api/services/storyboard_defaults.py` for shared storyboard default inheritance and detail image/storyboard2 setting normalization.
+- Added import-contract coverage so `backend/main.py`, the episodes router, and the scripts router keep compatibility aliases without reintroducing duplicate helper bodies.
+
+### Changed
+
+- Updated `backend/main.py`, `backend/api/routers/episodes.py`, and `backend/api/routers/scripts.py` to share storyboard default helpers instead of maintaining separate copies.
+
 ## 2026-05-03 - Storyboard Subject Helper Deduplication
 
 ### Added

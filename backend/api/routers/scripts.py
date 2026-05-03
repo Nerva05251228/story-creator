@@ -1,11 +1,10 @@
 import json
-from typing import Any, List, Optional
+from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 import billing_service
-import image_platform_client
 import models
 from api.routers.episodes import (
     _normalize_storyboard_video_appoint_account,
@@ -23,99 +22,19 @@ from api.schemas.scripts import (
 )
 from api.services.card_media import _safe_audio_duration_seconds
 from api.services.episode_cleanup import clear_episode_dependencies
+from api.services import storyboard_defaults
 from auth import get_current_user
 from database import get_db
-from image_generation_service import normalize_image_model_key
 
 
 router = APIRouter()
 
 
-_DETAIL_IMAGES_MODEL_CONFIG = {
-    "seedream-4.0": {"actual_model": "seedream-4.0", "provider": "jimeng"},
-    "seedream-4.1": {"actual_model": "seedream-4.1", "provider": "jimeng"},
-    "seedream-4.5": {"actual_model": "seedream-4.5", "provider": "jimeng"},
-    "seedream-4.6": {"actual_model": "seedream-4.6", "provider": "jimeng"},
-    "nano-banana-2": {"actual_model": "nano-banana-2", "provider": "momo"},
-    "nano-banana-pro": {"actual_model": "nano-banana-pro", "provider": "momo"},
-    "gpt-image-2": {"actual_model": "gpt-image-2", "provider": "momo"},
-    "jimeng-4.0": {"actual_model": "jimeng-4.0", "provider": "jimeng"},
-    "jimeng-4.1": {"actual_model": "jimeng-4.1", "provider": "jimeng"},
-    "jimeng-4.5": {"actual_model": "jimeng-4.5", "provider": "jimeng"},
-    "jimeng-4.6": {"actual_model": "jimeng-4.6", "provider": "jimeng"},
-    "banana2": {"actual_model": "banana2", "provider": "momo"},
-    "banana2-moti": {"actual_model": "banana2-moti", "provider": "momo"},
-    "banana-pro": {"actual_model": "banana-pro", "provider": "momo"},
-}
-
-
-def _normalize_detail_images_provider(
-    value: Optional[str],
-    default_provider: str = "",
-) -> str:
-    aliases = {
-        "jimeng": "jimeng",
-        "momo": "momo",
-        "banana": "momo",
-        "moti": "momo",
-        "moapp": "momo",
-        "gettoken": "momo",
-    }
-    raw = str(value or "").strip().lower()
-    if raw:
-        return aliases.get(raw, raw)
-    fallback = str(default_provider or "").strip().lower()
-    return aliases.get(fallback, fallback)
-
-
-def _resolve_episode_detail_images_provider(
-    episode: Optional[models.Episode],
-    default_provider: str = "",
-) -> str:
-    return _normalize_detail_images_provider(
-        getattr(episode, "detail_images_provider", None) if episode is not None else None,
-        default_provider=default_provider,
-    )
-
-
-def _normalize_detail_images_model(
-    value: Optional[str],
-    default_model: str = "seedream-4.0",
-) -> str:
-    raw = str(value or "").strip()
-    fallback_raw = str(default_model or "").strip() or "seedream-4.0"
-    normalized = normalize_image_model_key(raw or fallback_raw)
-    try:
-        route = image_platform_client.resolve_image_route(normalized)
-        return str(route.get("key") or normalized)
-    except Exception:
-        if raw and normalized in _DETAIL_IMAGES_MODEL_CONFIG:
-            return normalized
-        fallback = normalize_image_model_key(fallback_raw)
-        try:
-            route = image_platform_client.resolve_image_route(fallback)
-            return str(route.get("key") or fallback)
-        except Exception:
-            return fallback or "seedream-4.0"
-
-
-def _normalize_storyboard2_video_duration(value: Optional[int], default_value: int = 6) -> int:
-    allowed = {6, 10}
-    try:
-        parsed = int(value) if value is not None else int(default_value)
-    except Exception:
-        parsed = int(default_value) if default_value in allowed else 6
-    if parsed in allowed:
-        return parsed
-    return int(default_value) if default_value in allowed else 6
-
-
-def _normalize_storyboard2_image_cw(value: Optional[int], default_value: int = 50) -> int:
-    try:
-        parsed = int(value) if value is not None else int(default_value)
-    except Exception:
-        parsed = int(default_value) if default_value is not None else 50
-    return max(1, min(100, parsed))
+_normalize_detail_images_provider = storyboard_defaults.normalize_detail_images_provider
+_resolve_episode_detail_images_provider = storyboard_defaults.resolve_episode_detail_images_provider
+_normalize_detail_images_model = storyboard_defaults.normalize_detail_images_model
+_normalize_storyboard2_video_duration = storyboard_defaults.normalize_storyboard2_video_duration
+_normalize_storyboard2_image_cw = storyboard_defaults.normalize_storyboard2_image_cw
 
 
 @router.post("/api/scripts", response_model=ScriptResponse)

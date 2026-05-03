@@ -53,6 +53,7 @@ from api.services import billing_charges
 from api.services import card_image_generation as card_image_generation_service
 from api.services import model_configs as model_configs_service
 from api.services import simple_storyboard_batches as simple_storyboard_batches_service
+from api.services import storyboard_defaults
 from env_config import get_env, is_placeholder_env_value, load_app_env
 
 
@@ -131,7 +132,7 @@ from image_generation_service import (
     image_poller, MODEL_CONFIGS, submit_image_generation,
     check_task_status, download_and_upload_image, jimeng_generate_image_with_polling,
     create_jimeng_image_task, get_image_task_status, is_jimeng_image_model,
-    normalize_image_model_key, is_moti_image_model, is_transient_image_status_error,
+    is_moti_image_model, is_transient_image_status_error,
     submit_moti_standard_image_generation, get_image_submit_api_url,
     get_image_status_api_url, resolve_jimeng_actual_model
 )
@@ -5648,11 +5649,7 @@ class EpisodeStoryboardVideoSettingsUpdateRequest(BaseModel):
     video_prompt_template: Optional[str] = None
 
 
-def _get_pydantic_fields_set(payload: Any) -> set:
-    fields_set = getattr(payload, "model_fields_set", None)
-    if fields_set is None:
-        fields_set = getattr(payload, "__fields_set__", set())
-    return set(fields_set or set())
+_get_pydantic_fields_set = storyboard_defaults.get_pydantic_fields_set
 
 
 def _normalize_storyboard_video_appoint_account(value: Any, default_value: str = "") -> str:
@@ -5660,84 +5657,8 @@ def _normalize_storyboard_video_appoint_account(value: Any, default_value: str =
     return raw
 
 
-def _get_first_episode_for_storyboard_defaults(script_id: int, db: Session):
-    return db.query(models.Episode).filter(
-        models.Episode.script_id == script_id
-    ).order_by(
-        models.Episode.created_at.asc(),
-        models.Episode.id.asc()
-    ).first()
-
-
-def _build_episode_storyboard_sora_create_values(
-    script_id: int,
-    episode_payload: Any,
-    db: Session,
-) -> Dict[str, Any]:
-    fields_set = _get_pydantic_fields_set(episode_payload)
-    source_episode = _get_first_episode_for_storyboard_defaults(script_id, db)
-
-    def resolve_value(field_name: str, fallback: Any = None):
-        if field_name in fields_set:
-            return getattr(episode_payload, field_name, fallback)
-        if source_episode is not None:
-            return getattr(source_episode, field_name, fallback)
-        return getattr(episode_payload, field_name, fallback)
-
-    raw_model = _normalize_storyboard_video_model(
-        resolve_value("storyboard_video_model", DEFAULT_STORYBOARD_VIDEO_MODEL),
-        default_model=DEFAULT_STORYBOARD_VIDEO_MODEL
-    )
-    raw_aspect_ratio = _normalize_storyboard_video_aspect_ratio(
-        resolve_value("storyboard_video_aspect_ratio", None),
-        model=raw_model,
-        default_ratio=_STORYBOARD_VIDEO_MODEL_CONFIG[raw_model]["default_ratio"]
-    )
-    raw_duration = _normalize_storyboard_video_duration(
-        resolve_value("storyboard_video_duration", None),
-        model=raw_model,
-        default_duration=_STORYBOARD_VIDEO_MODEL_CONFIG[raw_model]["default_duration"]
-    )
-    raw_shot_image_size = _normalize_jimeng_ratio(
-        resolve_value("shot_image_size", raw_aspect_ratio),
-        default_ratio=raw_aspect_ratio
-    )
-
-    raw_video_style_template_id = resolve_value("video_style_template_id", None)
-    try:
-        normalized_video_style_template_id = int(raw_video_style_template_id) if raw_video_style_template_id else None
-    except Exception:
-        normalized_video_style_template_id = None
-
-    return {
-        "shot_image_size": raw_shot_image_size,
-        "detail_images_model": _normalize_detail_images_model(
-            resolve_value("detail_images_model", "seedream-4.0"),
-            default_model="seedream-4.0"
-        ),
-        "detail_images_provider": _normalize_detail_images_provider(
-            resolve_value("detail_images_provider", ""),
-        ),
-        "storyboard2_image_cw": _normalize_storyboard2_image_cw(
-            resolve_value("storyboard2_image_cw", 50),
-            default_value=50
-        ),
-        "storyboard2_include_scene_references": bool(
-            resolve_value("storyboard2_include_scene_references", False)
-        ),
-        "storyboard_video_model": raw_model,
-        "storyboard_video_aspect_ratio": raw_aspect_ratio,
-        "storyboard_video_duration": raw_duration,
-        "storyboard_video_resolution_name": _normalize_storyboard_video_resolution_name(
-            resolve_value("storyboard_video_resolution_name", None),
-            model=raw_model,
-            default_resolution=_STORYBOARD_VIDEO_MODEL_CONFIG[raw_model].get("default_resolution", "")
-        ),
-        "storyboard_video_appoint_account": _normalize_storyboard_video_appoint_account(
-            resolve_value("storyboard_video_appoint_account", "")
-        ),
-        "video_style_template_id": normalized_video_style_template_id,
-    }
+_get_first_episode_for_storyboard_defaults = storyboard_defaults.get_first_episode_for_storyboard_defaults
+_build_episode_storyboard_sora_create_values = episodes._build_episode_storyboard_sora_create_values
 
 create_episode = episodes.create_episode
 get_script_episodes = episodes.get_script_episodes
@@ -13558,54 +13479,9 @@ _DETAIL_IMAGES_MODEL_CONFIG = {
 }
 
 
-def _normalize_detail_images_provider(
-    value: Optional[str],
-    default_provider: str = ""
-) -> str:
-    aliases = {
-        "jimeng": "jimeng",
-        "momo": "momo",
-        "banana": "momo",
-        "moti": "momo",
-        "moapp": "momo",
-        "gettoken": "momo",
-    }
-    raw = str(value or "").strip().lower()
-    if raw:
-        return aliases.get(raw, raw)
-    fallback = str(default_provider or "").strip().lower()
-    return aliases.get(fallback, fallback)
-
-
-def _resolve_episode_detail_images_provider(
-    episode: Optional[models.Episode],
-    default_provider: str = ""
-) -> str:
-    return _normalize_detail_images_provider(
-        getattr(episode, "detail_images_provider", None) if episode is not None else None,
-        default_provider=default_provider
-    )
-
-
-def _normalize_detail_images_model(
-    value: Optional[str],
-    default_model: str = "seedream-4.0"
-) -> str:
-    raw = str(value or "").strip()
-    fallback_raw = str(default_model or "").strip() or "seedream-4.0"
-    normalized = normalize_image_model_key(raw or fallback_raw)
-    try:
-        route = image_platform_client.resolve_image_route(normalized)
-        return str(route.get("key") or normalized)
-    except Exception:
-        if raw and normalized in _DETAIL_IMAGES_MODEL_CONFIG:
-            return normalized
-        fallback = normalize_image_model_key(fallback_raw)
-        try:
-            route = image_platform_client.resolve_image_route(fallback)
-            return str(route.get("key") or fallback)
-        except Exception:
-            return fallback or "seedream-4.0"
+_normalize_detail_images_provider = storyboard_defaults.normalize_detail_images_provider
+_resolve_episode_detail_images_provider = storyboard_defaults.resolve_episode_detail_images_provider
+_normalize_detail_images_model = storyboard_defaults.normalize_detail_images_model
 
 
 def _resolve_detail_images_actual_model(model: Optional[str]) -> str:
@@ -13827,23 +13703,8 @@ def _normalize_jimeng_ratio(value: Optional[str], default_ratio: str = "9:16") -
     return fallback if fallback in allowed_ratios else "9:16"
 
 
-def _normalize_storyboard2_video_duration(value: Optional[int], default_value: int = 6) -> int:
-    allowed = {6, 10}
-    try:
-        parsed = int(value) if value is not None else int(default_value)
-    except Exception:
-        parsed = int(default_value) if default_value in allowed else 6
-    if parsed in allowed:
-        return parsed
-    return int(default_value) if default_value in allowed else 6
-
-
-def _normalize_storyboard2_image_cw(value: Optional[int], default_value: int = 50) -> int:
-    try:
-        parsed = int(value) if value is not None else int(default_value)
-    except Exception:
-        parsed = int(default_value) if default_value is not None else 50
-    return max(1, min(100, parsed))
+_normalize_storyboard2_video_duration = storyboard_defaults.normalize_storyboard2_video_duration
+_normalize_storyboard2_image_cw = storyboard_defaults.normalize_storyboard2_image_cw
 
 
 _STORYBOARD_VIDEO_MODEL_CONFIG = {

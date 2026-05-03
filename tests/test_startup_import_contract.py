@@ -232,6 +232,43 @@ class StartupImportContractTests(unittest.TestCase):
             self.assertIn(f"{name} = episodes.{name}", source)
         self.assertIn("_SUBJECT_MATCH_STOP_FRAGMENTS = episodes._SUBJECT_MATCH_STOP_FRAGMENTS", source)
 
+    def test_storyboard_default_helpers_live_in_service_module(self):
+        main_source = MAIN_PATH.read_text(encoding="utf-8-sig")
+        episodes_source = (BACKEND_DIR / "api" / "routers" / "episodes.py").read_text(encoding="utf-8-sig")
+        scripts_source = (BACKEND_DIR / "api" / "routers" / "scripts.py").read_text(encoding="utf-8-sig")
+        delegated_names = {
+            "_get_pydantic_fields_set",
+            "_normalize_detail_images_provider",
+            "_resolve_episode_detail_images_provider",
+            "_normalize_detail_images_model",
+            "_normalize_storyboard2_video_duration",
+            "_normalize_storyboard2_image_cw",
+            "_get_first_episode_for_storyboard_defaults",
+            "_build_episode_storyboard_sora_create_values",
+        }
+
+        self.assertIn("from api.services import storyboard_defaults", main_source)
+        self.assertIn("from api.services import storyboard_defaults", episodes_source)
+        self.assertIn("from api.services import storyboard_defaults", scripts_source)
+        for source in (main_source, episodes_source, scripts_source):
+            self.assertEqual(_top_level_definition_names(source) & delegated_names, set())
+        self.assertIn("_get_pydantic_fields_set = storyboard_defaults.get_pydantic_fields_set", main_source)
+        self.assertIn("_get_first_episode_for_storyboard_defaults = storyboard_defaults.get_first_episode_for_storyboard_defaults", main_source)
+        self.assertIn("_build_episode_storyboard_sora_create_values = episodes._build_episode_storyboard_sora_create_values", main_source)
+        self.assertIn("_get_pydantic_fields_set = storyboard_defaults.get_pydantic_fields_set", episodes_source)
+        self.assertIn("_get_first_episode_for_storyboard_defaults = storyboard_defaults.get_first_episode_for_storyboard_defaults", episodes_source)
+        self.assertIn("storyboard_defaults.build_episode_storyboard_sora_create_values", episodes_source)
+        for name in {
+            "_normalize_detail_images_provider",
+            "_resolve_episode_detail_images_provider",
+            "_normalize_detail_images_model",
+            "_normalize_storyboard2_video_duration",
+            "_normalize_storyboard2_image_cw",
+        }:
+            self.assertIn(f"{name} = storyboard_defaults.{name[1:]}", main_source)
+            self.assertIn(f"{name} = storyboard_defaults.{name[1:]}", episodes_source)
+            self.assertIn(f"{name} = storyboard_defaults.{name[1:]}", scripts_source)
+
     def test_web_startup_event_excludes_schema_bootstrap_and_preflight_responsibilities(self):
         source = MAIN_PATH.read_text(encoding="utf-8-sig")
         startup_node = _function_node(source, "startup_event")
