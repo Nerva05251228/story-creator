@@ -155,6 +155,48 @@ class StartupImportContractTests(unittest.TestCase):
         for name in delegated_names:
             self.assertIn(f"{name} = episodes.{name}", source)
 
+    def test_episode_router_batch_video_helpers_are_defined(self):
+        source = (BACKEND_DIR / "api" / "routers" / "episodes.py").read_text(encoding="utf-8-sig")
+        top_level_defs = _top_level_definition_names(source)
+
+        required_helpers = {
+            "_resolve_storyboard_video_model_by_provider",
+            "_is_moti_storyboard_video_model",
+            "_record_storyboard_video_charge",
+        }
+
+        self.assertEqual(required_helpers - top_level_defs, set())
+
+    def test_billing_charge_helpers_live_in_service_module(self):
+        main_source = MAIN_PATH.read_text(encoding="utf-8-sig")
+        episodes_source = (BACKEND_DIR / "api" / "routers" / "episodes.py").read_text(encoding="utf-8-sig")
+        main_top_level_defs = _top_level_definition_names(main_source)
+        episodes_top_level_defs = _top_level_definition_names(episodes_source)
+
+        self.assertIn("from api.services import billing_charges", main_source)
+        self.assertIn("from api.services import billing_charges", episodes_source)
+        self.assertEqual(
+            main_top_level_defs
+            & {
+                "_safe_json_dumps",
+                "_record_card_image_charge",
+                "_record_storyboard_image_charge",
+                "_record_detail_image_charge",
+                "_record_storyboard2_video_charge",
+                "_record_storyboard2_image_charge",
+            },
+            set(),
+        )
+        self.assertEqual(
+            episodes_top_level_defs
+            & {
+                "_safe_json_dumps",
+                "_record_storyboard2_video_charge",
+                "_record_storyboard2_image_charge",
+            },
+            set(),
+        )
+
     def test_web_startup_event_excludes_schema_bootstrap_and_preflight_responsibilities(self):
         source = MAIN_PATH.read_text(encoding="utf-8-sig")
         startup_node = _function_node(source, "startup_event")

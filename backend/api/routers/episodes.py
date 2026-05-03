@@ -35,6 +35,7 @@ from auth import get_current_user
 from dashboard_service import log_file_task_event, sync_managed_task_to_dashboard
 from database import SessionLocal, get_db
 from managed_generation_service import ACTIVE_MANAGED_SESSION_STATUSES
+from api.services import billing_charges
 from api.services.simple_storyboard_batches import (
     _get_simple_storyboard_batch_rows,
     _get_simple_storyboard_batch_summary,
@@ -160,88 +161,35 @@ ACTIVE_MANAGED_TASK_STATUSES = ("pending", "processing")
 MAX_ACTIVE_VIDEO_GENERATIONS_PER_SHOT = 1
 
 
-def _safe_json_dumps(payload: Any) -> str:
-    try:
-        return json.dumps(payload or {}, ensure_ascii=False)
-    except Exception:
-        return ""
+_safe_json_dumps = billing_charges.safe_json_dumps
+_record_storyboard2_video_charge = billing_charges.record_storyboard2_video_charge
+_record_storyboard2_image_charge = billing_charges.record_storyboard2_image_charge
 
 
-def _record_storyboard2_video_charge(
+def _resolve_storyboard_video_billing_model(shot: models.StoryboardShot) -> str:
+    return billing_charges.resolve_storyboard_video_billing_model(
+        shot,
+        resolve_model_by_provider=_resolve_storyboard_video_model_by_provider,
+        default_model=DEFAULT_STORYBOARD_VIDEO_MODEL,
+    )
+
+
+def _record_storyboard_video_charge(
     db: Session,
     *,
-    sub_shot: models.Storyboard2SubShot,
-    storyboard2_shot: models.Storyboard2Shot,
+    shot: models.StoryboardShot,
     task_id: str,
-    model_name: str,
-    duration: int,
+    stage: str = "video_generate",
     detail_payload: Optional[Dict[str, Any]] = None,
 ):
-    context = billing_service.get_storyboard2_sub_shot_context(db, sub_shot_id=int(sub_shot.id))
-    if not context:
-        return None
-    try:
-        return billing_service.create_charge_entry(
-            db,
-            user_id=int(context["user_id"]),
-            script_id=int(context["script_id"]),
-            episode_id=int(context["episode_id"]),
-            category="video",
-            stage="storyboard2_video_generate",
-            provider="yijia",
-            model_name=str(model_name or "grok"),
-            quantity=max(1, int(duration or 0)),
-            billing_key=f"video:storyboard2:{sub_shot.id}:task:{task_id}",
-            operation_key=f"video:storyboard2:{storyboard2_shot.id}:sub{sub_shot.id}",
-            initial_status="pending",
-            storyboard2_shot_id=int(storyboard2_shot.id),
-            sub_shot_id=int(sub_shot.id),
-            attempt_index=1,
-            external_task_id=str(task_id or ""),
-            detail_json=_safe_json_dumps(detail_payload),
-        )
-    except ValueError:
-        return None
-
-
-def _record_storyboard2_image_charge(
-    db: Session,
-    *,
-    sub_shot: models.Storyboard2SubShot,
-    storyboard2_shot: models.Storyboard2Shot,
-    task_id: str,
-    model_name: str,
-    resolution: str = "",
-    quantity: int,
-    detail_payload: Optional[Dict[str, Any]] = None,
-):
-    return None
-    context = billing_service.get_storyboard2_sub_shot_context(db, sub_shot_id=int(sub_shot.id))
-    if not context:
-        return None
-    try:
-        return billing_service.create_charge_entry(
-            db,
-            user_id=int(context["user_id"]),
-            script_id=int(context["script_id"]),
-            episode_id=int(context["episode_id"]),
-            category="image",
-            stage="storyboard2_image_generate",
-            provider="jimeng",
-            model_name=str(model_name or "鍥剧墖 4.0"),
-            resolution=str(resolution or ""),
-            quantity=max(1, int(quantity or 1)),
-            billing_key=f"image:storyboard2:{sub_shot.id}:task:{task_id}",
-            operation_key=f"image:storyboard2:{storyboard2_shot.id}:sub{sub_shot.id}",
-            initial_status="pending",
-            storyboard2_shot_id=int(storyboard2_shot.id),
-            sub_shot_id=int(sub_shot.id),
-            attempt_index=1,
-            external_task_id=str(task_id or ""),
-            detail_json=_safe_json_dumps(detail_payload),
-        )
-    except ValueError:
-        return None
+    return billing_charges.record_storyboard_video_charge(
+        db,
+        shot=shot,
+        task_id=task_id,
+        model_name=_resolve_storyboard_video_billing_model(shot),
+        stage=stage,
+        detail_payload=detail_payload,
+    )
 
 
 _STORYBOARD_VIDEO_MODEL_CONFIG = {
@@ -6523,6 +6471,30 @@ def _is_storyboard_shot_model_override_enabled(shot) -> bool:
 def _resolve_storyboard_video_provider(model: str) -> str:
     model_key = _normalize_storyboard_video_model(model, default_model=DEFAULT_STORYBOARD_VIDEO_MODEL)
     return str(_STORYBOARD_VIDEO_MODEL_CONFIG[model_key]["provider"])
+
+
+def _is_moti_storyboard_video_model(model: Optional[str]) -> bool:
+    model_key = _normalize_storyboard_video_model(model, default_model=DEFAULT_STORYBOARD_VIDEO_MODEL)
+    return str(_STORYBOARD_VIDEO_MODEL_CONFIG[model_key].get("provider") or "") == "moti"
+
+
+def _resolve_storyboard_video_model_by_provider(
+    provider: Optional[str],
+    default_model: str = DEFAULT_STORYBOARD_VIDEO_MODEL,
+) -> str:
+    raw = (provider or "").strip().lower()
+    if raw in {"yijia-grok", "yijia"}:
+        normalized_default = _normalize_storyboard_video_model(default_model, default_model=DEFAULT_STORYBOARD_VIDEO_MODEL)
+        if normalized_default in {"sora-2", "grok"}:
+            return normalized_default
+        return "grok"
+    if raw == "moti":
+        normalized_default = _normalize_storyboard_video_model(default_model, default_model=DEFAULT_STORYBOARD_VIDEO_MODEL)
+        if _is_moti_storyboard_video_model(normalized_default):
+            return normalized_default
+        return DEFAULT_STORYBOARD_VIDEO_MODEL
+    return _normalize_storyboard_video_model(default_model, default_model=DEFAULT_STORYBOARD_VIDEO_MODEL)
+
 
 def _get_episode_storyboard_video_settings(episode) -> Dict[str, Any]:
     model = _normalize_storyboard_video_model(

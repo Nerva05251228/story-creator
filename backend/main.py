@@ -49,6 +49,7 @@ from api.services.card_media import (
     save_and_upload_to_cdn,
     save_audio_and_upload_to_cdn,
 )
+from api.services import billing_charges
 from api.services import card_image_generation as card_image_generation_service
 from api.services import model_configs as model_configs_service
 from api.services import simple_storyboard_batches as simple_storyboard_batches_service
@@ -165,140 +166,20 @@ simple_storyboard_batch_update_lock = simple_storyboard_batches_service.simple_s
 startup_bootstrap_lock_handle = None
 
 
-def _safe_json_dumps(payload: Any) -> str:
-    try:
-        return json.dumps(payload or {}, ensure_ascii=False)
-    except Exception:
-        return ""
+_safe_json_dumps = billing_charges.safe_json_dumps
 
 
 def _resolve_storyboard_video_billing_model(shot: models.StoryboardShot) -> str:
-    provider = str(getattr(shot, "provider", "") or "").strip().lower()
-    if provider == "yijia-grok":
-        provider = "yijia"
-    return str(
-        _resolve_storyboard_video_model_by_provider(
-            provider,
-            default_model=getattr(shot, "storyboard_video_model", None) or getattr(shot, "provider", None) or DEFAULT_STORYBOARD_VIDEO_MODEL,
-        )
+    return billing_charges.resolve_storyboard_video_billing_model(
+        shot,
+        resolve_model_by_provider=_resolve_storyboard_video_model_by_provider,
+        default_model=DEFAULT_STORYBOARD_VIDEO_MODEL,
     )
 
 
-def _record_card_image_charge(
-    db: Session,
-    *,
-    card: models.SubjectCard,
-    model_name: str,
-    provider: str,
-    resolution: str = "",
-    task_id: str,
-    quantity: int,
-    detail_payload: Optional[Dict[str, Any]] = None,
-):
-    return None
-    context = billing_service.get_card_episode_context(db, card_id=int(card.id))
-    if not context:
-        return None
-    try:
-        return billing_service.create_charge_entry(
-            db,
-            user_id=int(context["user_id"]),
-            script_id=int(context["script_id"]),
-            episode_id=int(context["episode_id"]),
-            category="image",
-            stage="card_image_generate",
-            provider=str(provider or ""),
-            model_name=str(model_name or ""),
-            resolution=str(resolution or ""),
-            quantity=max(1, int(quantity or 1)),
-            billing_key=f"image:card:{card.id}:task:{task_id}",
-            operation_key=f"image:card:{card.id}",
-            initial_status="pending",
-            card_id=int(card.id),
-            attempt_index=1,
-            external_task_id=str(task_id or ""),
-            detail_json=_safe_json_dumps(detail_payload),
-        )
-    except ValueError:
-        return None
-
-
-def _record_storyboard_image_charge(
-    db: Session,
-    *,
-    shot: models.StoryboardShot,
-    model_name: str,
-    provider: str,
-    resolution: str = "",
-    task_id: str,
-    detail_payload: Optional[Dict[str, Any]] = None,
-):
-    return None
-    context = billing_service.get_shot_episode_context(db, shot_id=int(shot.id))
-    if not context:
-        return None
-    try:
-        return billing_service.create_charge_entry(
-            db,
-            user_id=int(context["user_id"]),
-            script_id=int(context["script_id"]),
-            episode_id=int(context["episode_id"]),
-            category="image",
-            stage="storyboard_image_generate",
-            provider=str(provider or ""),
-            model_name=str(model_name or ""),
-            resolution=str(resolution or ""),
-            quantity=1,
-            billing_key=f"image:storyboard:{shot.id}:task:{task_id}",
-            operation_key=f"image:storyboard:{shot.id}",
-            initial_status="pending",
-            shot_id=int(shot.id),
-            attempt_index=1,
-            external_task_id=str(task_id or ""),
-            detail_json=_safe_json_dumps(detail_payload),
-        )
-    except ValueError:
-        return None
-
-
-def _record_detail_image_charge(
-    db: Session,
-    *,
-    detail_img: models.ShotDetailImage,
-    shot: models.StoryboardShot,
-    model_name: str,
-    provider: str,
-    resolution: str = "",
-    task_id: str,
-    detail_payload: Optional[Dict[str, Any]] = None,
-):
-    return None
-    context = billing_service.get_shot_episode_context(db, shot_id=int(shot.id))
-    if not context:
-        return None
-    try:
-        return billing_service.create_charge_entry(
-            db,
-            user_id=int(context["user_id"]),
-            script_id=int(context["script_id"]),
-            episode_id=int(context["episode_id"]),
-            category="image",
-            stage="detail_images",
-            provider=str(provider or ""),
-            model_name=str(model_name or ""),
-            resolution=str(resolution or ""),
-            quantity=1,
-            billing_key=f"image:detail:{detail_img.id}:task:{task_id}",
-            operation_key=f"image:detail:{shot.id}:sub{detail_img.sub_shot_index}",
-            initial_status="pending",
-            shot_id=int(shot.id),
-            sub_shot_id=int(detail_img.id),
-            attempt_index=1,
-            external_task_id=str(task_id or ""),
-            detail_json=_safe_json_dumps(detail_payload),
-        )
-    except ValueError:
-        return None
+_record_card_image_charge = billing_charges.record_card_image_charge
+_record_storyboard_image_charge = billing_charges.record_storyboard_image_charge
+_record_detail_image_charge = billing_charges.record_detail_image_charge
 
 
 def _record_storyboard_video_charge(
@@ -309,107 +190,18 @@ def _record_storyboard_video_charge(
     stage: str = "video_generate",
     detail_payload: Optional[Dict[str, Any]] = None,
 ):
-    context = billing_service.get_shot_episode_context(db, shot_id=int(shot.id))
-    if not context:
-        return None
-    try:
-        return billing_service.create_charge_entry(
-            db,
-            user_id=int(context["user_id"]),
-            script_id=int(context["script_id"]),
-            episode_id=int(context["episode_id"]),
-            category="video",
-            stage=stage,
-            provider=str(getattr(shot, "provider", "") or ""),
-            model_name=_resolve_storyboard_video_billing_model(shot),
-            quantity=max(1, int(getattr(shot, "duration", 0) or 0)),
-            billing_key=f"video:shot:{shot.id}:task:{task_id}",
-            operation_key=f"video:shot:{shot.id}",
-            initial_status="pending",
-            shot_id=int(shot.id),
-            attempt_index=1,
-            external_task_id=str(task_id or ""),
-            detail_json=_safe_json_dumps(detail_payload),
-        )
-    except ValueError:
-        return None
+    return billing_charges.record_storyboard_video_charge(
+        db,
+        shot=shot,
+        task_id=task_id,
+        model_name=_resolve_storyboard_video_billing_model(shot),
+        stage=stage,
+        detail_payload=detail_payload,
+    )
 
 
-def _record_storyboard2_video_charge(
-    db: Session,
-    *,
-    sub_shot: models.Storyboard2SubShot,
-    storyboard2_shot: models.Storyboard2Shot,
-    task_id: str,
-    model_name: str,
-    duration: int,
-    detail_payload: Optional[Dict[str, Any]] = None,
-):
-    context = billing_service.get_storyboard2_sub_shot_context(db, sub_shot_id=int(sub_shot.id))
-    if not context:
-        return None
-    try:
-        return billing_service.create_charge_entry(
-            db,
-            user_id=int(context["user_id"]),
-            script_id=int(context["script_id"]),
-            episode_id=int(context["episode_id"]),
-            category="video",
-            stage="storyboard2_video_generate",
-            provider="yijia",
-            model_name=str(model_name or "grok"),
-            quantity=max(1, int(duration or 0)),
-            billing_key=f"video:storyboard2:{sub_shot.id}:task:{task_id}",
-            operation_key=f"video:storyboard2:{storyboard2_shot.id}:sub{sub_shot.id}",
-            initial_status="pending",
-            storyboard2_shot_id=int(storyboard2_shot.id),
-            sub_shot_id=int(sub_shot.id),
-            attempt_index=1,
-            external_task_id=str(task_id or ""),
-            detail_json=_safe_json_dumps(detail_payload),
-        )
-    except ValueError:
-        return None
-
-
-def _record_storyboard2_image_charge(
-    db: Session,
-    *,
-    sub_shot: models.Storyboard2SubShot,
-    storyboard2_shot: models.Storyboard2Shot,
-    task_id: str,
-    model_name: str,
-    resolution: str = "",
-    quantity: int,
-    detail_payload: Optional[Dict[str, Any]] = None,
-):
-    return None
-    context = billing_service.get_storyboard2_sub_shot_context(db, sub_shot_id=int(sub_shot.id))
-    if not context:
-        return None
-    try:
-        return billing_service.create_charge_entry(
-            db,
-            user_id=int(context["user_id"]),
-            script_id=int(context["script_id"]),
-            episode_id=int(context["episode_id"]),
-            category="image",
-            stage="storyboard2_image_generate",
-            provider="jimeng",
-            model_name=str(model_name or "图片 4.0"),
-            resolution=str(resolution or ""),
-            quantity=max(1, int(quantity or 1)),
-            billing_key=f"image:storyboard2:{sub_shot.id}:task:{task_id}",
-            operation_key=f"image:storyboard2:{storyboard2_shot.id}:sub{sub_shot.id}",
-            initial_status="pending",
-            storyboard2_shot_id=int(storyboard2_shot.id),
-            sub_shot_id=int(sub_shot.id),
-            attempt_index=1,
-            external_task_id=str(task_id or ""),
-            detail_json=_safe_json_dumps(detail_payload),
-        )
-    except ValueError:
-        return None
+_record_storyboard2_video_charge = billing_charges.record_storyboard2_video_charge
+_record_storyboard2_image_charge = billing_charges.record_storyboard2_image_charge
 
 
 def _read_utf8_text_file(file_path: str) -> str:

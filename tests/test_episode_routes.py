@@ -662,8 +662,7 @@ class EpisodeRouterTests(unittest.TestCase):
         ), patch.object(
             episodes,
             "_record_storyboard2_video_charge",
-            create=True,
-        ), patch.object(
+        ) as record_video_charge, patch.object(
             episodes,
             "Thread",
             FakeThread,
@@ -685,6 +684,13 @@ class EpisodeRouterTests(unittest.TestCase):
         self.assertEqual(payload["status"], "processing")
         self.assertEqual(payload["progress"], 12)
         self.assertEqual(len(started_pollers), 1)
+        record_video_charge.assert_called_once()
+        charge_kwargs = record_video_charge.call_args.kwargs
+        self.assertEqual(charge_kwargs["task_id"], "storyboard2-video-task")
+        self.assertEqual(charge_kwargs["model_name"], "grok")
+        self.assertEqual(charge_kwargs["duration"], 6)
+        self.assertEqual(charge_kwargs["detail_payload"]["aspect_ratio"], "9:16")
+        self.assertEqual(charge_kwargs["detail_payload"]["resolution_name"], "720p")
 
         self.assertEqual(second_response.status_code, 200)
         second_payload = second_response.json()

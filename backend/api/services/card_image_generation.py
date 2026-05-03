@@ -11,6 +11,7 @@ import image_platform_client
 import models
 from ai_service import get_prompt_by_key
 from api.schemas.card_media import ImageGenerationRequest
+from api.services import billing_charges
 from dashboard_service import log_debug_task_event
 from image_generation_service import (
     get_image_status_api_url,
@@ -255,18 +256,7 @@ def _build_image_generation_request_payload(
     return payload
 
 
-def _record_card_image_charge(
-    db: Session,
-    *,
-    card: models.SubjectCard,
-    model_name: str,
-    provider: str,
-    resolution: str = "",
-    task_id: str,
-    quantity: int,
-    detail_payload: Optional[dict] = None,
-):
-    return None
+_record_card_image_charge = billing_charges.record_card_image_charge
 
 
 async def submit_card_image_generation(

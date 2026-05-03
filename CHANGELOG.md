@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 This project uses a lightweight `Added`, `Changed`, `Fixed`, `Security`, and `Migration` structure.
 
+## 2026-05-03 - Billing Charge Helper Extraction
+
+### Added
+
+- Added focused tests for extracted billing charge helpers, preserving active video charge behavior and disabled image precharge behavior.
+- Added import-contract coverage so billing charge helper bodies stay out of `backend/main.py` and the episode router.
+
+### Changed
+
+- Moved shared billing JSON serialization, storyboard video charge creation, storyboard2 video charge creation, and image precharge no-op helpers into `backend/api/services/billing_charges.py`.
+- Updated `backend/main.py`, `backend/api/routers/episodes.py`, and card image generation to use the shared billing charge service while keeping existing helper names for direct callers.
+
+### Fixed
+
+- Restored the episode router's ordinary storyboard batch video charge helper wiring so submitted external video tasks do not hit a hidden `NameError` after task creation.
+
 ## 2026-05-03 - Storyboard2 Core Helper Deduplication
 
 ### Added
