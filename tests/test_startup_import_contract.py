@@ -75,6 +75,15 @@ def _function_call_leaf_names(source: str, function_name: str) -> set[str]:
     return names
 
 
+def _top_level_definition_names(source: str) -> set[str]:
+    tree = ast.parse(source)
+    return {
+        node.name
+        for node in tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+    }
+
+
 class StartupImportContractTests(unittest.TestCase):
     def test_main_import_does_not_run_database_bootstrap(self):
         source = MAIN_PATH.read_text(encoding="utf-8-sig")
@@ -107,6 +116,44 @@ class StartupImportContractTests(unittest.TestCase):
         self.assertIn("stop_background_pollers", shutdown_body)
         self.assertNotIn("poller.stop", shutdown_body)
         self.assertNotIn("image_poller.stop", shutdown_body)
+
+    def test_storyboard2_core_helpers_are_not_redefined_in_main(self):
+        source = MAIN_PATH.read_text(encoding="utf-8-sig")
+        top_level_defs = _top_level_definition_names(source)
+        delegated_names = {
+            "Storyboard2BatchGenerateSoraPromptsRequest",
+            "Storyboard2UpdateShotRequest",
+            "Storyboard2UpdateSubShotRequest",
+            "_verify_episode_permission",
+            "_parse_storyboard2_card_ids",
+            "_clean_scene_ai_prompt_text",
+            "_extract_scene_description_from_card_ids",
+            "_resolve_storyboard2_scene_override_text",
+            "_pick_storyboard2_source_shots",
+            "_ensure_storyboard2_initialized",
+            "_mark_storyboard2_image_task_active",
+            "_mark_storyboard2_image_task_inactive",
+            "_is_storyboard2_image_task_active",
+            "_recover_orphan_storyboard2_image_tasks",
+            "_serialize_storyboard2_board",
+            "_get_storyboard2_sub_shot_with_permission",
+            "_get_storyboard2_shot_with_permission",
+            "_resolve_storyboard2_selected_card_ids",
+            "_is_scene_subject_card_type",
+            "_subject_type_sort_key",
+            "_get_optional_prompt_config_content",
+            "_save_storyboard2_image_debug",
+            "_save_storyboard2_video_debug",
+            "_normalize_storyboard2_video_status",
+            "_is_storyboard2_video_processing",
+            "_build_storyboard2_video_name_tag",
+            "_process_storyboard2_video_cover_and_cdn",
+            "_sync_storyboard2_processing_videos",
+        }
+
+        self.assertEqual(top_level_defs & delegated_names, set())
+        for name in delegated_names:
+            self.assertIn(f"{name} = episodes.{name}", source)
 
     def test_web_startup_event_excludes_schema_bootstrap_and_preflight_responsibilities(self):
         source = MAIN_PATH.read_text(encoding="utf-8-sig")

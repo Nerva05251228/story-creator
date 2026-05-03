@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 This project uses a lightweight `Added`, `Changed`, `Fixed`, `Security`, and `Migration` structure.
 
+## 2026-05-03 - Storyboard2 Core Helper Deduplication
+
+### Added
+
+- Added an AST import-contract guard so `backend/main.py` cannot reintroduce duplicate storyboard2 helper and request model implementations already owned by the episodes router.
+
+### Changed
+
+- Removed duplicate storyboard2 permission, initialization, board serialization, image task recovery, video status sync, debug writer, and request model implementations from `backend/main.py`.
+- Kept `backend/main.py` compatibility aliases pointing to `backend/api/routers/episodes.py` so direct callers keep the same symbol names while the live implementation remains in one place.
+
 ## 2026-05-03 - Simple Storyboard Batch Service Extraction
 
 ### Added
