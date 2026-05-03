@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 This project uses a lightweight `Added`, `Changed`, `Fixed`, `Security`, and `Migration` structure.
 
+## 2026-05-03 - Voiceover Shared Data Helper Service Extraction
+
+### Added
+
+- Added shared voiceover shared-data helpers to `backend/api/services/voiceover_data.py` for default shared payloads, caller-relative default reference paths, default reference construction, shared-data normalization, and script load/save normalization.
+- Added focused service tests for caller-relative default MP3 path resolution, fresh shared-data defaults, default reference injection, missing-file behavior, and JSON normalization on load/save.
+- Added import-contract coverage so the shared-data helper bodies stay out of `backend/main.py` and `backend/api/routers/episodes.py`.
+
+### Changed
+
+- Updated `backend/main.py` and `backend/api/routers/episodes.py` to keep compatibility aliases for voiceover shared-data helpers while preserving existing API paths, response shapes, authorization behavior, and caller-relative default reference resolution.
+
 ## 2026-05-03 - Voiceover TTS Helper Service Extraction
 
 ### Added

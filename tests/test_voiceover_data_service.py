@@ -279,6 +279,157 @@ class VoiceoverDataServiceTests(unittest.TestCase):
             "voice-1",
         )
 
+    def test_default_test_mp3_path_uses_callers_module_location(self):
+        cases = [
+            str(BACKEND_DIR / "main.py"),
+            str(BACKEND_DIR / "api" / "routers" / "episodes.py"),
+        ]
+
+        for module_file in cases:
+            expected = os.path.abspath(
+                os.path.join(os.path.dirname(module_file), "..", "TTS_example", "test.mp3")
+            )
+            self.assertEqual(voiceover_data.voiceover_default_test_mp3_path(module_file), expected)
+
+    def test_default_reference_item_uses_supplied_path_and_clock(self):
+        item = voiceover_data.voiceover_default_reference_item(
+            lambda: "D:/tmp/test.mp3",
+            now_factory=lambda: "2026-05-03T12:00:00",
+        )
+
+        self.assertEqual(item["id"], "voice_ref_default_female_1")
+        self.assertEqual(item["name"], "女声1")
+        self.assertEqual(item["file_name"], "test.mp3")
+        self.assertEqual(item["url"], "")
+        self.assertEqual(item["local_path"], "D:/tmp/test.mp3")
+        self.assertEqual(item["created_at"], "2026-05-03T12:00:00")
+
+    def test_default_shared_data_returns_fresh_lists(self):
+        first = voiceover_data.voiceover_default_shared_data()
+        first["voice_references"].append({"id": "voice-1"})
+
+        second = voiceover_data.voiceover_default_shared_data()
+
+        self.assertEqual(second["voice_references"], [])
+        self.assertEqual(second["vector_presets"], [])
+        self.assertEqual(second["emotion_audio_presets"], [])
+        self.assertEqual(second["setting_templates"], [])
+        self.assertIsNot(first["voice_references"], second["voice_references"])
+
+    def test_normalize_shared_data_filters_items_and_adds_existing_default_reference(self):
+        default_item = {
+            "id": "default-ref",
+            "name": "Default",
+            "file_name": "default.mp3",
+            "url": "",
+            "local_path": "D:/tmp/default.mp3",
+            "created_at": "2026-05-03T00:00:00",
+        }
+
+        normalized = voiceover_data.normalize_voiceover_shared_data(
+            {
+                "initialized": False,
+                "voice_references": [
+                    {"id": "", "name": "bad"},
+                    {"id": " voice-1 ", "name": " Voice ", "created_at": "created"},
+                ],
+                "vector_presets": [
+                    {"id": " preset-1 ", "name": " Preset ", "vector_config": {"joy": "0.3"}},
+                    {"id": "missing-name"},
+                ],
+                "emotion_audio_presets": [
+                    {"id": " audio-1 ", "name": " Audio ", "url": " url "},
+                    "bad",
+                ],
+                "setting_templates": [
+                    {
+                        "id": " template-1 ",
+                        "name": " Template ",
+                        "settings": {
+                            "emotion_control_method": "bad",
+                            "voice_reference_id": "",
+                        },
+                        "created_at": "created",
+                    },
+                    {"id": "bad"},
+                ],
+            },
+            default_reference_item_factory=lambda: default_item,
+            reference_exists=lambda _path: True,
+        )
+
+        self.assertTrue(normalized["initialized"])
+        self.assertEqual(len(normalized["voice_references"]), 1)
+        self.assertEqual(normalized["voice_references"][0]["id"], "voice-1")
+        self.assertEqual(normalized["voice_references"][0]["name"], "Voice")
+        self.assertEqual(len(normalized["vector_presets"]), 1)
+        self.assertEqual(normalized["vector_presets"][0]["id"], "preset-1")
+        self.assertEqual(normalized["vector_presets"][0]["vector_config"]["joy"], 0.3)
+        self.assertEqual(len(normalized["emotion_audio_presets"]), 1)
+        self.assertEqual(normalized["emotion_audio_presets"][0]["id"], "audio-1")
+        self.assertEqual(len(normalized["setting_templates"]), 1)
+        self.assertEqual(
+            normalized["setting_templates"][0]["settings"]["voice_reference_id"],
+            "voice-1",
+        )
+
+    def test_normalize_shared_data_skips_default_reference_when_file_missing(self):
+        default_item = {
+            "id": "default-ref",
+            "name": "Default",
+            "file_name": "default.mp3",
+            "url": "",
+            "local_path": "D:/tmp/default.mp3",
+            "created_at": "2026-05-03T00:00:00",
+        }
+
+        normalized = voiceover_data.normalize_voiceover_shared_data(
+            {"initialized": False},
+            default_reference_item_factory=lambda: default_item,
+            reference_exists=lambda _path: False,
+        )
+
+        self.assertTrue(normalized["initialized"])
+        self.assertEqual(normalized["voice_references"], [])
+
+    def test_load_and_save_script_voiceover_shared_data_normalize_json_payload(self):
+        class ScriptStub:
+            voiceover_shared_data = "not json"
+
+        script = ScriptStub()
+        loaded = voiceover_data.load_script_voiceover_shared_data(script)
+
+        self.assertTrue(loaded["initialized"])
+        self.assertEqual(loaded["voice_references"], [])
+
+        voiceover_data.save_script_voiceover_shared_data(
+            script,
+            {
+                "initialized": True,
+                "voice_references": [{"id": " voice-2 ", "name": " Next ", "file_name": " next.mp3 "}],
+                "vector_presets": "bad",
+                "emotion_audio_presets": [{"id": " audio-1 ", "name": " Audio "}],
+                "setting_templates": [
+                    {
+                        "id": " template-1 ",
+                        "name": " Template ",
+                        "settings": {
+                            "emotion_control_method": "bad",
+                            "voice_reference_id": "",
+                        },
+                    }
+                ],
+            },
+        )
+
+        saved = json.loads(script.voiceover_shared_data)
+        self.assertTrue(saved["initialized"])
+        self.assertEqual(saved["voice_references"][0]["id"], "voice-2")
+        self.assertEqual(saved["voice_references"][0]["name"], "Next")
+        self.assertEqual(saved["vector_presets"], [])
+        self.assertEqual(saved["emotion_audio_presets"][0]["id"], "audio-1")
+        self.assertEqual(saved["setting_templates"][0]["settings"]["voice_reference_id"], "voice-2")
+
 
 if __name__ == "__main__":
     unittest.main()

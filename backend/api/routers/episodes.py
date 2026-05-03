@@ -13,6 +13,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from io import BytesIO
 from threading import Lock, Thread
+from functools import partial
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 
@@ -524,146 +525,32 @@ _merge_voiceover_line_preserving_tts = voiceover_data.merge_voiceover_line_prese
 _merge_voiceover_dialogue_preserving_tts = voiceover_data.merge_voiceover_dialogue_preserving_tts
 _merge_voiceover_shots_preserving_extensions = voiceover_data.merge_voiceover_shots_preserving_extensions
 
-def _voiceover_default_test_mp3_path() -> str:
-    return os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "..", "TTS_example", "test.mp3")
-    )
+_voiceover_default_test_mp3_path = partial(voiceover_data.voiceover_default_test_mp3_path, __file__)
 
 _voiceover_default_vector_config = voiceover_data.voiceover_default_vector_config
 
-def _voiceover_default_shared_data() -> dict:
-    return {
-        "initialized": False,
-        "voice_references": [],
-        "vector_presets": [],
-        "emotion_audio_presets": [],
-        "setting_templates": []
-    }
-
-def _voiceover_default_reference_item() -> dict:
-    return {
-        "id": "voice_ref_default_female_1",
-        "name": "女声1",
-        "file_name": "test.mp3",
-        "url": "",
-        "local_path": _voiceover_default_test_mp3_path(),
-        "created_at": datetime.utcnow().isoformat()
-    }
+_voiceover_default_shared_data = voiceover_data.voiceover_default_shared_data
+_voiceover_default_reference_item = partial(
+    voiceover_data.voiceover_default_reference_item,
+    _voiceover_default_test_mp3_path,
+)
 
 _safe_float = voiceover_data.safe_float
 _normalize_voiceover_vector_config = voiceover_data.normalize_voiceover_vector_config
 _normalize_voiceover_setting_template_payload = voiceover_data.normalize_voiceover_setting_template_payload
 
-def _normalize_voiceover_shared_data(raw_data: Any) -> dict:
-    source = raw_data if isinstance(raw_data, dict) else {}
-    normalized = _voiceover_default_shared_data()
-    normalized["initialized"] = bool(source.get("initialized", False))
-
-    voice_references = source.get("voice_references", [])
-    if isinstance(voice_references, list):
-        for item in voice_references:
-            if not isinstance(item, dict):
-                continue
-            ref_id = str(item.get("id") or "").strip()
-            name = str(item.get("name") or "").strip()
-            if not ref_id or not name:
-                continue
-            normalized["voice_references"].append({
-                "id": ref_id,
-                "name": name,
-                "file_name": str(item.get("file_name") or "").strip(),
-                "url": str(item.get("url") or "").strip(),
-                "local_path": str(item.get("local_path") or "").strip(),
-                "created_at": str(item.get("created_at") or datetime.utcnow().isoformat())
-            })
-
-    vector_presets = source.get("vector_presets", [])
-    if isinstance(vector_presets, list):
-        for item in vector_presets:
-            if not isinstance(item, dict):
-                continue
-            preset_id = str(item.get("id") or "").strip()
-            name = str(item.get("name") or "").strip()
-            if not preset_id or not name:
-                continue
-            normalized["vector_presets"].append({
-                "id": preset_id,
-                "name": name,
-                "description": str(item.get("description") or "").strip(),
-                "vector_config": _normalize_voiceover_vector_config(item.get("vector_config")),
-                "created_at": str(item.get("created_at") or datetime.utcnow().isoformat())
-            })
-
-    emotion_audio_presets = source.get("emotion_audio_presets", [])
-    if isinstance(emotion_audio_presets, list):
-        for item in emotion_audio_presets:
-            if not isinstance(item, dict):
-                continue
-            preset_id = str(item.get("id") or "").strip()
-            name = str(item.get("name") or "").strip()
-            if not preset_id or not name:
-                continue
-            normalized["emotion_audio_presets"].append({
-                "id": preset_id,
-                "name": name,
-                "description": str(item.get("description") or "").strip(),
-                "file_name": str(item.get("file_name") or "").strip(),
-                "url": str(item.get("url") or "").strip(),
-                "local_path": str(item.get("local_path") or "").strip(),
-                "created_at": str(item.get("created_at") or datetime.utcnow().isoformat())
-            })
-
-    default_voice_ref_id = ""
-    if normalized["voice_references"]:
-        default_voice_ref_id = str(normalized["voice_references"][0].get("id") or "").strip()
-
-    setting_templates = source.get("setting_templates", [])
-    if isinstance(setting_templates, list):
-        for item in setting_templates:
-            if not isinstance(item, dict):
-                continue
-            template_id = str(item.get("id") or "").strip()
-            name = str(item.get("name") or "").strip()
-            if not template_id or not name:
-                continue
-            normalized["setting_templates"].append({
-                "id": template_id,
-                "name": name,
-                "settings": _normalize_voiceover_setting_template_payload(
-                    item.get("settings"),
-                    default_voice_ref_id
-                ),
-                "created_at": str(item.get("created_at") or datetime.utcnow().isoformat()),
-                "updated_at": str(item.get("updated_at") or item.get("created_at") or datetime.utcnow().isoformat())
-            })
-
-    # 首次初始化：自动加入默认音色
-    if not normalized["initialized"]:
-        if not normalized["voice_references"]:
-            default_item = _voiceover_default_reference_item()
-            if os.path.exists(default_item["local_path"]):
-                normalized["voice_references"].append(default_item)
-        normalized["initialized"] = True
-
-    return normalized
-
-def _load_script_voiceover_shared_data(script: models.Script) -> dict:
-    raw_payload = {}
-    raw_text = (script.voiceover_shared_data or "").strip()
-    if raw_text:
-        try:
-            parsed = json.loads(raw_text)
-            if isinstance(parsed, dict):
-                raw_payload = parsed
-        except Exception:
-            raw_payload = {}
-    return _normalize_voiceover_shared_data(raw_payload)
-
-def _save_script_voiceover_shared_data(script: models.Script, payload: dict):
-    script.voiceover_shared_data = json.dumps(
-        _normalize_voiceover_shared_data(payload),
-        ensure_ascii=False
-    )
+_normalize_voiceover_shared_data = partial(
+    voiceover_data.normalize_voiceover_shared_data,
+    default_reference_item_factory=_voiceover_default_reference_item,
+)
+_load_script_voiceover_shared_data = partial(
+    voiceover_data.load_script_voiceover_shared_data,
+    normalize_shared_data=_normalize_voiceover_shared_data,
+)
+_save_script_voiceover_shared_data = partial(
+    voiceover_data.save_script_voiceover_shared_data,
+    normalize_shared_data=_normalize_voiceover_shared_data,
+)
 
 _voiceover_default_line_tts = voiceover_data.voiceover_default_line_tts
 _normalize_voiceover_line_tts = voiceover_data.normalize_voiceover_line_tts

@@ -497,6 +497,58 @@ class StartupImportContractTests(unittest.TestCase):
             self.assertIn(f"{constant_name} = voiceover_data.{constant_name}", main_source)
             self.assertIn(f"{constant_name} = voiceover_data.{constant_name}", episodes_source)
 
+    def test_voiceover_shared_data_helpers_live_in_service_module(self):
+        main_source = MAIN_PATH.read_text(encoding="utf-8-sig")
+        episodes_source = (BACKEND_DIR / "api" / "routers" / "episodes.py").read_text(encoding="utf-8-sig")
+        service_source = (BACKEND_DIR / "api" / "services" / "voiceover_data.py").read_text(encoding="utf-8-sig")
+        delegated_names = {
+            "_voiceover_default_test_mp3_path",
+            "_voiceover_default_shared_data",
+            "_voiceover_default_reference_item",
+            "_normalize_voiceover_shared_data",
+            "_load_script_voiceover_shared_data",
+            "_save_script_voiceover_shared_data",
+        }
+        service_names = {
+            "voiceover_default_test_mp3_path",
+            "voiceover_default_shared_data",
+            "voiceover_default_reference_item",
+            "normalize_voiceover_shared_data",
+            "load_script_voiceover_shared_data",
+            "save_script_voiceover_shared_data",
+        }
+
+        self.assertIn("from api.services import voiceover_data", main_source)
+        self.assertIn("from api.services import voiceover_data", episodes_source)
+        self.assertIn("from functools import partial", main_source)
+        self.assertIn("from functools import partial", episodes_source)
+        self.assertEqual(_top_level_definition_names(main_source) & delegated_names, set())
+        self.assertEqual(_top_level_definition_names(episodes_source) & delegated_names, set())
+        for service_name in service_names:
+            self.assertIn(f"def {service_name}", service_source)
+        for source in (main_source, episodes_source):
+            self.assertIn(
+                "_voiceover_default_test_mp3_path = partial(voiceover_data.voiceover_default_test_mp3_path, __file__)",
+                source,
+            )
+            self.assertIn("_voiceover_default_shared_data = voiceover_data.voiceover_default_shared_data", source)
+            self.assertIn(
+                "_voiceover_default_reference_item = partial(",
+                source,
+            )
+            self.assertIn(
+                "_normalize_voiceover_shared_data = partial(",
+                source,
+            )
+            self.assertIn(
+                "_load_script_voiceover_shared_data = partial(",
+                source,
+            )
+            self.assertIn(
+                "_save_script_voiceover_shared_data = partial(",
+                source,
+            )
+
     def test_web_startup_event_excludes_schema_bootstrap_and_preflight_responsibilities(self):
         source = MAIN_PATH.read_text(encoding="utf-8-sig")
         startup_node = _function_node(source, "startup_event")

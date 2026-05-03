@@ -1,7 +1,8 @@
 import json
+import os
 import uuid
 from datetime import datetime
-from typing import Any, Optional, Tuple
+from typing import Any, Callable, Optional, Tuple
 
 
 VOICEOVER_TTS_METHOD_SAME = "与音色参考音频相同"
@@ -259,6 +260,164 @@ def parse_episode_voiceover_payload(episode) -> dict:
     if not isinstance(shots, list):
         payload["shots"] = []
     return payload
+
+
+def voiceover_default_test_mp3_path(module_file: str) -> str:
+    return os.path.abspath(
+        os.path.join(os.path.dirname(module_file), "..", "TTS_example", "test.mp3")
+    )
+
+
+def voiceover_default_shared_data() -> dict:
+    return {
+        "initialized": False,
+        "voice_references": [],
+        "vector_presets": [],
+        "emotion_audio_presets": [],
+        "setting_templates": [],
+    }
+
+
+def voiceover_default_reference_item(
+    default_test_mp3_path_factory: Callable[[], str],
+    *,
+    now_factory: Optional[Callable[[], str]] = None,
+) -> dict:
+    created_at = now_factory() if callable(now_factory) else datetime.utcnow().isoformat()
+    return {
+        "id": "voice_ref_default_female_1",
+        "name": "女声1",
+        "file_name": "test.mp3",
+        "url": "",
+        "local_path": str(default_test_mp3_path_factory() or "").strip(),
+        "created_at": str(created_at),
+    }
+
+
+def normalize_voiceover_shared_data(
+    raw_data: Any,
+    *,
+    default_reference_item_factory: Optional[Callable[[], dict]] = None,
+    reference_exists: Callable[[str], bool] = os.path.exists,
+) -> dict:
+    source = raw_data if isinstance(raw_data, dict) else {}
+    normalized = voiceover_default_shared_data()
+    normalized["initialized"] = bool(source.get("initialized", False))
+
+    voice_references = source.get("voice_references", [])
+    if isinstance(voice_references, list):
+        for item in voice_references:
+            if not isinstance(item, dict):
+                continue
+            ref_id = str(item.get("id") or "").strip()
+            name = str(item.get("name") or "").strip()
+            if not ref_id or not name:
+                continue
+            normalized["voice_references"].append({
+                "id": ref_id,
+                "name": name,
+                "file_name": str(item.get("file_name") or "").strip(),
+                "url": str(item.get("url") or "").strip(),
+                "local_path": str(item.get("local_path") or "").strip(),
+                "created_at": str(item.get("created_at") or datetime.utcnow().isoformat()),
+            })
+
+    vector_presets = source.get("vector_presets", [])
+    if isinstance(vector_presets, list):
+        for item in vector_presets:
+            if not isinstance(item, dict):
+                continue
+            preset_id = str(item.get("id") or "").strip()
+            name = str(item.get("name") or "").strip()
+            if not preset_id or not name:
+                continue
+            normalized["vector_presets"].append({
+                "id": preset_id,
+                "name": name,
+                "description": str(item.get("description") or "").strip(),
+                "vector_config": normalize_voiceover_vector_config(item.get("vector_config")),
+                "created_at": str(item.get("created_at") or datetime.utcnow().isoformat()),
+            })
+
+    emotion_audio_presets = source.get("emotion_audio_presets", [])
+    if isinstance(emotion_audio_presets, list):
+        for item in emotion_audio_presets:
+            if not isinstance(item, dict):
+                continue
+            preset_id = str(item.get("id") or "").strip()
+            name = str(item.get("name") or "").strip()
+            if not preset_id or not name:
+                continue
+            normalized["emotion_audio_presets"].append({
+                "id": preset_id,
+                "name": name,
+                "description": str(item.get("description") or "").strip(),
+                "file_name": str(item.get("file_name") or "").strip(),
+                "url": str(item.get("url") or "").strip(),
+                "local_path": str(item.get("local_path") or "").strip(),
+                "created_at": str(item.get("created_at") or datetime.utcnow().isoformat()),
+            })
+
+    default_voice_ref_id = voiceover_first_reference_id(normalized)
+    setting_templates = source.get("setting_templates", [])
+    if isinstance(setting_templates, list):
+        for item in setting_templates:
+            if not isinstance(item, dict):
+                continue
+            template_id = str(item.get("id") or "").strip()
+            name = str(item.get("name") or "").strip()
+            if not template_id or not name:
+                continue
+            normalized["setting_templates"].append({
+                "id": template_id,
+                "name": name,
+                "settings": normalize_voiceover_setting_template_payload(
+                    item.get("settings"),
+                    default_voice_ref_id,
+                ),
+                "created_at": str(item.get("created_at") or datetime.utcnow().isoformat()),
+                "updated_at": str(
+                    item.get("updated_at") or item.get("created_at") or datetime.utcnow().isoformat()
+                ),
+            })
+
+    if not normalized["initialized"]:
+        if not normalized["voice_references"] and callable(default_reference_item_factory):
+            default_item = default_reference_item_factory()
+            if isinstance(default_item, dict) and reference_exists(str(default_item.get("local_path") or "")):
+                normalized["voice_references"].append(default_item)
+        normalized["initialized"] = True
+
+    return normalized
+
+
+def load_script_voiceover_shared_data(
+    script,
+    *,
+    normalize_shared_data=normalize_voiceover_shared_data,
+) -> dict:
+    raw_payload = {}
+    raw_text = str(getattr(script, "voiceover_shared_data", "") or "").strip()
+    if raw_text:
+        try:
+            parsed = json.loads(raw_text)
+            if isinstance(parsed, dict):
+                raw_payload = parsed
+        except Exception:
+            raw_payload = {}
+    return normalize_shared_data(raw_payload)
+
+
+def save_script_voiceover_shared_data(
+    script,
+    payload: dict,
+    *,
+    normalize_shared_data=normalize_voiceover_shared_data,
+):
+    script.voiceover_shared_data = json.dumps(
+        normalize_shared_data(payload),
+        ensure_ascii=False,
+    )
 
 
 def voiceover_first_reference_id(shared_data: dict) -> str:
