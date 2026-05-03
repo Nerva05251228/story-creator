@@ -71,7 +71,7 @@ from database import IS_SQLITE, engine, get_db, SessionLocal
 from db_compat import boolean_sql, datetime_sql, get_table_columns, rename_column_if_needed, table_exists
 from runtime_load import request_load_tracker
 from startup_external_prewarms import start_external_cache_prewarms
-from startup_runtime import should_enable_background_pollers
+from runtime import pollers as runtime_pollers
 from startup_schema_policy import should_apply_runtime_postgres_alter
 from auth import get_current_user, verify_library_owner
 from ai_config import (
@@ -160,9 +160,7 @@ executor = ThreadPoolExecutor(max_workers=10)
 # 故事板2镜头图运行中任务（进程内）
 storyboard2_active_image_tasks = set()
 storyboard2_active_image_tasks_lock = Lock()
-background_poller_lock = Lock()
 simple_storyboard_batch_update_lock = Lock()
-background_pollers_started = False
 startup_bootstrap_lock_handle = None
 
 
@@ -533,39 +531,31 @@ STARTUP_BOOTSTRAP_LOCK_PATH = os.path.join(os.path.dirname(__file__), ".startup_
 
 
 def start_background_pollers(force: bool = False):
-    global background_pollers_started
-    enabled = force or should_enable_background_pollers()
-    if not enabled:
-        print("[startup] background pollers disabled for this process")
-        return False
-
-    with background_poller_lock:
-        if background_pollers_started:
-            return True
-        poller.start()
-        image_poller.start()
-        managed_poller.start()
-        text_relay_poller.start()
-        voiceover_tts_poller.start()
-        model_pricing_poller.start()
-        _recover_storyboard2_video_polling()
-        background_pollers_started = True
-        print("[startup] background pollers enabled for this process")
-        return True
+    return runtime_pollers.start_background_pollers(
+        pollers=(
+            poller,
+            image_poller,
+            managed_poller,
+            text_relay_poller,
+            voiceover_tts_poller,
+            model_pricing_poller,
+        ),
+        recover_storyboard2_video_polling=_recover_storyboard2_video_polling,
+        force=force,
+    )
 
 
 def stop_background_pollers():
-    global background_pollers_started
-    with background_poller_lock:
-        if not background_pollers_started:
-            return
-        poller.stop()
-        image_poller.stop()
-        managed_poller.stop()
-        text_relay_poller.stop()
-        voiceover_tts_poller.stop()
-        model_pricing_poller.stop()
-        background_pollers_started = False
+    return runtime_pollers.stop_background_pollers(
+        pollers=(
+            poller,
+            image_poller,
+            managed_poller,
+            text_relay_poller,
+            voiceover_tts_poller,
+            model_pricing_poller,
+        )
+    )
 
 
 def acquire_startup_bootstrap_lock(timeout_seconds: float = 300.0):

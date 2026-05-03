@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 This project uses a lightweight `Added`, `Changed`, `Fixed`, `Security`, and `Migration` structure.
 
+## 2026-05-03 - Background Poller Lifecycle Extraction
+
+### Added
+
+- Added focused runtime poller lifecycle tests for disabled startup, forced startup, start/stop ordering, idempotency, recovery callbacks, and import isolation from `backend/main.py`.
+
+### Changed
+
+- Moved the background poller coordinator state and start/stop lifecycle logic from `backend/main.py` into `backend/runtime/pollers.py`.
+- Kept thin `backend/main.py` compatibility wrappers so FastAPI startup/shutdown hooks and direct callers preserve the existing poller order and return behavior.
+
 ## 2026-05-03 - Storyboard2 Generation Route Extraction
 
 ### Added

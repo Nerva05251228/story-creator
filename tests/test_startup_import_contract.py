@@ -6,6 +6,7 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).resolve().parents[1]
 BACKEND_DIR = ROOT_DIR / "backend"
 MAIN_PATH = BACKEND_DIR / "main.py"
+RUNTIME_POLLER_PATH = BACKEND_DIR / "runtime" / "pollers.py"
 
 
 def _top_level_calls(source: str) -> list[str]:
@@ -82,11 +83,14 @@ class StartupImportContractTests(unittest.TestCase):
         self.assertNotIn("run_startup_bootstrap", top_level_calls)
         self.assertNotIn("models.Base.metadata.create_all", source)
 
-    def test_main_uses_startup_runtime_for_poller_policy(self):
+    def test_runtime_pollers_uses_startup_runtime_for_poller_policy(self):
         source = MAIN_PATH.read_text(encoding="utf-8-sig")
+        runtime_source = RUNTIME_POLLER_PATH.read_text(encoding="utf-8-sig")
 
-        self.assertIn("from startup_runtime import", source)
+        self.assertIn("from startup_runtime import", runtime_source)
         self.assertNotIn("def should_enable_background_pollers", source)
+        self.assertNotIn("background_poller_lock", source)
+        self.assertNotIn("background_pollers_started", source)
 
     def test_web_startup_event_does_not_run_external_network_prewarms_directly(self):
         source = MAIN_PATH.read_text(encoding="utf-8-sig")
@@ -95,6 +99,14 @@ class StartupImportContractTests(unittest.TestCase):
         self.assertIn("start_background_pollers", startup_body)
         self.assertNotIn("refresh_image_model_catalog", startup_body)
         self.assertNotIn("refresh_video_provider_accounts", startup_body)
+
+    def test_web_shutdown_event_delegates_background_poller_stop(self):
+        source = MAIN_PATH.read_text(encoding="utf-8-sig")
+        shutdown_body = _function_body_source(source, "shutdown_event")
+
+        self.assertIn("stop_background_pollers", shutdown_body)
+        self.assertNotIn("poller.stop", shutdown_body)
+        self.assertNotIn("image_poller.stop", shutdown_body)
 
     def test_web_startup_event_excludes_schema_bootstrap_and_preflight_responsibilities(self):
         source = MAIN_PATH.read_text(encoding="utf-8-sig")
