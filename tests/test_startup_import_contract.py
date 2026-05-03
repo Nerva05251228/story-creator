@@ -84,6 +84,29 @@ def _top_level_definition_names(source: str) -> set[str]:
     }
 
 
+def _router_decorator_paths(source: str) -> set[str]:
+    paths = set()
+    tree = ast.parse(source)
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        for decorator in node.decorator_list:
+            if not isinstance(decorator, ast.Call):
+                continue
+            func = decorator.func
+            if not (
+                isinstance(func, ast.Attribute)
+                and isinstance(func.value, ast.Name)
+                and func.value.id == "router"
+            ):
+                continue
+            if decorator.args and isinstance(decorator.args[0], ast.Constant):
+                value = decorator.args[0].value
+                if isinstance(value, str):
+                    paths.add(value)
+    return paths
+
+
 class StartupImportContractTests(unittest.TestCase):
     def test_main_import_does_not_run_database_bootstrap(self):
         source = MAIN_PATH.read_text(encoding="utf-8-sig")
@@ -548,6 +571,40 @@ class StartupImportContractTests(unittest.TestCase):
                 "_save_script_voiceover_shared_data = partial(",
                 source,
             )
+
+    def test_voiceover_route_module_owns_voiceover_routes(self):
+        main_source = MAIN_PATH.read_text(encoding="utf-8-sig")
+        episodes_source = (BACKEND_DIR / "api" / "routers" / "episodes.py").read_text(encoding="utf-8-sig")
+        voiceover_path = BACKEND_DIR / "api" / "routers" / "voiceover.py"
+        voiceover_source = voiceover_path.read_text(encoding="utf-8-sig")
+
+        self.assertTrue(voiceover_path.exists())
+        self.assertIn("router = APIRouter()", voiceover_source)
+        self.assertIn("voiceover,", main_source)
+        self.assertIn("app.include_router(voiceover.router)", main_source)
+        self.assertEqual(
+            {path for path in _router_decorator_paths(episodes_source) if "/voiceover" in path},
+            set(),
+        )
+        self.assertEqual(
+            {path for path in _router_decorator_paths(voiceover_source) if "/voiceover" in path},
+            {
+                "/api/episodes/{episode_id}/voiceover",
+                "/api/episodes/{episode_id}/voiceover/shared",
+                "/api/episodes/{episode_id}/voiceover/shared/voice-references",
+                "/api/episodes/{episode_id}/voiceover/shared/voice-references/{reference_id}",
+                "/api/episodes/{episode_id}/voiceover/shared/voice-references/{reference_id}/preview",
+                "/api/episodes/{episode_id}/voiceover/shared/vector-presets",
+                "/api/episodes/{episode_id}/voiceover/shared/vector-presets/{preset_id}",
+                "/api/episodes/{episode_id}/voiceover/shared/emotion-audio-presets",
+                "/api/episodes/{episode_id}/voiceover/shared/emotion-audio-presets/{preset_id}",
+                "/api/episodes/{episode_id}/voiceover/shared/setting-templates",
+                "/api/episodes/{episode_id}/voiceover/shared/setting-templates/{template_id}",
+                "/api/episodes/{episode_id}/voiceover/lines/{line_id}/generate",
+                "/api/episodes/{episode_id}/voiceover/generate-all",
+                "/api/episodes/{episode_id}/voiceover/tts-status",
+            },
+        )
 
     def test_web_startup_event_excludes_schema_bootstrap_and_preflight_responsibilities(self):
         source = MAIN_PATH.read_text(encoding="utf-8-sig")

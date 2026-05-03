@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 This project uses a lightweight `Added`, `Changed`, `Fixed`, `Security`, and `Migration` structure.
 
+## 2026-05-04 - Voiceover Router Extraction
+
+### Added
+
+- Added `backend/api/routers/voiceover.py` as the owner for `/api/episodes/{episode_id}/voiceover/*` routes.
+- Added focused voiceover router, route registry, OpenAPI preservation, and startup import-contract tests.
+
+### Changed
+
+- Moved voiceover update, shared preset/reference, line TTS enqueue, generate-all enqueue, and TTS status route handlers out of `backend/api/routers/episodes.py` without changing API paths, methods, response structures, or authorization behavior.
+- Registered the voiceover router in `backend/main.py` and kept non-voiceover episode workflows in the episodes router.
+
 ## 2026-05-03 - Voiceover Shared Data Helper Service Extraction
 
 ### Added

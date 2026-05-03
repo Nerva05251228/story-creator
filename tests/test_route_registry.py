@@ -36,6 +36,7 @@ from api.routers import (  # noqa: E402
     shots,
     templates,
     video,
+    voiceover,
 )
 
 
@@ -398,6 +399,108 @@ class RouteRegistryTests(unittest.TestCase):
 
     def test_episode_routes_are_owned_by_episodes_router(self):
         self._assert_router_routes_owned_by(episodes.router)
+
+    def test_voiceover_routes_are_owned_by_voiceover_router(self):
+        expected_routes = [
+            ("PUT", "/api/episodes/{episode_id}/voiceover", "api.routers.voiceover.update_voiceover_data"),
+            ("GET", "/api/episodes/{episode_id}/voiceover/shared", "api.routers.voiceover.get_voiceover_shared_data"),
+            (
+                "POST",
+                "/api/episodes/{episode_id}/voiceover/shared/voice-references",
+                "api.routers.voiceover.create_voiceover_voice_reference",
+            ),
+            (
+                "PUT",
+                "/api/episodes/{episode_id}/voiceover/shared/voice-references/{reference_id}",
+                "api.routers.voiceover.rename_voiceover_voice_reference",
+            ),
+            (
+                "GET",
+                "/api/episodes/{episode_id}/voiceover/shared/voice-references/{reference_id}/preview",
+                "api.routers.voiceover.preview_voiceover_voice_reference",
+            ),
+            (
+                "DELETE",
+                "/api/episodes/{episode_id}/voiceover/shared/voice-references/{reference_id}",
+                "api.routers.voiceover.delete_voiceover_voice_reference",
+            ),
+            (
+                "POST",
+                "/api/episodes/{episode_id}/voiceover/shared/vector-presets",
+                "api.routers.voiceover.upsert_voiceover_vector_preset",
+            ),
+            (
+                "DELETE",
+                "/api/episodes/{episode_id}/voiceover/shared/vector-presets/{preset_id}",
+                "api.routers.voiceover.delete_voiceover_vector_preset",
+            ),
+            (
+                "POST",
+                "/api/episodes/{episode_id}/voiceover/shared/emotion-audio-presets",
+                "api.routers.voiceover.create_voiceover_emotion_audio_preset",
+            ),
+            (
+                "DELETE",
+                "/api/episodes/{episode_id}/voiceover/shared/emotion-audio-presets/{preset_id}",
+                "api.routers.voiceover.delete_voiceover_emotion_audio_preset",
+            ),
+            (
+                "POST",
+                "/api/episodes/{episode_id}/voiceover/shared/setting-templates",
+                "api.routers.voiceover.upsert_voiceover_setting_template",
+            ),
+            (
+                "DELETE",
+                "/api/episodes/{episode_id}/voiceover/shared/setting-templates/{template_id}",
+                "api.routers.voiceover.delete_voiceover_setting_template",
+            ),
+            (
+                "POST",
+                "/api/episodes/{episode_id}/voiceover/lines/{line_id}/generate",
+                "api.routers.voiceover.enqueue_voiceover_line_generate",
+            ),
+            (
+                "POST",
+                "/api/episodes/{episode_id}/voiceover/generate-all",
+                "api.routers.voiceover.enqueue_voiceover_generate_all",
+            ),
+            (
+                "GET",
+                "/api/episodes/{episode_id}/voiceover/tts-status",
+                "api.routers.voiceover.get_voiceover_tts_status",
+            ),
+        ]
+
+        for method, path, qualified_name in expected_routes:
+            with self.subTest(method=method, path=path):
+                self._assert_route_owned_by(method, path, qualified_name)
+
+    def test_voiceover_openapi_paths_are_preserved(self):
+        paths = main.app.openapi()["paths"]
+        expected_routes = {
+            ("put", "/api/episodes/{episode_id}/voiceover"),
+            ("get", "/api/episodes/{episode_id}/voiceover/shared"),
+            ("post", "/api/episodes/{episode_id}/voiceover/shared/voice-references"),
+            ("put", "/api/episodes/{episode_id}/voiceover/shared/voice-references/{reference_id}"),
+            ("get", "/api/episodes/{episode_id}/voiceover/shared/voice-references/{reference_id}/preview"),
+            ("delete", "/api/episodes/{episode_id}/voiceover/shared/voice-references/{reference_id}"),
+            ("post", "/api/episodes/{episode_id}/voiceover/shared/vector-presets"),
+            ("delete", "/api/episodes/{episode_id}/voiceover/shared/vector-presets/{preset_id}"),
+            ("post", "/api/episodes/{episode_id}/voiceover/shared/emotion-audio-presets"),
+            ("delete", "/api/episodes/{episode_id}/voiceover/shared/emotion-audio-presets/{preset_id}"),
+            ("post", "/api/episodes/{episode_id}/voiceover/shared/setting-templates"),
+            ("delete", "/api/episodes/{episode_id}/voiceover/shared/setting-templates/{template_id}"),
+            ("post", "/api/episodes/{episode_id}/voiceover/lines/{line_id}/generate"),
+            ("post", "/api/episodes/{episode_id}/voiceover/generate-all"),
+            ("get", "/api/episodes/{episode_id}/voiceover/tts-status"),
+        }
+
+        missing = [
+            (method, path)
+            for method, path in sorted(expected_routes)
+            if path not in paths or method not in paths[path]
+        ]
+        self.assertEqual(missing, [])
 
     def test_shot_routes_are_owned_by_shots_router(self):
         self._assert_router_routes_owned_by(shots.router)

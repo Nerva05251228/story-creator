@@ -40,6 +40,7 @@ from api.routers import (
     subject_cards,
     templates,
     video,
+    voiceover,
     episodes,
     hit_dramas,
     shots,
@@ -14677,6 +14678,7 @@ def _save_detail_images_debug(debug_dir: Optional[str], filename: str, payload: 
 
 
 app.include_router(episodes.router)
+app.include_router(voiceover.router)
 app.include_router(scripts.router)
 app.include_router(shots.router)
 app.include_router(hit_dramas.router)
