@@ -31,6 +31,7 @@ import dashboard_service  # noqa: E402
 import main  # noqa: E402
 import models  # noqa: E402
 from api.routers import settings  # noqa: E402
+from api.services import simple_storyboard_batches  # noqa: E402
 import text_llm_queue  # noqa: E402
 import simple_storyboard_rules  # noqa: E402
 
@@ -89,15 +90,40 @@ class ModelConfigPersistenceTests(unittest.TestCase):
 
 
 class SimpleStoryboardBatchSplitTests(unittest.TestCase):
+    def test_importing_simple_storyboard_batch_service_does_not_import_main(self):
+        existing_service_module = sys.modules.pop("api.services.simple_storyboard_batches", None)
+        existing_main_module = sys.modules.pop("main", None)
+        try:
+            module = __import__(
+                "api.services.simple_storyboard_batches",
+                fromlist=["_split_simple_storyboard_batches"],
+            )
+
+            self.assertNotIn("main", sys.modules)
+            self.assertTrue(hasattr(module, "_split_simple_storyboard_batches"))
+        finally:
+            if existing_main_module is not None:
+                sys.modules["main"] = existing_main_module
+            if existing_service_module is not None:
+                sys.modules["api.services.simple_storyboard_batches"] = existing_service_module
+
     def test_split_simple_storyboard_batches_preserves_paragraph_groups(self):
         content = "第一段\n第二段更长\n第三段"
 
-        batches = main._split_simple_storyboard_batches(content, 8)
+        batches = simple_storyboard_batches._split_simple_storyboard_batches(content, 8)
 
         self.assertEqual(batches, ["第一段", "第二段更长", "第三段"])
 
+    def test_main_keeps_split_helper_compatibility_alias(self):
+        content = "第一段\n第二段"
+
+        self.assertEqual(
+            main._split_simple_storyboard_batches(content, 8),
+            simple_storyboard_batches._split_simple_storyboard_batches(content, 8),
+        )
+
     def test_split_simple_storyboard_batches_returns_empty_for_blank_content(self):
-        self.assertEqual(main._split_simple_storyboard_batches("\n\n", 100), [])
+        self.assertEqual(simple_storyboard_batches._split_simple_storyboard_batches("\n\n", 100), [])
 
 
 class ProgrammaticSimpleStoryboardRuleTests(unittest.TestCase):

@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 This project uses a lightweight `Added`, `Changed`, `Fixed`, `Security`, and `Migration` structure.
 
+## 2026-05-03 - Simple Storyboard Batch Service Extraction
+
+### Added
+
+- Added focused coverage that imports the simple storyboard batch service without importing `backend/main.py`, while preserving `main.py` compatibility helper access.
+
+### Changed
+
+- Moved simple storyboard batch parsing, aggregation, summary, persistence, reset, update, and runtime item helpers into `backend/api/services/simple_storyboard_batches.py`.
+- Updated `backend/main.py` and `backend/api/routers/episodes.py` to share the extracted batch service instead of carrying duplicate helper implementations.
+
 ## 2026-05-03 - Background Poller Lifecycle Extraction
 
 ### Added
