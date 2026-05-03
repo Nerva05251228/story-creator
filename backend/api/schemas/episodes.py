@@ -134,3 +134,18 @@ class ManagedSessionStatusResponse(BaseModel):
 class Storyboard2BatchGenerateSoraPromptsRequest(BaseModel):
     default_template: str = "2d漫画风格（细）"
     shot_ids: Optional[List[int]] = None
+
+
+class Storyboard2SetCurrentImageRequest(BaseModel):
+    current_image_id: Optional[int] = None
+
+
+class Storyboard2UpdateShotRequest(BaseModel):
+    excerpt: str = ""
+    selected_card_ids: Optional[List[int]] = None
+
+
+class Storyboard2UpdateSubShotRequest(BaseModel):
+    sora_prompt: Optional[str] = None
+    scene_override: Optional[str] = None
+    selected_card_ids: Optional[List[int]] = None

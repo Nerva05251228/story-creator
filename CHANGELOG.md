@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 This project uses a lightweight `Added`, `Changed`, `Fixed`, `Security`, and `Migration` structure.
 
+## 2026-05-02 - Storyboard2 Route Cleanup
+
+### Added
+
+- Added focused route registry coverage for the storyboard2 edit/delete endpoints so duplicate FastAPI registrations are caught early.
+
+### Changed
+
+- Removed the legacy `backend/main.py` FastAPI decorators for `PATCH /api/storyboard2/shots/{storyboard2_shot_id}`, `PATCH /api/storyboard2/subshots/{sub_shot_id}`, `DELETE /api/storyboard2/videos/{video_id}`, `PATCH /api/storyboard2/subshots/{sub_shot_id}/current-image`, and `DELETE /api/storyboard2/images/{image_id}`.
+- Added `backend/main.py` compatibility exports that point storyboard2 request models and handlers at `backend/api/routers/episodes.py` so the codebase keeps one live implementation.
+
 ## 2026-05-02 - Managed Task List Route Extraction
 
 ### Added

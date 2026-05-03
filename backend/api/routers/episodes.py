@@ -72,6 +72,9 @@ from api.schemas.episodes import (
     SimpleStoryboardRequest,
     StartManagedGenerationRequest,
     Storyboard2BatchGenerateSoraPromptsRequest,
+    Storyboard2SetCurrentImageRequest,
+    Storyboard2UpdateShotRequest,
+    Storyboard2UpdateSubShotRequest,
     StoryboardAnalyzeResponse,
 )
 
@@ -6697,6 +6700,35 @@ def _parse_storyboard2_card_ids(raw_value) -> List[int]:
 
     return resolved_ids
 
+
+def _get_storyboard2_sub_shot_with_permission(sub_shot_id: int, user: models.User, db: Session):
+    sub_shot = db.query(models.Storyboard2SubShot).filter(
+        models.Storyboard2SubShot.id == sub_shot_id
+    ).first()
+    if not sub_shot:
+        raise HTTPException(status_code=404, detail="分镜不存在")
+
+    storyboard2_shot = db.query(models.Storyboard2Shot).filter(
+        models.Storyboard2Shot.id == sub_shot.storyboard2_shot_id
+    ).first()
+    if not storyboard2_shot:
+        raise HTTPException(status_code=404, detail="镜头不存在")
+
+    _verify_episode_permission(storyboard2_shot.episode_id, user, db)
+    return sub_shot, storyboard2_shot
+
+
+def _get_storyboard2_shot_with_permission(storyboard2_shot_id: int, user: models.User, db: Session):
+    storyboard2_shot = db.query(models.Storyboard2Shot).filter(
+        models.Storyboard2Shot.id == storyboard2_shot_id
+    ).first()
+    if not storyboard2_shot:
+        raise HTTPException(status_code=404, detail="镜头不存在")
+
+    _verify_episode_permission(storyboard2_shot.episode_id, user, db)
+    return storyboard2_shot
+
+
 def _clean_scene_ai_prompt_text(ai_prompt: str) -> str:
     text_value = str(ai_prompt or "")
     if not text_value:
@@ -7478,4 +7510,255 @@ async def batch_generate_storyboard2_sora_prompts(
         "message": f"故事板2批量生成任务已提交，共 {submitted_count} 个镜头。",
         "total_count": shot_count,
         "submitted_count": submitted_count,
+    }
+
+
+@router.patch("/api/storyboard2/shots/{storyboard2_shot_id}")
+async def update_storyboard2_shot(
+    storyboard2_shot_id: int,
+    request: Storyboard2UpdateShotRequest,
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    storyboard2_shot = _get_storyboard2_shot_with_permission(storyboard2_shot_id, user, db)
+    storyboard2_shot.excerpt = (request.excerpt or "").strip()
+
+    if request.selected_card_ids is not None:
+        normalized_card_ids = []
+        seen_card_ids = set()
+        for card_id in request.selected_card_ids:
+            if not isinstance(card_id, int) or card_id <= 0 or card_id in seen_card_ids:
+                continue
+            seen_card_ids.add(card_id)
+            normalized_card_ids.append(card_id)
+
+        if normalized_card_ids:
+            library = db.query(models.StoryLibrary).filter(
+                models.StoryLibrary.episode_id == storyboard2_shot.episode_id
+            ).first()
+            if not library:
+                raise HTTPException(status_code=400, detail="当前片段未创建主体库，无法保存主体选择")
+
+            valid_cards = db.query(models.SubjectCard.id).filter(
+                models.SubjectCard.id.in_(normalized_card_ids),
+                models.SubjectCard.library_id == library.id,
+                models.SubjectCard.card_type.in_(ALLOWED_CARD_TYPES)
+            ).all()
+            valid_card_ids = {item[0] for item in valid_cards}
+            invalid_ids = [card_id for card_id in normalized_card_ids if card_id not in valid_card_ids]
+            if invalid_ids:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"存在无效主体ID: {invalid_ids}"
+                )
+
+        storyboard2_shot.selected_card_ids = json.dumps(normalized_card_ids, ensure_ascii=False)
+
+    db.commit()
+
+    return {
+        "message": "镜头描述已更新",
+        "shot_id": storyboard2_shot.id,
+        "excerpt": storyboard2_shot.excerpt,
+        "selected_card_ids": _parse_storyboard2_card_ids(storyboard2_shot.selected_card_ids)
+    }
+
+
+@router.patch("/api/storyboard2/subshots/{sub_shot_id}")
+async def update_storyboard2_sub_shot(
+    sub_shot_id: int,
+    request: Storyboard2UpdateSubShotRequest,
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    sub_shot, storyboard2_shot = _get_storyboard2_sub_shot_with_permission(sub_shot_id, user, db)
+
+    if request.sora_prompt is not None:
+        sub_shot.sora_prompt = (request.sora_prompt or "").strip()
+
+    if request.scene_override is not None:
+        sub_shot.scene_override = (request.scene_override or "").strip()
+        sub_shot.scene_override_locked = True
+
+    if request.selected_card_ids is not None:
+        normalized_card_ids = []
+        seen_card_ids = set()
+        for card_id in request.selected_card_ids:
+            if not isinstance(card_id, int) or card_id <= 0 or card_id in seen_card_ids:
+                continue
+            seen_card_ids.add(card_id)
+            normalized_card_ids.append(card_id)
+
+        if normalized_card_ids:
+            library = db.query(models.StoryLibrary).filter(
+                models.StoryLibrary.episode_id == storyboard2_shot.episode_id
+            ).first()
+            if not library:
+                raise HTTPException(status_code=400, detail="当前片段未创建主体库，无法保存主体选择")
+
+            valid_cards = db.query(models.SubjectCard.id).filter(
+                models.SubjectCard.id.in_(normalized_card_ids),
+                models.SubjectCard.library_id == library.id,
+                models.SubjectCard.card_type.in_(ALLOWED_CARD_TYPES)
+            ).all()
+            valid_card_ids = {item[0] for item in valid_cards}
+            invalid_ids = [card_id for card_id in normalized_card_ids if card_id not in valid_card_ids]
+            if invalid_ids:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"存在无效主体ID: {invalid_ids}"
+                )
+
+        sub_shot.selected_card_ids = json.dumps(normalized_card_ids, ensure_ascii=False)
+        if not bool(getattr(sub_shot, "scene_override_locked", False)) and not (sub_shot.scene_override or "").strip():
+            auto_scene_override = _extract_scene_description_from_card_ids(normalized_card_ids, db)
+            if auto_scene_override:
+                sub_shot.scene_override = auto_scene_override
+
+    db.commit()
+
+    return {
+        "message": "分镜描述已更新",
+        "sub_shot_id": sub_shot.id,
+        "sora_prompt": sub_shot.sora_prompt or "",
+        "scene_override": sub_shot.scene_override or "",
+        "scene_override_locked": bool(getattr(sub_shot, "scene_override_locked", False)),
+        "selected_card_ids": _parse_storyboard2_card_ids(getattr(sub_shot, "selected_card_ids", "[]"))
+    }
+
+
+@router.delete("/api/storyboard2/videos/{video_id}")
+async def delete_storyboard2_video(
+    video_id: int,
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    video_record = db.query(models.Storyboard2SubShotVideo).filter(
+        models.Storyboard2SubShotVideo.id == video_id
+    ).first()
+    if not video_record:
+        raise HTTPException(status_code=404, detail="视频不存在")
+
+    owner_sub_shot = db.query(models.Storyboard2SubShot).filter(
+        models.Storyboard2SubShot.id == video_record.sub_shot_id
+    ).first()
+    if not owner_sub_shot:
+        raise HTTPException(status_code=404, detail="视频所属分镜不存在")
+
+    owner_storyboard2_shot = db.query(models.Storyboard2Shot).filter(
+        models.Storyboard2Shot.id == owner_sub_shot.storyboard2_shot_id
+    ).first()
+    if not owner_storyboard2_shot:
+        raise HTTPException(status_code=404, detail="视频所属镜头不存在")
+
+    _verify_episode_permission(owner_storyboard2_shot.episode_id, user, db)
+
+    if bool(getattr(video_record, "is_deleted", False)):
+        return {
+            "message": "视频已删除",
+            "video_id": video_id
+        }
+
+    video_record.is_deleted = True
+    video_record.deleted_at = datetime.utcnow()
+    db.commit()
+
+    return {
+        "message": "视频删除成功",
+        "video_id": video_id
+    }
+
+
+@router.patch("/api/storyboard2/subshots/{sub_shot_id}/current-image")
+async def set_storyboard2_current_image(
+    sub_shot_id: int,
+    request: Storyboard2SetCurrentImageRequest,
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    sub_shot, storyboard2_shot = _get_storyboard2_sub_shot_with_permission(sub_shot_id, user, db)
+
+    if request.current_image_id is not None:
+        target_image = db.query(models.Storyboard2SubShotImage).filter(
+            models.Storyboard2SubShotImage.id == request.current_image_id
+        ).first()
+        if not target_image:
+            raise HTTPException(status_code=404, detail="图片不存在")
+
+        image_owner_sub_shot = db.query(models.Storyboard2SubShot).filter(
+            models.Storyboard2SubShot.id == target_image.sub_shot_id
+        ).first()
+        if not image_owner_sub_shot:
+            raise HTTPException(status_code=404, detail="图片所属分镜不存在")
+
+        image_owner_storyboard2_shot = db.query(models.Storyboard2Shot).filter(
+            models.Storyboard2Shot.id == image_owner_sub_shot.storyboard2_shot_id
+        ).first()
+        if not image_owner_storyboard2_shot or image_owner_storyboard2_shot.episode_id != storyboard2_shot.episode_id:
+            raise HTTPException(status_code=400, detail="仅支持设置为同一片段内的图片")
+
+    sub_shot.current_image_id = request.current_image_id
+    db.commit()
+
+    return {
+        "message": "当前图设置成功",
+        "sub_shot_id": sub_shot.id,
+        "current_image_id": sub_shot.current_image_id
+    }
+
+
+@router.delete("/api/storyboard2/images/{image_id}")
+async def delete_storyboard2_image(
+    image_id: int,
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    image_record = db.query(models.Storyboard2SubShotImage).filter(
+        models.Storyboard2SubShotImage.id == image_id
+    ).first()
+    if not image_record:
+        raise HTTPException(status_code=404, detail="图片不存在")
+
+    owner_sub_shot = db.query(models.Storyboard2SubShot).filter(
+        models.Storyboard2SubShot.id == image_record.sub_shot_id
+    ).first()
+    if not owner_sub_shot:
+        raise HTTPException(status_code=404, detail="图片所属分镜不存在")
+
+    owner_storyboard2_shot = db.query(models.Storyboard2Shot).filter(
+        models.Storyboard2Shot.id == owner_sub_shot.storyboard2_shot_id
+    ).first()
+    if not owner_storyboard2_shot:
+        raise HTTPException(status_code=404, detail="图片所属镜头不存在")
+
+    _verify_episode_permission(owner_storyboard2_shot.episode_id, user, db)
+
+    owner_candidate_count = db.query(models.Storyboard2SubShotImage).filter(
+        models.Storyboard2SubShotImage.sub_shot_id == owner_sub_shot.id
+    ).count()
+
+    if owner_candidate_count <= 1:
+        raise HTTPException(status_code=400, detail="当前分镜仅剩1张可选图，无法删除")
+
+    if owner_sub_shot.current_image_id == image_id:
+        raise HTTPException(status_code=400, detail="当前图不允许删除")
+
+    referenced_sub_shots = db.query(models.Storyboard2SubShot).join(
+        models.Storyboard2Shot,
+        models.Storyboard2SubShot.storyboard2_shot_id == models.Storyboard2Shot.id
+    ).filter(
+        models.Storyboard2Shot.episode_id == owner_storyboard2_shot.episode_id,
+        models.Storyboard2SubShot.current_image_id == image_id
+    ).all()
+
+    for sub_shot in referenced_sub_shots:
+        sub_shot.current_image_id = None
+
+    db.delete(image_record)
+    db.commit()
+
+    return {
+        "message": "删除成功",
+        "image_id": image_id,
+        "cleared_current_count": len(referenced_sub_shots)
     }

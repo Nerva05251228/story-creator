@@ -88,6 +88,11 @@ EXPECTED_EPISODE_ROUTES = {
     ("GET", "/api/episodes/{episode_id}/export-all"),
     ("GET", "/api/episodes/{episode_id}/storyboard2"),
     ("POST", "/api/episodes/{episode_id}/storyboard2/batch-generate-sora-prompts"),
+    ("PATCH", "/api/storyboard2/shots/{storyboard2_shot_id}"),
+    ("PATCH", "/api/storyboard2/subshots/{sub_shot_id}"),
+    ("PATCH", "/api/storyboard2/subshots/{sub_shot_id}/current-image"),
+    ("DELETE", "/api/storyboard2/images/{image_id}"),
+    ("DELETE", "/api/storyboard2/videos/{video_id}"),
 }
 
 
@@ -278,6 +283,93 @@ class EpisodeRouterTests(unittest.TestCase):
         finally:
             db.close()
 
+    def _seed_storyboard2_edit_fixture(self):
+        db = self.Session()
+        try:
+            owner = models.User(username="owner", token="owner-token")
+            other = models.User(username="other", token="other-token")
+            db.add_all([owner, other])
+            db.flush()
+            script = models.Script(user_id=owner.id, name="Script")
+            db.add(script)
+            db.flush()
+            episode = models.Episode(script_id=script.id, name="Episode 1")
+            db.add(episode)
+            db.flush()
+            library = models.StoryLibrary(
+                user_id=owner.id,
+                episode_id=episode.id,
+                name="Episode Library",
+            )
+            db.add(library)
+            db.flush()
+            scene_card = models.SubjectCard(
+                library_id=library.id,
+                name="Garden",
+                card_type="场景",
+                ai_prompt="生成图片中场景的是：green garden",
+            )
+            db.add(scene_card)
+            db.flush()
+            storyboard2_shot = models.Storyboard2Shot(
+                episode_id=episode.id,
+                shot_number=1,
+                excerpt="old excerpt",
+                selected_card_ids="[]",
+            )
+            db.add(storyboard2_shot)
+            db.flush()
+            sub_shot = models.Storyboard2SubShot(
+                storyboard2_shot_id=storyboard2_shot.id,
+                sub_shot_index=1,
+                sora_prompt="old prompt",
+                scene_override="",
+                selected_card_ids="[]",
+            )
+            referencing_sub_shot = models.Storyboard2SubShot(
+                storyboard2_shot_id=storyboard2_shot.id,
+                sub_shot_index=2,
+                sora_prompt="other prompt",
+                scene_override="",
+                selected_card_ids="[]",
+            )
+            db.add_all([sub_shot, referencing_sub_shot])
+            db.flush()
+            image_to_delete = models.Storyboard2SubShotImage(
+                sub_shot_id=sub_shot.id,
+                image_url="https://cdn.example.test/image-a.png",
+                size="9:16",
+            )
+            current_image = models.Storyboard2SubShotImage(
+                sub_shot_id=sub_shot.id,
+                image_url="https://cdn.example.test/image-b.png",
+                size="9:16",
+            )
+            db.add_all([image_to_delete, current_image])
+            db.flush()
+            referencing_sub_shot.current_image_id = image_to_delete.id
+            video = models.Storyboard2SubShotVideo(
+                sub_shot_id=sub_shot.id,
+                task_id="video-task-1",
+                status="completed",
+                video_url="https://cdn.example.test/video.mp4",
+            )
+            db.add(video)
+            db.commit()
+            return {
+                "owner": owner,
+                "other": other,
+                "storyboard2_shot_id": storyboard2_shot.id,
+                "sub_shot_id": sub_shot.id,
+                "referencing_sub_shot_id": referencing_sub_shot.id,
+                "scene_card_id": scene_card.id,
+                "image_to_delete_id": image_to_delete.id,
+                "current_image_id": current_image.id,
+                "video_id": video.id,
+            }
+        finally:
+            db.close()
+
     def test_router_owns_episode_routes_without_shot_crud_routes(self):
         registered = set()
         for route in episodes.router.routes:
@@ -361,6 +453,89 @@ class EpisodeRouterTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         sync_mock.assert_called_once()
+
+    def test_storyboard2_edit_routes_preserve_update_payloads_and_owner_checks(self):
+        fixture = self._seed_storyboard2_edit_fixture()
+        self.current_user = fixture["owner"]
+
+        shot_response = self.client.patch(
+            f"/api/storyboard2/shots/{fixture['storyboard2_shot_id']}",
+            json={
+                "excerpt": "  New excerpt  ",
+                "selected_card_ids": [fixture["scene_card_id"], fixture["scene_card_id"], 0],
+            },
+        )
+        self.assertEqual(shot_response.status_code, 200)
+        self.assertEqual(shot_response.json()["excerpt"], "New excerpt")
+        self.assertEqual(shot_response.json()["selected_card_ids"], [fixture["scene_card_id"]])
+
+        sub_shot_response = self.client.patch(
+            f"/api/storyboard2/subshots/{fixture['sub_shot_id']}",
+            json={
+                "sora_prompt": "  new sora prompt  ",
+                "scene_override": "  manual scene  ",
+                "selected_card_ids": [fixture["scene_card_id"]],
+            },
+        )
+        self.assertEqual(sub_shot_response.status_code, 200)
+        self.assertEqual(sub_shot_response.json()["sora_prompt"], "new sora prompt")
+        self.assertEqual(sub_shot_response.json()["scene_override"], "manual scene")
+        self.assertEqual(sub_shot_response.json()["scene_override_locked"], True)
+        self.assertEqual(sub_shot_response.json()["selected_card_ids"], [fixture["scene_card_id"]])
+
+        self.current_user = fixture["other"]
+        forbidden_response = self.client.patch(
+            f"/api/storyboard2/shots/{fixture['storyboard2_shot_id']}",
+            json={"excerpt": "nope"},
+        )
+        self.assertEqual(forbidden_response.status_code, 403)
+
+    def test_storyboard2_media_edit_delete_routes_preserve_payloads(self):
+        fixture = self._seed_storyboard2_edit_fixture()
+        self.current_user = fixture["owner"]
+
+        current_image_response = self.client.patch(
+            f"/api/storyboard2/subshots/{fixture['sub_shot_id']}/current-image",
+            json={"current_image_id": fixture["current_image_id"]},
+        )
+        self.assertEqual(current_image_response.status_code, 200)
+        self.assertEqual(
+            current_image_response.json()["current_image_id"],
+            fixture["current_image_id"],
+        )
+
+        first_video_delete = self.client.delete(
+            f"/api/storyboard2/videos/{fixture['video_id']}"
+        )
+        self.assertEqual(first_video_delete.status_code, 200)
+        self.assertEqual(first_video_delete.json()["video_id"], fixture["video_id"])
+
+        second_video_delete = self.client.delete(
+            f"/api/storyboard2/videos/{fixture['video_id']}"
+        )
+        self.assertEqual(second_video_delete.status_code, 200)
+        self.assertEqual(second_video_delete.json()["message"], "视频已删除")
+
+        image_delete_response = self.client.delete(
+            f"/api/storyboard2/images/{fixture['image_to_delete_id']}"
+        )
+        self.assertEqual(image_delete_response.status_code, 200)
+        self.assertEqual(image_delete_response.json()["image_id"], fixture["image_to_delete_id"])
+        self.assertEqual(image_delete_response.json()["cleared_current_count"], 1)
+
+        db = self.Session()
+        try:
+            self.assertIsNone(
+                db.query(models.Storyboard2SubShotImage).filter(
+                    models.Storyboard2SubShotImage.id == fixture["image_to_delete_id"]
+                ).first()
+            )
+            referencing_sub_shot = db.query(models.Storyboard2SubShot).filter(
+                models.Storyboard2SubShot.id == fixture["referencing_sub_shot_id"]
+            ).first()
+            self.assertIsNone(referencing_sub_shot.current_image_id)
+        finally:
+            db.close()
 
     def test_get_update_poll_status_and_total_cost_preserve_owner_behavior(self):
         owner, other, episode_id = self._seed_episode()

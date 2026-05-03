@@ -16542,8 +16542,7 @@ class Storyboard2GenerateImagesRequest(BaseModel):
     timeout_seconds: int = 420
 
 
-class Storyboard2SetCurrentImageRequest(BaseModel):
-    current_image_id: Optional[int] = None
+Storyboard2SetCurrentImageRequest = episodes.Storyboard2SetCurrentImageRequest
 
 
 class Storyboard2BatchGenerateSoraPromptsRequest(BaseModel):
@@ -18261,7 +18260,6 @@ async def get_storyboard2_data(
     return payload
 
 
-@app.patch("/api/storyboard2/shots/{storyboard2_shot_id}")
 async def update_storyboard2_shot(
     storyboard2_shot_id: int,
     request: Storyboard2UpdateShotRequest,
@@ -18313,7 +18311,6 @@ async def update_storyboard2_shot(
     }
 
 
-@app.patch("/api/storyboard2/subshots/{sub_shot_id}")
 async def update_storyboard2_sub_shot(
     sub_shot_id: int,
     request: Storyboard2UpdateSubShotRequest,
@@ -19080,7 +19077,6 @@ async def generate_storyboard2_sub_shot_video(
     }
 
 
-@app.delete("/api/storyboard2/videos/{video_id}")
 async def delete_storyboard2_video(
     video_id: int,
     user: models.User = Depends(get_current_user),
@@ -19123,7 +19119,6 @@ async def delete_storyboard2_video(
     }
 
 
-@app.patch("/api/storyboard2/subshots/{sub_shot_id}/current-image")
 async def set_storyboard2_current_image(
     sub_shot_id: int,
     request: Storyboard2SetCurrentImageRequest,
@@ -19162,7 +19157,6 @@ async def set_storyboard2_current_image(
     }
 
 
-@app.delete("/api/storyboard2/images/{image_id}")
 async def delete_storyboard2_image(
     image_id: int,
     user: models.User = Depends(get_current_user),
@@ -19248,6 +19242,18 @@ app.include_router(hit_dramas.router)
 
 # Compatibility exports for direct callers while managed task routes live in api.routers.episodes.
 get_managed_tasks = episodes.get_managed_tasks
+
+# Compatibility exports for direct callers while storyboard2 routes live in api.routers.episodes.
+Storyboard2SetCurrentImageRequest = episodes.Storyboard2SetCurrentImageRequest
+Storyboard2BatchGenerateSoraPromptsRequest = episodes.Storyboard2BatchGenerateSoraPromptsRequest
+Storyboard2UpdateShotRequest = episodes.Storyboard2UpdateShotRequest
+Storyboard2UpdateSubShotRequest = episodes.Storyboard2UpdateSubShotRequest
+batch_generate_storyboard2_sora_prompts = episodes.batch_generate_storyboard2_sora_prompts
+update_storyboard2_shot = episodes.update_storyboard2_shot
+update_storyboard2_sub_shot = episodes.update_storyboard2_sub_shot
+delete_storyboard2_video = episodes.delete_storyboard2_video
+set_storyboard2_current_image = episodes.set_storyboard2_current_image
+delete_storyboard2_image = episodes.delete_storyboard2_image
 
 # Compatibility exports for direct callers while video task routes live in api.routers.video.
 CancelVideoTasksRequest = video.CancelVideoTasksRequest
