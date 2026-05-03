@@ -132,25 +132,12 @@ _SUBJECT_MATCH_STOP_FRAGMENTS = {
     "室外",
 }
 
-VOICEOVER_TTS_METHOD_SAME = "与音色参考音频相同"
-
-VOICEOVER_TTS_METHOD_VECTOR = "使用情感向量控制"
-
-VOICEOVER_TTS_METHOD_EMO_TEXT = "使用情感描述文本控制"
-
-VOICEOVER_TTS_METHOD_AUDIO = "使用情感参考音频"
-
-VOICEOVER_TTS_ALLOWED_METHODS = {
-    VOICEOVER_TTS_METHOD_SAME,
-    VOICEOVER_TTS_METHOD_VECTOR,
-    VOICEOVER_TTS_METHOD_EMO_TEXT,
-    VOICEOVER_TTS_METHOD_AUDIO
-}
-
-VOICEOVER_TTS_VECTOR_KEYS = [
-    "joy", "anger", "sadness", "fear",
-    "disgust", "depression", "surprise", "neutral"
-]
+VOICEOVER_TTS_METHOD_SAME = voiceover_data.VOICEOVER_TTS_METHOD_SAME
+VOICEOVER_TTS_METHOD_VECTOR = voiceover_data.VOICEOVER_TTS_METHOD_VECTOR
+VOICEOVER_TTS_METHOD_EMO_TEXT = voiceover_data.VOICEOVER_TTS_METHOD_EMO_TEXT
+VOICEOVER_TTS_METHOD_AUDIO = voiceover_data.VOICEOVER_TTS_METHOD_AUDIO
+VOICEOVER_TTS_ALLOWED_METHODS = voiceover_data.VOICEOVER_TTS_ALLOWED_METHODS
+VOICEOVER_TTS_VECTOR_KEYS = voiceover_data.VOICEOVER_TTS_VECTOR_KEYS
 
 SIMPLE_STORYBOARD_TIMEOUT_SECONDS = 3600
 
@@ -542,18 +529,7 @@ def _voiceover_default_test_mp3_path() -> str:
         os.path.join(os.path.dirname(__file__), "..", "TTS_example", "test.mp3")
     )
 
-def _voiceover_default_vector_config() -> dict:
-    return {
-        "weight": 0.65,
-        "joy": 0.0,
-        "anger": 0.0,
-        "sadness": 0.0,
-        "fear": 0.0,
-        "disgust": 0.0,
-        "depression": 0.0,
-        "surprise": 0.0,
-        "neutral": 1.0
-    }
+_voiceover_default_vector_config = voiceover_data.voiceover_default_vector_config
 
 def _voiceover_default_shared_data() -> dict:
     return {
@@ -574,44 +550,9 @@ def _voiceover_default_reference_item() -> dict:
         "created_at": datetime.utcnow().isoformat()
     }
 
-def _safe_float(value: Any, default_value: float = 0.0) -> float:
-    try:
-        parsed = float(value)
-    except Exception:
-        parsed = float(default_value)
-    if parsed < 0:
-        return 0.0
-    if parsed > 1:
-        return 1.0
-    return parsed
-
-def _normalize_voiceover_vector_config(raw_config: Any) -> dict:
-    source = raw_config if isinstance(raw_config, dict) else {}
-    normalized = {"weight": _safe_float(source.get("weight"), 0.65)}
-    for key in VOICEOVER_TTS_VECTOR_KEYS:
-        normalized[key] = _safe_float(source.get(key), 0.0)
-
-    # 保底给一个中性值，避免全0
-    if all(normalized.get(k, 0.0) == 0.0 for k in VOICEOVER_TTS_VECTOR_KEYS):
-        normalized["neutral"] = 1.0
-
-    return normalized
-
-def _normalize_voiceover_setting_template_payload(
-    raw_settings: Any,
-    default_voice_reference_id: str = ""
-) -> dict:
-    source = raw_settings if isinstance(raw_settings, dict) else {}
-    method = str(source.get("emotion_control_method") or VOICEOVER_TTS_METHOD_SAME).strip()
-    if method not in VOICEOVER_TTS_ALLOWED_METHODS:
-        method = VOICEOVER_TTS_METHOD_SAME
-    return {
-        "emotion_control_method": method,
-        "voice_reference_id": str(source.get("voice_reference_id") or default_voice_reference_id or "").strip(),
-        "vector_preset_id": str(source.get("vector_preset_id") or "").strip(),
-        "emotion_audio_preset_id": str(source.get("emotion_audio_preset_id") or "").strip(),
-        "vector_config": _normalize_voiceover_vector_config(source.get("vector_config"))
-    }
+_safe_float = voiceover_data.safe_float
+_normalize_voiceover_vector_config = voiceover_data.normalize_voiceover_vector_config
+_normalize_voiceover_setting_template_payload = voiceover_data.normalize_voiceover_setting_template_payload
 
 def _normalize_voiceover_shared_data(raw_data: Any) -> dict:
     source = raw_data if isinstance(raw_data, dict) else {}
@@ -724,193 +665,15 @@ def _save_script_voiceover_shared_data(script: models.Script, payload: dict):
         ensure_ascii=False
     )
 
-def _voiceover_default_line_tts(default_voice_reference_id: str = "") -> dict:
-    return {
-        "emotion_control_method": VOICEOVER_TTS_METHOD_SAME,
-        "voice_reference_id": default_voice_reference_id or "",
-        "vector_preset_id": "",
-        "emotion_audio_preset_id": "",
-        "vector_config": _voiceover_default_vector_config(),
-        "generated_audios": [],
-        "generate_status": "idle",
-        "generate_error": "",
-        "latest_task_id": ""
-    }
-
-def _normalize_voiceover_line_tts(raw_tts: Any, default_voice_reference_id: str = "") -> dict:
-    source = raw_tts if isinstance(raw_tts, dict) else {}
-    normalized = _voiceover_default_line_tts(default_voice_reference_id)
-
-    method = str(source.get("emotion_control_method") or "").strip()
-    if method in VOICEOVER_TTS_ALLOWED_METHODS:
-        normalized["emotion_control_method"] = method
-
-    normalized["voice_reference_id"] = str(
-        source.get("voice_reference_id") or normalized["voice_reference_id"]
-    ).strip()
-    normalized["vector_preset_id"] = str(source.get("vector_preset_id") or "").strip()
-    normalized["emotion_audio_preset_id"] = str(source.get("emotion_audio_preset_id") or "").strip()
-    normalized["vector_config"] = _normalize_voiceover_vector_config(source.get("vector_config"))
-    normalized["generate_status"] = str(source.get("generate_status") or "idle").strip().lower()
-    if normalized["generate_status"] not in {"idle", "pending", "processing", "completed", "failed"}:
-        normalized["generate_status"] = "idle"
-    normalized["generate_error"] = str(source.get("generate_error") or "").strip()
-    normalized["latest_task_id"] = str(source.get("latest_task_id") or "").strip()
-
-    generated_audios = source.get("generated_audios", [])
-    if isinstance(generated_audios, list):
-        cleaned = []
-        for item in generated_audios:
-            if not isinstance(item, dict):
-                continue
-            audio_url = str(item.get("url") or "").strip()
-            if not audio_url:
-                continue
-            cleaned.append({
-                "id": str(item.get("id") or uuid.uuid4().hex).strip(),
-                "name": str(item.get("name") or "生成结果").strip(),
-                "url": audio_url,
-                "task_id": str(item.get("task_id") or "").strip(),
-                "created_at": str(item.get("created_at") or datetime.utcnow().isoformat()),
-                "status": str(item.get("status") or "completed").strip().lower()
-            })
-        normalized["generated_audios"] = cleaned
-
-    return normalized
-
-def _ensure_voiceover_shot_line_fields(
-    shot: dict,
-    default_voice_reference_id: str = ""
-) -> bool:
-    if not isinstance(shot, dict):
-        return False
-
-    changed = False
-    shot_number = str(shot.get("shot_number") or "").strip() or "0"
-
-    narration = shot.get("narration")
-    if isinstance(narration, dict):
-        current_line_id = str(narration.get("line_id") or "").strip()
-        target_line_id = current_line_id or f"shot_{shot_number}_narration"
-        if current_line_id != target_line_id:
-            narration["line_id"] = target_line_id
-            changed = True
-        normalized_tts = _normalize_voiceover_line_tts(
-            narration.get("tts"),
-            default_voice_reference_id
-        )
-        if narration.get("tts") != normalized_tts:
-            narration["tts"] = normalized_tts
-            changed = True
-
-    dialogue = shot.get("dialogue")
-    if isinstance(dialogue, list):
-        for idx, item in enumerate(dialogue, start=1):
-            if not isinstance(item, dict):
-                continue
-            current_line_id = str(item.get("line_id") or "").strip()
-            target_line_id = current_line_id or f"shot_{shot_number}_dialogue_{idx}"
-            if current_line_id != target_line_id:
-                item["line_id"] = target_line_id
-                changed = True
-            normalized_tts = _normalize_voiceover_line_tts(
-                item.get("tts"),
-                default_voice_reference_id
-            )
-            if item.get("tts") != normalized_tts:
-                item["tts"] = normalized_tts
-                changed = True
-
-    return changed
-
-def _normalize_voiceover_shots_for_tts(
-    shots: Any,
-    default_voice_reference_id: str = ""
-) -> Tuple[list, bool]:
-    changed = False
-    normalized_shots = shots if isinstance(shots, list) else []
-    for shot in normalized_shots:
-        changed = _ensure_voiceover_shot_line_fields(shot, default_voice_reference_id) or changed
-    return normalized_shots, changed
-
-def _extract_voiceover_tts_line_states(shots: list) -> list:
-    states = []
-    for shot in shots:
-        if not isinstance(shot, dict):
-            continue
-
-        narration = shot.get("narration")
-        if isinstance(narration, dict):
-            line_id = str(narration.get("line_id") or "").strip()
-            tts = narration.get("tts")
-            if line_id and isinstance(tts, dict):
-                states.append({"line_id": line_id, "tts": tts})
-
-        dialogue = shot.get("dialogue")
-        if isinstance(dialogue, list):
-            for item in dialogue:
-                if not isinstance(item, dict):
-                    continue
-                line_id = str(item.get("line_id") or "").strip()
-                tts = item.get("tts")
-                if line_id and isinstance(tts, dict):
-                    states.append({"line_id": line_id, "tts": tts})
-    return states
-
-def _find_voiceover_line_entry(shots: list, line_id: str) -> Optional[dict]:
-    target = str(line_id or "").strip()
-    if not target:
-        return None
-
-    for shot in shots:
-        if not isinstance(shot, dict):
-            continue
-        narration = shot.get("narration")
-        if isinstance(narration, dict) and str(narration.get("line_id") or "").strip() == target:
-            return narration
-        dialogue = shot.get("dialogue")
-        if isinstance(dialogue, list):
-            for item in dialogue:
-                if isinstance(item, dict) and str(item.get("line_id") or "").strip() == target:
-                    return item
-    return None
-
-def _parse_episode_voiceover_payload(episode: models.Episode) -> dict:
-    payload = {}
-    raw_text = str(getattr(episode, "voiceover_data", "") or "").strip()
-    if raw_text:
-        try:
-            parsed = json.loads(raw_text)
-            if isinstance(parsed, dict):
-                payload = parsed
-        except Exception:
-            payload = {}
-    shots = payload.get("shots")
-    if not isinstance(shots, list):
-        payload["shots"] = []
-    return payload
-
-def _voiceover_first_reference_id(shared_data: dict) -> str:
-    refs = shared_data.get("voice_references", []) if isinstance(shared_data, dict) else []
-    if isinstance(refs, list) and refs:
-        return str(refs[0].get("id") or "").strip()
-    return ""
-
-def _iter_voiceover_lines(shots: list):
-    """遍历shots中的 narration/dialogue 行（原位可改）。"""
-    if not isinstance(shots, list):
-        return
-    for shot in shots:
-        if not isinstance(shot, dict):
-            continue
-        narration = shot.get("narration")
-        if isinstance(narration, dict):
-            yield narration
-        dialogue = shot.get("dialogue")
-        if isinstance(dialogue, list):
-            for item in dialogue:
-                if isinstance(item, dict):
-                    yield item
+_voiceover_default_line_tts = voiceover_data.voiceover_default_line_tts
+_normalize_voiceover_line_tts = voiceover_data.normalize_voiceover_line_tts
+_ensure_voiceover_shot_line_fields = voiceover_data.ensure_voiceover_shot_line_fields
+_normalize_voiceover_shots_for_tts = voiceover_data.normalize_voiceover_shots_for_tts
+_extract_voiceover_tts_line_states = voiceover_data.extract_voiceover_tts_line_states
+_find_voiceover_line_entry = voiceover_data.find_voiceover_line_entry
+_parse_episode_voiceover_payload = voiceover_data.parse_episode_voiceover_payload
+_voiceover_first_reference_id = voiceover_data.voiceover_first_reference_id
+_iter_voiceover_lines = voiceover_data.iter_voiceover_lines
 
 def _ensure_voiceover_permission(
     episode_id: int,

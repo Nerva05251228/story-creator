@@ -441,6 +441,62 @@ class StartupImportContractTests(unittest.TestCase):
             self.assertIn(f"{name} = voiceover_data.{service_name}", main_source)
             self.assertIn(f"{name} = voiceover_data.{service_name}", episodes_source)
 
+    def test_voiceover_tts_helpers_live_in_service_module(self):
+        main_source = MAIN_PATH.read_text(encoding="utf-8-sig")
+        episodes_source = (BACKEND_DIR / "api" / "routers" / "episodes.py").read_text(encoding="utf-8-sig")
+        service_source = (BACKEND_DIR / "api" / "services" / "voiceover_data.py").read_text(encoding="utf-8-sig")
+        delegated_names = {
+            "_voiceover_default_vector_config",
+            "_safe_float",
+            "_normalize_voiceover_vector_config",
+            "_normalize_voiceover_setting_template_payload",
+            "_voiceover_default_line_tts",
+            "_normalize_voiceover_line_tts",
+            "_ensure_voiceover_shot_line_fields",
+            "_normalize_voiceover_shots_for_tts",
+            "_extract_voiceover_tts_line_states",
+            "_find_voiceover_line_entry",
+            "_parse_episode_voiceover_payload",
+            "_voiceover_first_reference_id",
+            "_iter_voiceover_lines",
+        }
+        service_aliases = {
+            "_voiceover_default_vector_config": "voiceover_default_vector_config",
+            "_safe_float": "safe_float",
+            "_normalize_voiceover_vector_config": "normalize_voiceover_vector_config",
+            "_normalize_voiceover_setting_template_payload": "normalize_voiceover_setting_template_payload",
+            "_voiceover_default_line_tts": "voiceover_default_line_tts",
+            "_normalize_voiceover_line_tts": "normalize_voiceover_line_tts",
+            "_ensure_voiceover_shot_line_fields": "ensure_voiceover_shot_line_fields",
+            "_normalize_voiceover_shots_for_tts": "normalize_voiceover_shots_for_tts",
+            "_extract_voiceover_tts_line_states": "extract_voiceover_tts_line_states",
+            "_find_voiceover_line_entry": "find_voiceover_line_entry",
+            "_parse_episode_voiceover_payload": "parse_episode_voiceover_payload",
+            "_voiceover_first_reference_id": "voiceover_first_reference_id",
+            "_iter_voiceover_lines": "iter_voiceover_lines",
+        }
+
+        self.assertEqual(_top_level_definition_names(main_source) & delegated_names, set())
+        self.assertEqual(_top_level_definition_names(episodes_source) & delegated_names, set())
+        self.assertIn("VOICEOVER_TTS_VECTOR_KEYS = voiceover_data.VOICEOVER_TTS_VECTOR_KEYS", main_source)
+        self.assertIn("VOICEOVER_TTS_VECTOR_KEYS = voiceover_data.VOICEOVER_TTS_VECTOR_KEYS", episodes_source)
+        self.assertNotIn("VOICEOVER_TTS_VECTOR_KEYS = [", main_source)
+        self.assertNotIn("VOICEOVER_TTS_VECTOR_KEYS = [", episodes_source)
+        for service_name in service_aliases.values():
+            self.assertIn(f"def {service_name}", service_source)
+        for name, service_name in service_aliases.items():
+            self.assertIn(f"{name} = voiceover_data.{service_name}", main_source)
+            self.assertIn(f"{name} = voiceover_data.{service_name}", episodes_source)
+        for constant_name in {
+            "VOICEOVER_TTS_METHOD_SAME",
+            "VOICEOVER_TTS_METHOD_VECTOR",
+            "VOICEOVER_TTS_METHOD_EMO_TEXT",
+            "VOICEOVER_TTS_METHOD_AUDIO",
+            "VOICEOVER_TTS_ALLOWED_METHODS",
+        }:
+            self.assertIn(f"{constant_name} = voiceover_data.{constant_name}", main_source)
+            self.assertIn(f"{constant_name} = voiceover_data.{constant_name}", episodes_source)
+
     def test_web_startup_event_excludes_schema_bootstrap_and_preflight_responsibilities(self):
         source = MAIN_PATH.read_text(encoding="utf-8-sig")
         startup_node = _function_node(source, "startup_event")

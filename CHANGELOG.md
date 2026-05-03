@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 This project uses a lightweight `Added`, `Changed`, `Fixed`, `Security`, and `Migration` structure.
 
+## 2026-05-03 - Voiceover TTS Helper Service Extraction
+
+### Added
+
+- Extended `backend/api/services/voiceover_data.py` with shared voiceover TTS method constants, vector normalization, setting-template normalization, line TTS defaults, line-state extraction, line lookup, and payload parsing helpers.
+- Added focused service tests for vector clamping, neutral fallback behavior, setting template defaults, generated-audio normalization, missing line ID backfill, line-state extraction, line lookup, and first-reference resolution.
+- Added import-contract coverage so voiceover TTS helper bodies stay out of `backend/main.py` and the episodes router.
+
+### Changed
+
+- Updated `backend/main.py` and `backend/api/routers/episodes.py` to reuse voiceover TTS helpers and constants through compatibility aliases without changing route paths, responses, authorization, task queue, or database behavior.
+
 ## 2026-05-03 - Voiceover Data Merge Service Extraction
 
 ### Added

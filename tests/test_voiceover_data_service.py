@@ -138,6 +138,147 @@ class VoiceoverDataServiceTests(unittest.TestCase):
 
         self.assertEqual(merged, {"shots": []})
 
+    def test_normalize_vector_config_clamps_values_and_uses_neutral_fallback(self):
+        normalized = voiceover_data.normalize_voiceover_vector_config({
+            "weight": "1.5",
+            "joy": "-1",
+            "anger": "0.25",
+            "neutral": "0",
+        })
+
+        self.assertEqual(normalized["weight"], 1.0)
+        self.assertEqual(normalized["joy"], 0.0)
+        self.assertEqual(normalized["anger"], 0.25)
+        self.assertEqual(normalized["neutral"], 0.0)
+
+        all_zero = voiceover_data.normalize_voiceover_vector_config({"weight": "bad"})
+
+        self.assertEqual(all_zero["weight"], 0.65)
+        self.assertEqual(all_zero["neutral"], 1.0)
+
+    def test_normalize_setting_template_payload_uses_default_reference_and_allowed_method(self):
+        normalized = voiceover_data.normalize_voiceover_setting_template_payload(
+            {
+                "emotion_control_method": "unsupported",
+                "voice_reference_id": "",
+                "vector_preset_id": " preset-1 ",
+                "emotion_audio_preset_id": " audio-1 ",
+                "vector_config": {"joy": "0.4"},
+            },
+            default_voice_reference_id="voice-default",
+        )
+
+        self.assertEqual(normalized["emotion_control_method"], voiceover_data.VOICEOVER_TTS_METHOD_SAME)
+        self.assertEqual(normalized["voice_reference_id"], "voice-default")
+        self.assertEqual(normalized["vector_preset_id"], "preset-1")
+        self.assertEqual(normalized["emotion_audio_preset_id"], "audio-1")
+        self.assertEqual(normalized["vector_config"]["joy"], 0.4)
+
+    def test_normalize_line_tts_defaults_invalid_status_and_preserves_generated_audio(self):
+        normalized = voiceover_data.normalize_voiceover_line_tts(
+            {
+                "emotion_control_method": voiceover_data.VOICEOVER_TTS_METHOD_VECTOR,
+                "voice_reference_id": " voice-1 ",
+                "vector_preset_id": " preset-1 ",
+                "emotion_audio_preset_id": " audio-1 ",
+                "generate_status": "BROKEN",
+                "generate_error": " failed ",
+                "latest_task_id": " task-1 ",
+                "generated_audios": [
+                    {
+                        "id": " audio-1 ",
+                        "name": " Result ",
+                        "url": " https://cdn.example.invalid/audio.mp3 ",
+                        "task_id": " task-1 ",
+                        "created_at": "2026-05-03T00:00:00",
+                        "status": "FAILED",
+                    },
+                    {"url": ""},
+                    "bad",
+                ],
+            },
+            default_voice_reference_id="voice-default",
+        )
+
+        self.assertEqual(normalized["emotion_control_method"], voiceover_data.VOICEOVER_TTS_METHOD_VECTOR)
+        self.assertEqual(normalized["voice_reference_id"], "voice-1")
+        self.assertEqual(normalized["vector_preset_id"], "preset-1")
+        self.assertEqual(normalized["emotion_audio_preset_id"], "audio-1")
+        self.assertEqual(normalized["generate_status"], "idle")
+        self.assertEqual(normalized["generate_error"], "failed")
+        self.assertEqual(normalized["latest_task_id"], "task-1")
+        self.assertEqual(
+            normalized["generated_audios"],
+            [
+                {
+                    "id": "audio-1",
+                    "name": "Result",
+                    "url": "https://cdn.example.invalid/audio.mp3",
+                    "task_id": "task-1",
+                    "created_at": "2026-05-03T00:00:00",
+                    "status": "failed",
+                }
+            ],
+        )
+
+    def test_normalize_shots_for_tts_adds_line_ids_and_extracts_line_states(self):
+        shots = [
+            {
+                "shot_number": "3",
+                "narration": {"text": "narration"},
+                "dialogue": [
+                    {"text": "first"},
+                    {
+                        "line_id": "custom-dialogue",
+                        "text": "second",
+                        "tts": {"generate_status": "completed"},
+                    },
+                ],
+            }
+        ]
+
+        normalized_shots, changed = voiceover_data.normalize_voiceover_shots_for_tts(
+            shots,
+            default_voice_reference_id="voice-default",
+        )
+
+        self.assertIs(normalized_shots, shots)
+        self.assertTrue(changed)
+        narration = shots[0]["narration"]
+        first_dialogue = shots[0]["dialogue"][0]
+        second_dialogue = shots[0]["dialogue"][1]
+        self.assertEqual(narration["line_id"], "shot_3_narration")
+        self.assertEqual(narration["tts"]["voice_reference_id"], "voice-default")
+        self.assertEqual(first_dialogue["line_id"], "shot_3_dialogue_1")
+        self.assertEqual(second_dialogue["line_id"], "custom-dialogue")
+        self.assertEqual(second_dialogue["tts"]["generate_status"], "completed")
+
+        states = voiceover_data.extract_voiceover_tts_line_states(shots)
+
+        self.assertEqual(
+            [item["line_id"] for item in states],
+            ["shot_3_narration", "shot_3_dialogue_1", "custom-dialogue"],
+        )
+        self.assertIs(
+            voiceover_data.find_voiceover_line_entry(shots, "custom-dialogue"),
+            second_dialogue,
+        )
+        self.assertEqual(list(voiceover_data.iter_voiceover_lines(shots)), [narration, first_dialogue, second_dialogue])
+
+    def test_parse_episode_voiceover_payload_and_first_reference_id(self):
+        class EpisodeStub:
+            voiceover_data = json.dumps({"shots": {"not": "a list"}, "keep": True})
+
+        payload = voiceover_data.parse_episode_voiceover_payload(EpisodeStub())
+
+        self.assertEqual(payload, {"shots": [], "keep": True})
+        self.assertEqual(
+            voiceover_data.voiceover_first_reference_id({
+                "voice_references": [{"id": " voice-1 "}, {"id": "voice-2"}],
+            }),
+            "voice-1",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
