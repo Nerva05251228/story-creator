@@ -57,6 +57,7 @@ from api.services import model_configs as model_configs_service
 from api.services import simple_storyboard_batches as simple_storyboard_batches_service
 from api.services import storyboard_defaults
 from api.services import storyboard_reference_assets
+from api.services import storyboard_sync
 from api.services import storyboard_video_settings
 from api.services import storyboard_video_payload
 from api.services import voiceover_data
@@ -110,7 +111,6 @@ from storyboard_prompt_templates import (
 from storyboard_variant import (
     build_duplicate_shot_payload,
     build_storyboard_image_variant_payload,
-    build_storyboard_sync_variant_payload,
     choose_storyboard_reference_source,
 )
 from dashboard_service import (
@@ -293,7 +293,7 @@ MANAGED_PROMPT_OPTIMIZE_DEFAULT = """你是一位视频生成提示词优化助�
 原始完整提示词：
 {full_prompt}"""
 
-ALLOWED_CARD_TYPES = ("角色", "场景", "道具")
+ALLOWED_CARD_TYPES = storyboard_sync.ALLOWED_CARD_TYPES
 ALL_SUBJECT_CARD_TYPES = ("角色", "场景", "道具", "声音")
 SOUND_CARD_TYPE = "声音"
 SEEDANCE_AUDIO_MAX_COUNT = 3
@@ -2434,14 +2434,16 @@ def ensure_character_three_view_prompt_config():
 
 
 
-_normalize_subject_detail_entry = episodes._normalize_subject_detail_entry
-_build_subject_detail_map = episodes._build_subject_detail_map
-_normalize_storyboard_generation_subjects = episodes._normalize_storyboard_generation_subjects
-_SUBJECT_MATCH_STOP_FRAGMENTS = episodes._SUBJECT_MATCH_STOP_FRAGMENTS
-_find_meaningful_common_fragment = episodes._find_meaningful_common_fragment
-_infer_storyboard_role_name_from_shot = episodes._infer_storyboard_role_name_from_shot
-_resolve_storyboard_subject_name = episodes._resolve_storyboard_subject_name
-_reconcile_storyboard_shot_subjects = episodes._reconcile_storyboard_shot_subjects
+_normalize_subject_detail_entry = storyboard_sync.normalize_subject_detail_entry
+_build_subject_detail_map = storyboard_sync.build_subject_detail_map
+_normalize_storyboard_generation_subjects = storyboard_sync.normalize_storyboard_generation_subjects
+_SUBJECT_MATCH_STOP_FRAGMENTS = storyboard_sync.SUBJECT_MATCH_STOP_FRAGMENTS
+_find_meaningful_common_fragment = storyboard_sync.find_meaningful_common_fragment
+_infer_storyboard_role_name_from_shot = storyboard_sync.infer_storyboard_role_name_from_shot
+_resolve_storyboard_subject_name = storyboard_sync.resolve_storyboard_subject_name
+_reconcile_storyboard_shot_subjects = storyboard_sync.reconcile_storyboard_shot_subjects
+_sync_subjects_to_database = storyboard_sync.sync_subjects_to_database
+_sync_storyboard_to_shots = storyboard_sync.sync_storyboard_to_shots
 
 
 def _normalize_stage2_subjects(subjects: Optional[list]) -> list:
@@ -7968,434 +7970,8 @@ def get_episode_storyboard_status(
         "shots_count": _count_storyboard_items(episode.storyboard_data),
     }
 
-def _sync_subjects_to_database(episode_id: int, storyboard_data: dict, db: Session):
-    """
-    从分镜表JSON中提取所有主体，同步到SubjectCard表，并更新镜头的selected_card_ids
 
-    此函数会：
-    1. 从所有镜头中收集所有主体
-    2. 去重（按名称和类型）
-    3. 创建数据库中不存在的主体卡片
-    4. ✅ 更新每个镜头的selected_card_ids，关联主体ID
 
-    Args:
-        episode_id: 片段ID
-        storyboard_data: 分镜表JSON数据（dict格式）
-        db: 数据库会话
-    """
-    try:
-        # 获取episode和script
-        episode = db.query(models.Episode).filter(models.Episode.id == episode_id).first()
-        if not episode:
-            return
-
-        script = db.query(models.Script).filter(models.Script.id == episode.script_id).first()
-        if not script:
-            return
-
-        # 获取主体库
-        library = db.query(models.StoryLibrary).filter(
-            models.StoryLibrary.episode_id == episode.id
-        ).first()
-        if not library:
-            print(f"[同步主体] 警告：找不到剧集 {episode.id} 的主体库")
-            return
-
-        # 从主体列表和镜头中收集主体（去重）
-        all_subjects = _build_subject_detail_map(storyboard_data.get("subjects", []))
-        shots = storyboard_data.get("shots", [])
-        reconciled_shots = []
-
-        for shot in shots:
-            if not isinstance(shot, dict):
-                continue
-            shot_copy = dict(shot)
-            shot_copy["subjects"] = _reconcile_storyboard_shot_subjects(
-                shot_copy,
-                all_subjects,
-            )
-            reconciled_shots.append(shot_copy)
-
-        shots = reconciled_shots
-
-        for shot in shots:
-            subjects = shot.get("subjects", [])
-            if not isinstance(subjects, list):
-                continue
-
-            for subj in subjects:
-                if not isinstance(subj, dict):
-                    continue
-
-                name = (subj.get("name") or "").strip()
-                subject_type = (subj.get("type") or "角色").strip() or "角色"
-
-                if not name:
-                    continue
-
-                if subject_type not in ALLOWED_CARD_TYPES:
-                    continue
-
-                key = (name, subject_type)
-                if key not in all_subjects:
-                    all_subjects[key] = {
-                        "name": name,
-                        "type": subject_type,
-                        "alias": "",
-                        "ai_prompt": "",
-                        "role_personality": ""
-                    }
-
-        if not all_subjects:
-            print(f"[同步主体] 没有发现新主体")
-            return
-
-        print(f"[同步主体] 从分镜表中提取到 {len(all_subjects)} 个唯一主体")
-
-        # 获取数据库中已有的主体
-        existing_cards = db.query(models.SubjectCard).filter(
-            models.SubjectCard.library_id == library.id
-        ).all()
-        existing_card_map = {(card.name, card.card_type): card for card in existing_cards}
-        existing_names = {(card.name, card.card_type): card.id for card in existing_cards}
-
-        updated_count = 0
-        for key, subject_info in all_subjects.items():
-            existing_card = existing_card_map.get(key)
-            if not existing_card:
-                continue
-
-            changed = False
-            alias = (subject_info.get("alias") or "").strip()
-            ai_prompt = (subject_info.get("ai_prompt") or "").strip()
-            role_personality = (subject_info.get("role_personality") or "").strip()
-
-            if alias and alias != (existing_card.alias or ""):
-                existing_card.alias = alias
-                changed = True
-            if ai_prompt and ai_prompt != (existing_card.ai_prompt or ""):
-                existing_card.ai_prompt = ai_prompt
-                changed = True
-            if existing_card.card_type == "角色" and role_personality and role_personality != (getattr(existing_card, "role_personality", "") or ""):
-                existing_card.role_personality = role_personality
-                changed = True
-
-            if changed:
-                updated_count += 1
-
-        # 创建不存在的主体
-        created_count = 0
-        for key, subject_info in all_subjects.items():
-            if key in existing_names:
-                continue
-
-            new_card = models.SubjectCard(
-                library_id=library.id,
-                name=subject_info["name"],
-                card_type=subject_info["type"],
-                alias=subject_info.get("alias", ""),
-                ai_prompt=subject_info.get("ai_prompt", ""),
-                role_personality=subject_info.get("role_personality", "") if subject_info["type"] == "角色" else ""
-            )
-            db.add(new_card)
-            db.flush()  # ✅ 刷新以获取新ID
-            existing_names[key] = new_card.id
-            existing_card_map[key] = new_card
-            created_count += 1
-            print(f"[同步主体] 创建新主体: {subject_info['name']} ({subject_info['type']}) - ID: {new_card.id}")
-
-        if created_count > 0 or updated_count > 0:
-            db.commit()
-            print(f"[同步主体] 成功创建 {created_count} 个新主体卡片，更新 {updated_count} 个主体卡片")
-        else:
-            print(f"[同步主体] 所有主体已存在，无需创建")
-
-        # ✅ 更新每个镜头的 selected_card_ids
-        updated_shots = 0
-        for shot in shots:
-            shot_number = shot.get("shot_number")
-            if not shot_number:
-                continue
-
-            subjects = shot.get("subjects", [])
-            if not isinstance(subjects, list):
-                continue
-
-            # 将主体名称转换为ID列表
-            card_ids = []
-            for subj in subjects:
-                if not isinstance(subj, dict):
-                    continue
-
-                name = (subj.get("name") or "").strip()
-                subject_type = (subj.get("type") or "角色").strip() or "角色"
-
-                if not name:
-                    continue
-
-                key = (name, subject_type)
-                if key in existing_names:
-                    card_ids.append(existing_names[key])
-
-            # 更新数据库中的 storyboard_shots 表
-            shot_record = db.query(models.StoryboardShot).filter(
-                models.StoryboardShot.episode_id == episode_id,
-                models.StoryboardShot.shot_number == shot_number,
-                models.StoryboardShot.variant_index == 0
-            ).first()
-
-            if shot_record:
-                shot_record.selected_card_ids = json.dumps(card_ids)
-                updated_shots += 1
-
-        if updated_shots > 0:
-            db.commit()
-            print(f"[同步主体] 成功更新 {updated_shots} 个镜头的 selected_card_ids")
-
-    except Exception as e:
-        print(f"[同步主体] 错误: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        db.rollback()
-
-
-def _sync_storyboard_to_shots(episode_id: int, new_storyboard_data: dict, old_storyboard_data: dict, db: Session):
-    """
-    将分镜表JSON同步到StoryboardShot表（和旧 JSON 比对）
-
-    参数：
-        episode_id: 片段ID
-        new_storyboard_data: 新的分镜表数据
-        old_storyboard_data: 旧的分镜表数据（用于比对）
-        db: 数据库会话
-
-    规则：
-    1. 修改的镜头：
-       - video_status in ["processing", "completed"] → 创建新变体
-       - 否则 → 直接更新
-    2. 删除的镜头：
-       - video_status in ["processing", "completed"] → 保留
-       - 否则 → 删除
-    3. 新增的镜头：创建新镜头（variant_index=0）
-    """
-    try:
-        # 获取episode和主体库信息
-        episode = db.query(models.Episode).filter(models.Episode.id == episode_id).first()
-        if not episode:
-            return
-
-        script = db.query(models.Script).filter(models.Script.id == episode.script_id).first()
-        if not script:
-            return
-
-        library = db.query(models.StoryLibrary).filter(
-            models.StoryLibrary.episode_id == episode.id
-        ).first()
-        if not library:
-            return
-
-        # ✅ 从旧的 JSON 数据读取镜头信息（用于比对）
-        old_shots_dict_by_id = {}  # ✅ 按 ID 索引（优先）
-        if old_storyboard_data:
-            old_shots = old_storyboard_data.get("shots", [])
-            for old_shot in old_shots:
-                shot_id = old_shot.get("id")
-                if shot_id:
-                    old_shots_dict_by_id[shot_id] = old_shot
-
-        # 获取主体名称到ID的映射
-        existing_cards = db.query(models.SubjectCard).filter(
-            models.SubjectCard.library_id == library.id
-        ).all()
-        card_name_to_id = {(card.name, card.card_type): card.id for card in existing_cards}
-
-        # 获取现有的镜头（所有变体）
-        existing_shots = db.query(models.StoryboardShot).filter(
-            models.StoryboardShot.episode_id == episode_id
-        ).all()
-
-        # ✅ 按数据库ID索引
-        existing_shots_by_id = {shot.id: shot for shot in existing_shots}
-        # 按stable_id索引（用于变体分组）
-        existing_shots_by_stable_id = {}
-        for shot in existing_shots:
-            if shot.stable_id:
-                if shot.stable_id not in existing_shots_by_stable_id:
-                    existing_shots_by_stable_id[shot.stable_id] = []
-                existing_shots_by_stable_id[shot.stable_id].append(shot)
-
-        # 处理分镜表中的每个镜头
-        new_shots = new_storyboard_data.get("shots", [])
-        processed_ids = set()  # ✅ 跟踪已处理的数据库ID
-
-        for new_shot in new_shots:
-            shot_number_str = new_shot.get("shot_number", "")
-            try:
-                shot_number = int(shot_number_str)
-            except:
-                continue
-
-            # ✅ 获取数据库ID和stable_id
-            shot_id = new_shot.get("id")
-            stable_id = new_shot.get("stable_id")
-
-            if shot_id:
-                processed_ids.add(shot_id)
-
-            # 解析主体ID列表
-            new_subjects = new_shot.get("subjects", [])
-            selected_card_ids = []
-            for subj in new_subjects:
-                if not isinstance(subj, dict):
-                    continue
-                name = (subj.get("name") or "").strip()
-                subject_type = (subj.get("type") or "角色").strip() or "角色"
-                if name:
-                    key = (name, subject_type)
-                    if key in card_name_to_id:
-                        selected_card_ids.append(card_name_to_id[key])
-
-            # 构建新数据
-            new_script_excerpt = (new_shot.get("original_text") or "").strip()
-            new_dialogue = (new_shot.get("dialogue_text") or "").strip()  # ✅ 使用dialogue_text（表格中的台词字符串）
-            new_sora_prompt = new_script_excerpt  # 初始值 = 原剧本段落
-
-            # ✅ 通过ID匹配数据库记录
-            if shot_id and shot_id in existing_shots_by_id:
-                # 找到了现有记录，更新它
-                db_record = existing_shots_by_id[shot_id]
-
-                # ✅ 通过ID在旧JSON中找到旧数据，用于比对
-                old_shot = old_shots_dict_by_id.get(shot_id)
-
-                is_modified = False
-                if old_shot:
-                    # 比较内容
-                    old_original_text = (old_shot.get("original_text") or "").strip()
-                    old_dialogue = (old_shot.get("dialogue_text") or "").strip()  # ✅ 使用dialogue_text
-
-                    if new_script_excerpt != old_original_text or new_dialogue != old_dialogue:
-                        is_modified = True
-
-                # 检查是否有视频
-                has_video = db_record.video_status in ["processing", "completed"]
-
-                if is_modified and has_video:
-                    # ✅ 检查是否已经有相同内容的变体存在
-                    variants = existing_shots_by_stable_id.get(db_record.stable_id, [])
-
-                    # 查找是否有变体的内容和新内容相同
-                    existing_variant_with_same_content = None
-                    for v in variants:
-                        if v.variant_index > 0:  # 只检查变体
-                            v_excerpt = (v.script_excerpt or "").strip()
-                            v_dialogue = (v.storyboard_dialogue or "").strip()
-                            if v_excerpt == new_script_excerpt and v_dialogue == new_dialogue:
-                                existing_variant_with_same_content = v
-                                break
-
-                    if existing_variant_with_same_content:
-                        # 已经有相同内容的变体，不创建新变体，只更新shot_number
-                        print(f"[同步镜头] 镜头{shot_number}已有相同内容的变体 (id={existing_variant_with_same_content.id})，不重复创建")
-                    else:
-                        # 创建新变体
-                        max_variant = max((v.variant_index for v in variants), default=0)
-
-                        new_variant = models.StoryboardShot(
-                            **build_storyboard_sync_variant_payload(
-                                db_record,
-                                next_variant=max_variant + 1,
-                                script_excerpt=new_script_excerpt,
-                                storyboard_dialogue=new_dialogue,
-                                selected_card_ids=json.dumps(selected_card_ids),
-                                sora_prompt=new_sora_prompt,
-                            )
-                        )
-                        db.add(new_variant)
-                        print(f"[同步镜头] 镜头{shot_number}已有视频，创建新变体 (id={shot_id})")
-                else:
-                    # 直接更新
-                    db_record.shot_number = shot_number
-                    db_record.script_excerpt = new_script_excerpt
-                    db_record.storyboard_dialogue = new_dialogue
-                    db_record.selected_card_ids = json.dumps(selected_card_ids)
-                    # ✅ 只有在内容修改时，才重置 sora_prompt（保护已生成的提示词）
-                    if is_modified:
-                        db_record.sora_prompt = new_sora_prompt
-                        db_record.sora_prompt_status = "idle"
-                    print(f"[同步镜头] 更新镜头{shot_number} (id={shot_id})")
-
-                    # ✅ 同时更新所有变体的shot_number
-                    if db_record.stable_id and db_record.stable_id in existing_shots_by_stable_id:
-                        for variant in existing_shots_by_stable_id[db_record.stable_id]:
-                            if variant.id != db_record.id:  # 不重复更新主镜头
-                                variant.shot_number = shot_number
-                                print(f"[同步镜头] 更新变体镜头{shot_number}_{variant.variant_index} (id={variant.id})")
-            else:
-                # 新镜头，创建记录
-                if not stable_id:
-                    stable_id = str(uuid.uuid4())
-
-                new_record = models.StoryboardShot(
-                    episode_id=episode_id,
-                    shot_number=shot_number,
-                    stable_id=stable_id,
-                    variant_index=0,
-                    script_excerpt=new_script_excerpt,
-                    storyboard_dialogue=new_dialogue,
-                    selected_card_ids=json.dumps(selected_card_ids),
-                    selected_sound_card_ids=None,
-                    sora_prompt=new_sora_prompt,
-                    aspect_ratio='16:9',
-                    duration=15,
-                    storyboard_video_model="",
-                    storyboard_video_model_override_enabled=False,
-                    duration_override_enabled=False,
-                    prompt_template='',
-                    video_status='idle',
-                    sora_prompt_status='idle'
-                )
-                db.add(new_record)
-                print(f"[同步镜头] 创建新镜头{shot_number} (stable_id={stable_id})")
-
-        # ✅ 处理删除：只删除主镜头（variant_index=0）如果它不在JSON中
-        # 变体镜头由stable_id关联，只要主镜头还在就保留
-        for shot in existing_shots:
-            should_delete = False
-
-            # 只处理主镜头
-            if shot.variant_index == 0:
-                # 如果主镜头的ID不在processed_ids中，说明被删除了
-                if shot.id not in processed_ids:
-                    should_delete = True
-
-                    if should_delete:
-                        # 检查是否有视频
-                        has_video = shot.video_status in ["processing", "completed"]
-
-                        if not has_video:
-                            # 没有视频，删除主镜头及其所有变体
-                            db.delete(shot)
-                            print(f"[同步镜头] 删除镜头{shot.shot_number} (id={shot.id}，未生成视频)")
-
-                            # 同时删除所有变体
-                            if shot.stable_id and shot.stable_id in existing_shots_by_stable_id:
-                                for variant in existing_shots_by_stable_id[shot.stable_id]:
-                                    if variant.id != shot.id:
-                                        db.delete(variant)
-                                        print(f"[同步镜头] 删除变体镜头{variant.shot_number}_{variant.variant_index} (id={variant.id})")
-                        else:
-                            print(f"[同步镜头] 保留镜头{shot.shot_number} (id={shot.id}，已生成视频)")
-            # 变体镜头不处理，由主镜头决定是否删除
-
-        db.commit()
-        print(f"[同步镜头] 同步完成")
-
-    except Exception as e:
-        print(f"[同步镜头] 错误: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        db.rollback()
 
 
 def _analyze_storyboard_changes(episode_id: int, new_storyboard_data: dict, db: Session):

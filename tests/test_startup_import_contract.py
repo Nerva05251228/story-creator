@@ -239,9 +239,10 @@ class StartupImportContractTests(unittest.TestCase):
         for name in delegated_names:
             self.assertIn(f"{name} = episodes.{name}", source)
 
-    def test_storyboard_subject_helpers_are_not_redefined_in_main(self):
-        source = MAIN_PATH.read_text(encoding="utf-8-sig")
-        top_level_defs = _top_level_definition_names(source)
+    def test_storyboard_sync_helpers_live_in_service_module(self):
+        main_source = MAIN_PATH.read_text(encoding="utf-8-sig")
+        episodes_source = (BACKEND_DIR / "api" / "routers" / "episodes.py").read_text(encoding="utf-8-sig")
+        service_source = (BACKEND_DIR / "api" / "services" / "storyboard_sync.py").read_text(encoding="utf-8-sig")
         delegated_names = {
             "_normalize_subject_detail_entry",
             "_build_subject_detail_map",
@@ -250,12 +251,31 @@ class StartupImportContractTests(unittest.TestCase):
             "_infer_storyboard_role_name_from_shot",
             "_resolve_storyboard_subject_name",
             "_reconcile_storyboard_shot_subjects",
+            "_sync_subjects_to_database",
+            "_sync_storyboard_to_shots",
+        }
+        service_aliases = {
+            "_normalize_subject_detail_entry": "normalize_subject_detail_entry",
+            "_build_subject_detail_map": "build_subject_detail_map",
+            "_normalize_storyboard_generation_subjects": "normalize_storyboard_generation_subjects",
+            "_find_meaningful_common_fragment": "find_meaningful_common_fragment",
+            "_infer_storyboard_role_name_from_shot": "infer_storyboard_role_name_from_shot",
+            "_resolve_storyboard_subject_name": "resolve_storyboard_subject_name",
+            "_reconcile_storyboard_shot_subjects": "reconcile_storyboard_shot_subjects",
+            "_sync_subjects_to_database": "sync_subjects_to_database",
+            "_sync_storyboard_to_shots": "sync_storyboard_to_shots",
         }
 
-        self.assertEqual(top_level_defs & delegated_names, set())
-        for name in delegated_names:
-            self.assertIn(f"{name} = episodes.{name}", source)
-        self.assertIn("_SUBJECT_MATCH_STOP_FRAGMENTS = episodes._SUBJECT_MATCH_STOP_FRAGMENTS", source)
+        self.assertIn("from api.services import storyboard_sync", main_source)
+        self.assertIn("from api.services import storyboard_sync", episodes_source)
+        self.assertEqual(_top_level_definition_names(main_source) & delegated_names, set())
+        self.assertEqual(_top_level_definition_names(episodes_source) & delegated_names, set())
+        self.assertIn("_SUBJECT_MATCH_STOP_FRAGMENTS = storyboard_sync.SUBJECT_MATCH_STOP_FRAGMENTS", main_source)
+        self.assertIn("_SUBJECT_MATCH_STOP_FRAGMENTS = storyboard_sync.SUBJECT_MATCH_STOP_FRAGMENTS", episodes_source)
+        for name, service_name in service_aliases.items():
+            self.assertIn(f"def {service_name}", service_source)
+            self.assertIn(f"{name} = storyboard_sync.{service_name}", main_source)
+            self.assertIn(f"{name} = storyboard_sync.{service_name}", episodes_source)
 
     def test_storyboard_default_helpers_live_in_service_module(self):
         main_source = MAIN_PATH.read_text(encoding="utf-8-sig")

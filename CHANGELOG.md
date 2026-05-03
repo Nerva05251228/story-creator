@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 This project uses a lightweight `Added`, `Changed`, `Fixed`, `Security`, and `Migration` structure.
 
+## 2026-05-04 - Storyboard Sync Service Extraction
+
+### Added
+
+- Added `backend/api/services/storyboard_sync.py` for storyboard subject normalization, subject-card synchronization, and storyboard-to-shot synchronization.
+- Added focused service tests for subject card creation/update, selected-card synchronization, and variant creation for modified shots with active video.
+
+### Changed
+
+- Updated `backend/api/routers/episodes.py` and `backend/main.py` to keep compatibility aliases for storyboard sync helpers while delegating their implementations to the shared service.
+
 ## 2026-05-04 - Voiceover Router Extraction
 
 ### Added
