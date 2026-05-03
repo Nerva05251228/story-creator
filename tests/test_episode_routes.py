@@ -36,6 +36,8 @@ from api.schemas.episodes import (  # noqa: E402
     BatchGenerateSoraPromptsRequest,
     EpisodeCreate,
     ManagedSessionStatusResponse,
+    Storyboard2GenerateImagesRequest,
+    Storyboard2GenerateVideoRequest,
 )
 
 
@@ -90,6 +92,8 @@ EXPECTED_EPISODE_ROUTES = {
     ("POST", "/api/episodes/{episode_id}/storyboard2/batch-generate-sora-prompts"),
     ("PATCH", "/api/storyboard2/shots/{storyboard2_shot_id}"),
     ("PATCH", "/api/storyboard2/subshots/{sub_shot_id}"),
+    ("POST", "/api/storyboard2/subshots/{sub_shot_id}/generate-images"),
+    ("POST", "/api/storyboard2/subshots/{sub_shot_id}/generate-video"),
     ("PATCH", "/api/storyboard2/subshots/{sub_shot_id}/current-image"),
     ("DELETE", "/api/storyboard2/images/{image_id}"),
     ("DELETE", "/api/storyboard2/videos/{video_id}"),
@@ -402,6 +406,9 @@ class EpisodeRouterTests(unittest.TestCase):
             ).status,
             "none",
         )
+        self.assertEqual(Storyboard2GenerateImagesRequest().size, "9:16")
+        self.assertEqual(Storyboard2GenerateImagesRequest().timeout_seconds, 420)
+        self.assertEqual(Storyboard2GenerateVideoRequest().model, "grok")
 
     def test_get_managed_tasks_preserves_payload_ordering_and_status_filter(self):
         owner, _, session_id = self._seed_managed_session_with_tasks()
@@ -534,6 +541,163 @@ class EpisodeRouterTests(unittest.TestCase):
                 models.Storyboard2SubShot.id == fixture["referencing_sub_shot_id"]
             ).first()
             self.assertIsNone(referencing_sub_shot.current_image_id)
+        finally:
+            db.close()
+
+    def test_storyboard2_generate_images_route_marks_processing_without_worker_side_effects(self):
+        fixture = self._seed_storyboard2_edit_fixture()
+        self.current_user = fixture["owner"]
+        created_threads = []
+
+        class FakeThread:
+            def __init__(self, *args, **kwargs):
+                self.args = args
+                self.kwargs = kwargs
+                self.daemon = False
+                created_threads.append(self)
+
+            def start(self):
+                return None
+
+        with patch.object(
+            episodes,
+            "_build_image_generation_debug_meta",
+            return_value={"actual_model": "actual-image-model", "provider": "mock-provider"},
+            create=True,
+        ), patch.object(
+            episodes,
+            "_get_optional_prompt_config_content",
+            return_value="image prefix",
+            create=True,
+        ), patch.object(
+            episodes,
+            "_collect_storyboard2_reference_images",
+            return_value=["https://cdn.example.test/reference.png"],
+            create=True,
+        ), patch.object(
+            episodes,
+            "_save_storyboard2_image_debug",
+            create=True,
+        ), patch.object(
+            episodes,
+            "Thread",
+            FakeThread,
+            create=True,
+        ):
+            response = self.client.post(
+                f"/api/storyboard2/subshots/{fixture['sub_shot_id']}/generate-images",
+                json={"requirement": "  extra detail  ", "style": "soft light"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["sub_shot_id"], fixture["sub_shot_id"])
+        self.assertEqual(payload["status"], "processing")
+        self.assertEqual(payload["progress"], "1/4")
+        self.assertEqual(len(created_threads), 1)
+
+        db = self.Session()
+        try:
+            sub_shot = db.query(models.Storyboard2SubShot).filter(
+                models.Storyboard2SubShot.id == fixture["sub_shot_id"]
+            ).one()
+            self.assertEqual(sub_shot.image_generate_status, "processing")
+            self.assertEqual(sub_shot.image_generate_progress, "1/4")
+        finally:
+            db.close()
+
+    def test_storyboard2_generate_video_route_submits_task_and_reuses_active_task(self):
+        fixture = self._seed_storyboard2_edit_fixture()
+        self.current_user = fixture["owner"]
+
+        db = self.Session()
+        try:
+            db.query(models.Storyboard2SubShotVideo).filter(
+                models.Storyboard2SubShotVideo.id == fixture["video_id"]
+            ).delete()
+            db.commit()
+        finally:
+            db.close()
+
+        class FakeVideoResponse:
+            status_code = 200
+            text = '{"task_id":"storyboard2-video-task"}'
+
+            def json(self):
+                return {
+                    "task_id": "storyboard2-video-task",
+                    "status": "pending",
+                    "progress": 12,
+                }
+
+        started_pollers = []
+
+        class FakeThread:
+            def __init__(self, *args, **kwargs):
+                self.args = args
+                self.kwargs = kwargs
+                self.daemon = False
+                started_pollers.append(self)
+
+            def start(self):
+                return None
+
+        with patch.object(
+            episodes.requests,
+            "post",
+            return_value=FakeVideoResponse(),
+        ), patch.object(
+            episodes,
+            "get_video_task_create_url",
+            return_value="https://video.example.test/create",
+            create=True,
+        ), patch.object(
+            episodes,
+            "get_video_api_headers",
+            return_value={"Authorization": "Bearer test"},
+        ), patch.object(
+            episodes,
+            "_save_storyboard2_video_debug",
+            create=True,
+        ), patch.object(
+            episodes,
+            "_record_storyboard2_video_charge",
+            create=True,
+        ), patch.object(
+            episodes,
+            "Thread",
+            FakeThread,
+            create=True,
+        ):
+            response = self.client.post(
+                f"/api/storyboard2/subshots/{fixture['sub_shot_id']}/generate-video",
+                json={"duration": 6, "aspect_ratio": "9:16", "resolution_name": "720p"},
+            )
+            second_response = self.client.post(
+                f"/api/storyboard2/subshots/{fixture['sub_shot_id']}/generate-video",
+                json={"duration": 6, "aspect_ratio": "9:16", "resolution_name": "720p"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["sub_shot_id"], fixture["sub_shot_id"])
+        self.assertEqual(payload["task_id"], "storyboard2-video-task")
+        self.assertEqual(payload["status"], "processing")
+        self.assertEqual(payload["progress"], 12)
+        self.assertEqual(len(started_pollers), 1)
+
+        self.assertEqual(second_response.status_code, 200)
+        second_payload = second_response.json()
+        self.assertEqual(second_payload["task_id"], "storyboard2-video-task")
+        self.assertEqual(second_payload["status"], "processing")
+
+        db = self.Session()
+        try:
+            video = db.query(models.Storyboard2SubShotVideo).filter(
+                models.Storyboard2SubShotVideo.task_id == "storyboard2-video-task"
+            ).one()
+            self.assertEqual(video.status, "pending")
+            self.assertEqual(video.progress, 12)
         finally:
             db.close()
 

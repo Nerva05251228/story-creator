@@ -1,4 +1,4 @@
-import asyncio
+﻿import asyncio
 import json
 import mimetypes
 import os
@@ -9,6 +9,7 @@ import tempfile
 import time
 import traceback
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from io import BytesIO
 from threading import Lock, Thread
@@ -31,7 +32,7 @@ import models
 from ai_config import get_ai_config
 from ai_service import get_prompt_by_key
 from auth import get_current_user
-from dashboard_service import sync_managed_task_to_dashboard
+from dashboard_service import log_file_task_event, sync_managed_task_to_dashboard
 from database import SessionLocal, get_db
 from managed_generation_service import ACTIVE_MANAGED_SESSION_STATUSES
 from simple_storyboard_rules import (
@@ -53,13 +54,19 @@ from storyboard_video_reference import (
 )
 from text_relay_service import submit_and_persist_text_task
 from utils import upload_to_cdn
-from video_api_config import get_video_api_headers, get_video_task_status_url
+from video_api_config import get_video_api_headers, get_video_task_create_url, get_video_task_status_url
 from video_service import (
     check_video_status,
     is_transient_video_status_error,
     process_and_upload_video_with_cover,
 )
-from image_generation_service import normalize_image_model_key
+from image_generation_service import (
+    download_and_upload_image,
+    get_image_status_api_url,
+    get_image_submit_api_url,
+    jimeng_generate_image_with_polling,
+    normalize_image_model_key,
+)
 from api.schemas.episodes import (
     DEFAULT_STORYBOARD_VIDEO_MODEL,
     AnalyzeStoryboardRequest,
@@ -72,6 +79,8 @@ from api.schemas.episodes import (
     SimpleStoryboardRequest,
     StartManagedGenerationRequest,
     Storyboard2BatchGenerateSoraPromptsRequest,
+    Storyboard2GenerateImagesRequest,
+    Storyboard2GenerateVideoRequest,
     Storyboard2SetCurrentImageRequest,
     Storyboard2UpdateShotRequest,
     Storyboard2UpdateSubShotRequest,
@@ -82,11 +91,16 @@ from api.schemas.episodes import (
 router = APIRouter()
 
 
+executor = ThreadPoolExecutor(max_workers=10)
+
 storyboard2_active_image_tasks = set()
 
 storyboard2_active_image_tasks_lock = Lock()
 
+STORYBOARD2_IMAGE_PROMPT_KEY = "storyboard2_image_prompt_prefix"
+STORYBOARD2_IMAGE_PROMPT_DEFAULT = "生成动漫风格的图片"
 STORYBOARD2_VIDEO_PROMPT_KEY = "generate_storyboard2_video_prompts"
+GROK_RULE_DEFAULT = "严格按照提示词生视频，不要出现其他人物"
 
 ALLOWED_CARD_TYPES = ("角色", "场景", "道具")
 
@@ -138,6 +152,91 @@ ACTIVE_VIDEO_GENERATION_STATUSES = ("submitting", "preparing", "processing")
 ACTIVE_MANAGED_TASK_STATUSES = ("pending", "processing")
 
 MAX_ACTIVE_VIDEO_GENERATIONS_PER_SHOT = 1
+
+
+def _safe_json_dumps(payload: Any) -> str:
+    try:
+        return json.dumps(payload or {}, ensure_ascii=False)
+    except Exception:
+        return ""
+
+
+def _record_storyboard2_video_charge(
+    db: Session,
+    *,
+    sub_shot: models.Storyboard2SubShot,
+    storyboard2_shot: models.Storyboard2Shot,
+    task_id: str,
+    model_name: str,
+    duration: int,
+    detail_payload: Optional[Dict[str, Any]] = None,
+):
+    context = billing_service.get_storyboard2_sub_shot_context(db, sub_shot_id=int(sub_shot.id))
+    if not context:
+        return None
+    try:
+        return billing_service.create_charge_entry(
+            db,
+            user_id=int(context["user_id"]),
+            script_id=int(context["script_id"]),
+            episode_id=int(context["episode_id"]),
+            category="video",
+            stage="storyboard2_video_generate",
+            provider="yijia",
+            model_name=str(model_name or "grok"),
+            quantity=max(1, int(duration or 0)),
+            billing_key=f"video:storyboard2:{sub_shot.id}:task:{task_id}",
+            operation_key=f"video:storyboard2:{storyboard2_shot.id}:sub{sub_shot.id}",
+            initial_status="pending",
+            storyboard2_shot_id=int(storyboard2_shot.id),
+            sub_shot_id=int(sub_shot.id),
+            attempt_index=1,
+            external_task_id=str(task_id or ""),
+            detail_json=_safe_json_dumps(detail_payload),
+        )
+    except ValueError:
+        return None
+
+
+def _record_storyboard2_image_charge(
+    db: Session,
+    *,
+    sub_shot: models.Storyboard2SubShot,
+    storyboard2_shot: models.Storyboard2Shot,
+    task_id: str,
+    model_name: str,
+    resolution: str = "",
+    quantity: int,
+    detail_payload: Optional[Dict[str, Any]] = None,
+):
+    return None
+    context = billing_service.get_storyboard2_sub_shot_context(db, sub_shot_id=int(sub_shot.id))
+    if not context:
+        return None
+    try:
+        return billing_service.create_charge_entry(
+            db,
+            user_id=int(context["user_id"]),
+            script_id=int(context["script_id"]),
+            episode_id=int(context["episode_id"]),
+            category="image",
+            stage="storyboard2_image_generate",
+            provider="jimeng",
+            model_name=str(model_name or "鍥剧墖 4.0"),
+            resolution=str(resolution or ""),
+            quantity=max(1, int(quantity or 1)),
+            billing_key=f"image:storyboard2:{sub_shot.id}:task:{task_id}",
+            operation_key=f"image:storyboard2:{storyboard2_shot.id}:sub{sub_shot.id}",
+            initial_status="pending",
+            storyboard2_shot_id=int(storyboard2_shot.id),
+            sub_shot_id=int(sub_shot.id),
+            attempt_index=1,
+            external_task_id=str(task_id or ""),
+            detail_json=_safe_json_dumps(detail_payload),
+        )
+    except ValueError:
+        return None
+
 
 _STORYBOARD_VIDEO_MODEL_CONFIG = {
     "sora-2": {
@@ -1411,6 +1510,46 @@ def _normalize_detail_images_model(
             return str(route.get("key") or fallback)
         except Exception:
             return fallback or "seedream-4.0"
+
+
+def _build_image_generation_debug_meta(
+    model_key: Optional[str],
+    provider: Optional[str] = None,
+    actual_model: Optional[str] = None,
+    has_reference_images: bool = False,
+) -> dict:
+    normalized_model = _normalize_detail_images_model(model_key, default_model="seedream-4.0")
+    try:
+        route = image_platform_client.resolve_image_route(normalized_model, provider=provider)
+    except Exception:
+        route = {}
+    resolved_provider = str(
+        provider
+        or route.get("provider")
+        or (_DETAIL_IMAGES_MODEL_CONFIG.get(normalized_model) or {}).get("provider")
+        or ""
+    ).strip().lower()
+    resolved_actual_model = str(
+        actual_model
+        or route.get("model")
+        or (_DETAIL_IMAGES_MODEL_CONFIG.get(normalized_model) or {}).get("actual_model")
+        or normalized_model
+    ).strip()
+    return {
+        "requested_model": normalized_model,
+        "provider": resolved_provider,
+        "actual_model": resolved_actual_model,
+        "submit_api_url": get_image_submit_api_url(
+            model_name=normalized_model,
+            provider=resolved_provider,
+            has_reference_images=has_reference_images,
+        ),
+        "status_api_url_template": get_image_status_api_url(
+            task_id="{task_id}",
+            model_name=normalized_model,
+            provider=resolved_provider,
+        ),
+    }
 
 
 def _normalize_storyboard2_video_duration(value: Optional[int], default_value: int = 6) -> int:
@@ -6528,6 +6667,16 @@ def _map_storyboard_prompt_template_duration(duration: Optional[int]) -> int:
         return 15
     return 25
 
+
+def _build_storyboard_video_text_and_images_content(full_prompt: str, image_urls: List[str]) -> list:
+    content = [{"type": "text", "text": full_prompt}]
+    for url in image_urls or []:
+        image_url = str(url or "").strip()
+        if image_url:
+            content.append({"type": "image_url", "image_url": image_url})
+    return content
+
+
 def _is_storyboard_shot_duration_override_enabled(shot) -> bool:
     return bool(getattr(shot, "duration_override_enabled", False))
 
@@ -7200,6 +7349,34 @@ def _resolve_storyboard2_selected_card_ids(storyboard2_shot: models.Storyboard2S
 
     return []
 
+
+def _mark_storyboard2_image_task_active(sub_shot_id: int):
+    try:
+        task_id = int(sub_shot_id)
+    except Exception:
+        return
+    with storyboard2_active_image_tasks_lock:
+        storyboard2_active_image_tasks.add(task_id)
+
+
+def _mark_storyboard2_image_task_inactive(sub_shot_id: int):
+    try:
+        task_id = int(sub_shot_id)
+    except Exception:
+        return
+    with storyboard2_active_image_tasks_lock:
+        storyboard2_active_image_tasks.discard(task_id)
+
+
+def _is_storyboard2_image_task_active(sub_shot_id: int) -> bool:
+    try:
+        task_id = int(sub_shot_id)
+    except Exception:
+        return False
+    with storyboard2_active_image_tasks_lock:
+        return task_id in storyboard2_active_image_tasks
+
+
 def _is_scene_subject_card_type(card_type: str) -> bool:
     card_type_text = str(card_type or "").strip().lower()
     if not card_type_text:
@@ -7281,6 +7458,269 @@ def _process_storyboard2_video_cover_and_cdn(
         return final_url, final_url, True, process_result
 
     return source_url, source_url, False, process_result
+
+
+def _get_optional_prompt_config_content(key: str, fallback: str = "") -> str:
+    try:
+        content = get_prompt_by_key(key)
+        content_text = str(content or "").strip()
+        if content_text:
+            return content_text
+    except Exception:
+        pass
+    return str(fallback or "").strip()
+
+
+def _save_storyboard2_image_debug(debug_dir: Optional[str], filename: str, payload: dict):
+    if not debug_dir:
+        return
+    try:
+        os.makedirs(debug_dir, exist_ok=True)
+        file_path = os.path.join(debug_dir, filename)
+        with open(file_path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2, default=str)
+        log_file_task_event(
+            task_folder=os.path.basename(debug_dir),
+            file_name=filename,
+            payload=payload,
+            task_type="storyboard2_image",
+            stage="storyboard2_image",
+            episode_id=int(payload.get("episode_id")) if isinstance(payload, dict) and payload.get("episode_id") else None,
+        )
+    except Exception as e:
+        print(f"[故事板2镜头图调试] 保存 {filename} 失败: {str(e)}")
+
+
+def _save_storyboard2_video_debug(debug_dir: Optional[str], filename: str, payload: dict):
+    if not debug_dir:
+        return
+    try:
+        os.makedirs(debug_dir, exist_ok=True)
+        file_path = os.path.join(debug_dir, filename)
+        with open(file_path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2, default=str)
+        log_file_task_event(
+            task_folder=os.path.basename(debug_dir),
+            file_name=filename,
+            payload=payload,
+            task_type="storyboard2_video",
+            stage="storyboard2_video",
+            episode_id=int(payload.get("episode_id")) if isinstance(payload, dict) and payload.get("episode_id") else None,
+        )
+    except Exception as e:
+        print(f"[故事板2视频调试] 保存 {filename} 失败: {str(e)}")
+
+
+def _poll_storyboard2_sub_shot_video_status(
+    sub_shot_video_id: int,
+    task_id: str,
+    debug_dir: Optional[str] = None
+):
+    """后台轮询故事板2视频任务并落库。"""
+    from video_service import check_video_status, is_transient_video_status_error
+
+    polling_history = []
+    try:
+        while True:
+            # 仅在读写数据库时短暂持有会话，避免轮询线程长期占用连接池。
+            db = SessionLocal()
+            try:
+                video_record = db.query(models.Storyboard2SubShotVideo).filter(
+                    models.Storyboard2SubShotVideo.id == sub_shot_video_id
+                ).first()
+                if not video_record:
+                    return
+                if bool(getattr(video_record, "is_deleted", False)):
+                    return
+
+            finally:
+                db.close()
+
+            status_info = check_video_status(task_id)
+            if is_transient_video_status_error(status_info):
+                print(f"[poll] video_id={sub_shot_video_id} task_id={task_id} 上游暂时错误，5秒后重试: {status_info.get('error_message','')}")
+                polling_history.append({
+                    "polled_at": datetime.now().isoformat(),
+                    "status": "query_failed",
+                    "progress": 0,
+                    "video_url": "",
+                    "cdn_uploaded": False,
+                    "error_message": str(status_info.get("error_message") or "")
+                })
+                time.sleep(5)
+                continue
+            status = _normalize_storyboard2_video_status(
+                status_info.get("status"),
+                default_value="processing"
+            )
+            progress_raw = status_info.get("progress")
+            error_message = str(status_info.get("error_message") or "").strip()
+            video_url = str(status_info.get("video_url") or "").strip()
+            cdn_uploaded = bool(status_info.get("cdn_uploaded", False))
+
+            try:
+                progress = int(progress_raw) if progress_raw is not None else 0
+            except Exception:
+                progress = 0
+
+            polling_history.append({
+                "polled_at": datetime.now().isoformat(),
+                "status": status,
+                "progress": progress,
+                "video_url": video_url,
+                "cdn_uploaded": cdn_uploaded,
+                "error_message": error_message
+            })
+            print(f"[poll] video_id={sub_shot_video_id} task_id={task_id} status={status} progress={progress} video_url={video_url[:60] if video_url else ''}")
+            try:
+                video_record = db.query(models.Storyboard2SubShotVideo).filter(
+                    models.Storyboard2SubShotVideo.id == sub_shot_video_id
+                ).first()
+                if not video_record:
+                    return
+                if bool(getattr(video_record, "is_deleted", False)):
+                    return
+
+                if _is_storyboard2_video_processing(status):
+                    video_record.status = status if status in {"pending", "processing"} else "processing"
+                    video_record.progress = max(0, min(progress, 99))
+                    video_record.error_message = ""
+                    db.commit()
+                    should_sleep = True
+                elif status == "completed":
+                    if not video_url:
+                        video_record.status = "failed"
+                        video_record.error_message = "任务完成但未返回视频地址"
+                        billing_service.reverse_charge_entry(
+                            db,
+                            billing_key=f"video:storyboard2:{video_record.sub_shot_id}:task:{task_id}",
+                            reason="completed_without_video_url",
+                        )
+                    else:
+                        final_video_url = video_url
+                        final_thumbnail_url = video_url
+                        final_cdn_uploaded = cdn_uploaded
+
+                        if not final_cdn_uploaded:
+                            processed_video_url, processed_thumbnail_url, processed_cdn_uploaded, _process_meta = _process_storyboard2_video_cover_and_cdn(
+                                video_record=video_record,
+                                db=db,
+                                upstream_video_url=video_url,
+                                task_id=task_id,
+                                debug_dir=debug_dir
+                            )
+                            final_video_url = processed_video_url or final_video_url
+                            final_thumbnail_url = processed_thumbnail_url or final_thumbnail_url
+                            final_cdn_uploaded = bool(processed_cdn_uploaded)
+
+                        video_record.status = "completed"
+                        video_record.video_url = final_video_url
+                        if final_thumbnail_url:
+                            video_record.thumbnail_url = final_thumbnail_url
+                        video_record.progress = 100
+                        video_record.error_message = ""
+                        video_record.cdn_uploaded = final_cdn_uploaded
+                        billing_service.finalize_charge_entry(
+                            db,
+                            billing_key=f"video:storyboard2:{video_record.sub_shot_id}:task:{task_id}",
+                        )
+                    db.commit()
+                    _save_storyboard2_video_debug(debug_dir, "output.json", {
+                        "sub_shot_video_id": sub_shot_video_id,
+                        "task_id": task_id,
+                        "status": video_record.status,
+                        "video_url": video_record.video_url,
+                        "thumbnail_url": video_record.thumbnail_url,
+                        "cdn_uploaded": video_record.cdn_uploaded,
+                        "finished_at": datetime.now().isoformat()
+                    })
+                    _save_storyboard2_video_debug(debug_dir, "polling_history.json", polling_history)
+                    return
+                elif status in {"failed", "cancelled"}:
+                    video_record.status = "failed"
+                    video_record.error_message = error_message or f"任务状态: {status}"
+                    billing_service.reverse_charge_entry(
+                        db,
+                        billing_key=f"video:storyboard2:{video_record.sub_shot_id}:task:{task_id}",
+                        reason=f"provider_{status}",
+                    )
+                    db.commit()
+                    _save_storyboard2_video_debug(debug_dir, "error.json", {
+                        "sub_shot_video_id": sub_shot_video_id,
+                        "task_id": task_id,
+                        "status": status,
+                        "error_message": video_record.error_message,
+                        "failed_at": datetime.now().isoformat()
+                    })
+                    _save_storyboard2_video_debug(debug_dir, "polling_history.json", polling_history)
+                    return
+                else:
+                    video_record.status = "processing"
+                    video_record.progress = max(0, min(progress, 99))
+                    db.commit()
+                    should_sleep = True
+            finally:
+                db.close()
+
+            if should_sleep:
+                time.sleep(5)
+    except Exception as e:
+        try:
+            db = SessionLocal()
+            try:
+                db.rollback()
+                failed_record = db.query(models.Storyboard2SubShotVideo).filter(
+                    models.Storyboard2SubShotVideo.id == sub_shot_video_id
+                ).first()
+                if failed_record:
+                    failed_record.status = "failed"
+                    failed_record.error_message = str(e)
+                    db.commit()
+            finally:
+                db.close()
+        except Exception:
+            pass
+        _save_storyboard2_video_debug(debug_dir, "exception.json", {
+            "sub_shot_video_id": sub_shot_video_id,
+            "task_id": task_id,
+            "error": str(e),
+            "failed_at": datetime.now().isoformat()
+        })
+        _save_storyboard2_video_debug(debug_dir, "polling_history.json", polling_history)
+
+
+def _recover_storyboard2_video_polling():
+    """服务重启后，恢复所有处于处理中但无轮询线程的 Storyboard2SubShotVideo 任务。"""
+    from threading import Thread
+    print("[recover] 开始扫描需要恢复的 storyboard2 视频任务...")
+    db = SessionLocal()
+    try:
+        processing_records = db.query(models.Storyboard2SubShotVideo).filter(
+            models.Storyboard2SubShotVideo.is_deleted == False,
+            models.Storyboard2SubShotVideo.task_id != "",
+            models.Storyboard2SubShotVideo.status.in_(["submitted", "pending", "processing"])
+        ).all()
+        recovered = [(r.id, r.task_id) for r in processing_records]
+    finally:
+        db.close()
+
+    print(f"[recover] 扫描完成，找到 {len(recovered)} 条需要恢复的任务")
+
+    for record_id, task_id in recovered:
+        print(f"[recover] 恢复轮询: video_id={record_id} task_id={task_id}")
+        t = Thread(
+            target=_poll_storyboard2_sub_shot_video_status,
+            args=(record_id, task_id)
+        )
+        t.daemon = True
+        t.start()
+
+    if recovered:
+        print(f"[recover] 已启动 {len(recovered)} 个恢复轮询线程: ids={[r[0] for r in recovered]}")
+    else:
+        print("[recover] 无需恢复，没有处理中的任务")
+
+
 
 def _sync_storyboard2_processing_videos(episode_id: int, db: Session, max_count: int = 20) -> int:
     """
@@ -7511,6 +7951,654 @@ async def batch_generate_storyboard2_sora_prompts(
         "total_count": shot_count,
         "submitted_count": submitted_count,
     }
+
+
+def _process_storyboard2_sub_shot_image_generation(
+    sub_shot_id: int,
+    prompt_text: str,
+    model_name: str,
+    provider: Optional[str],
+    size: str,
+    resolution: str,
+    timeout_seconds: int,
+    image_cw: int = 50,
+    reference_images: Optional[List[str]] = None,
+    debug_dir: Optional[str] = None
+):
+    """后台线程：生成故事板2分镜候选图并落库"""
+    _mark_storyboard2_image_task_active(sub_shot_id)
+    db_local = SessionLocal()
+    normalized_image_cw = _normalize_storyboard2_image_cw(image_cw, default_value=50)
+    task_id = None
+    polling_history = []
+    saved_images = []
+    last_task_result = None
+    try:
+        sub_shot = db_local.query(models.Storyboard2SubShot).filter(
+            models.Storyboard2SubShot.id == sub_shot_id
+        ).first()
+        if not sub_shot:
+            return
+        storyboard2_shot = db_local.query(models.Storyboard2Shot).filter(
+            models.Storyboard2Shot.id == sub_shot.storyboard2_shot_id
+        ).first()
+        if not storyboard2_shot:
+            return
+
+        sub_shot.image_generate_status = "processing"
+        sub_shot.image_generate_progress = "1/4"
+        sub_shot.image_generate_error = ""
+        db_local.commit()
+
+        _save_storyboard2_image_debug(debug_dir, "worker_start.json", {
+            "sub_shot_id": sub_shot_id,
+            "storyboard2_shot_id": sub_shot.storyboard2_shot_id,
+            "prompt_text": prompt_text,
+            "provider": provider,
+            "model": model_name,
+            "size": size,
+            "resolution": resolution,
+            "timeout_seconds": timeout_seconds,
+            "reference_images": reference_images or [],
+            "reference_image_count": len(reference_images or []),
+            "started_at": datetime.now().isoformat()
+        })
+
+        _save_storyboard2_image_debug(debug_dir, "submit_result.json", {
+            "provider": provider,
+            "model": model_name,
+            "submitted_at": datetime.now().isoformat(),
+            "requested_image_count": 4
+        })
+
+        api_result = jimeng_generate_image_with_polling(
+            prompt_text=prompt_text,
+            ratio=size,
+            cref=reference_images if reference_images else None,
+            name=f"storyboard2_subshot_{sub_shot.id}",
+            timeout=timeout_seconds,
+            cw=normalized_image_cw,
+            model=model_name,
+            provider=provider,
+        )
+        last_task_result = api_result
+        task_id = str(api_result.get("task_id") or "").strip()
+
+        if task_id:
+            _record_storyboard2_image_charge(
+                db_local,
+                sub_shot=sub_shot,
+                storyboard2_shot=storyboard2_shot,
+                task_id=task_id,
+                model_name=model_name,
+                resolution=resolution,
+                quantity=4,
+                detail_payload={
+                    "size": size,
+                    "resolution": resolution,
+                    "requested_image_count": 4,
+                },
+            )
+
+        remote_images = api_result.get("images") or []
+        polling_history.append({
+            "timestamp": datetime.now().isoformat(),
+            "status": "completed" if api_result.get("success") else "failed",
+            "image_count": len(remote_images),
+            "error": api_result.get("error")
+        })
+
+        if not api_result.get("success"):
+            _save_storyboard2_image_debug(debug_dir, "task_result_failed.json", api_result)
+            raise Exception(api_result.get("error") or "镜头图生成失败")
+
+        if not remote_images:
+            raise Exception("生成任务已完成，但未返回图片")
+
+        _save_storyboard2_image_debug(debug_dir, "task_result_completed.json", api_result)
+
+        total_count = min(4, len(remote_images))
+        new_images = []
+        for idx, remote_url in enumerate(remote_images[:4], start=1):
+            cdn_url = download_and_upload_image(remote_url, sub_shot.id)
+            new_img = models.Storyboard2SubShotImage(
+                sub_shot_id=sub_shot.id,
+                image_url=cdn_url,
+                size=size
+            )
+            db_local.add(new_img)
+            db_local.flush()
+            new_images.append(new_img)
+            saved_images.append({
+                "index": idx,
+                "remote_url": remote_url,
+                "cdn_url": cdn_url,
+                "image_id": new_img.id
+            })
+
+            sub_shot.image_generate_progress = f"{idx}/{total_count}"
+            db_local.commit()
+
+        if not new_images:
+            raise Exception("未成功保存生成图片")
+
+        # 仅在当前图为空时，第一次生成自动将首图设为当前图
+        if sub_shot.current_image_id is None:
+            sub_shot.current_image_id = new_images[0].id
+
+        sub_shot.image_generate_status = "idle"
+        sub_shot.image_generate_progress = ""
+        sub_shot.image_generate_error = ""
+        if task_id:
+            billing_service.record_image_task_cost_for_storyboard2_sub_shot(
+                db_local,
+                sub_shot_id=int(sub_shot.id),
+                stage="storyboard2_image_generate",
+                provider=str(api_result.get("provider") or provider or ""),
+                model_name=str(api_result.get("model") or model_name or ""),
+                resolution=str(api_result.get("resolution") or resolution or ""),
+                cost_rmb=api_result.get("cost"),
+                external_task_id=str(task_id or ""),
+                billing_key=f"image:storyboard2:{sub_shot.id}:task:{task_id}:cost",
+                operation_key=f"image:storyboard2:{storyboard2_shot.id}:sub{sub_shot.id}",
+                detail_payload={
+                    "size": size,
+                    "resolution": resolution,
+                    "requested_image_count": 4,
+                    "remote_image_count": len(remote_images),
+                    "saved_image_count": len(saved_images),
+                },
+            )
+        db_local.commit()
+
+        _save_storyboard2_image_debug(debug_dir, "output.json", {
+            "provider": provider,
+            "task_id": task_id,
+            "status": "completed",
+            "remote_image_count": len(remote_images),
+            "saved_image_count": len(saved_images),
+            "saved_images": saved_images,
+            "current_image_id": sub_shot.current_image_id,
+            "finished_at": datetime.now().isoformat()
+        })
+        _save_storyboard2_image_debug(debug_dir, "polling_history.json", polling_history)
+        return
+    except Exception as e:
+        _save_storyboard2_image_debug(debug_dir, "error.json", {
+            "task_id": task_id,
+            "error": str(e),
+            "last_task_result": last_task_result,
+            "saved_images": saved_images,
+            "failed_at": datetime.now().isoformat()
+        })
+        _save_storyboard2_image_debug(debug_dir, "polling_history.json", polling_history)
+        try:
+            db_local.rollback()
+            failed_sub_shot = db_local.query(models.Storyboard2SubShot).filter(
+                models.Storyboard2SubShot.id == sub_shot_id
+            ).first()
+            if failed_sub_shot:
+                failed_sub_shot.image_generate_status = "failed"
+                failed_sub_shot.image_generate_progress = ""
+                failed_sub_shot.image_generate_error = str(e)
+                if task_id:
+                    billing_service.reverse_charge_entry(
+                        db_local,
+                        billing_key=f"image:storyboard2:{failed_sub_shot.id}:task:{task_id}",
+                        reason="provider_failed",
+                    )
+                db_local.commit()
+        except Exception:
+            pass
+    finally:
+        db_local.close()
+        _mark_storyboard2_image_task_inactive(sub_shot_id)
+
+
+@router.post("/api/storyboard2/subshots/{sub_shot_id}/generate-images")
+async def generate_storyboard2_sub_shot_images(
+    sub_shot_id: int,
+    request: Storyboard2GenerateImagesRequest,
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """为故事板2某个分镜追加4张可选图片（异步后台生成）"""
+    sub_shot, storyboard2_shot = _get_storyboard2_sub_shot_with_permission(sub_shot_id, user, db)
+    debug_dir = None
+
+    if (sub_shot.image_generate_status or "").strip() == "processing":
+        if _is_storyboard2_image_task_active(sub_shot.id):
+            return {
+                "message": "当前分镜正在生成中",
+                "sub_shot_id": sub_shot.id,
+                "status": "processing",
+                "progress": sub_shot.image_generate_progress or "1/4"
+            }
+        # 历史遗留的processing（例如重启后线程丢失），先回收为failed，再允许重新提交。
+        sub_shot.image_generate_status = "failed"
+        sub_shot.image_generate_progress = ""
+        if not (sub_shot.image_generate_error or "").strip():
+            sub_shot.image_generate_error = "检测到历史任务中断，请重新生成"
+        db.commit()
+
+    episode = db.query(models.Episode).filter(models.Episode.id == storyboard2_shot.episode_id).first()
+    episode_default_image_model = getattr(episode, "detail_images_model", None) if episode else "seedream-4.0"
+    requested_image_model = _normalize_detail_images_model(
+        request.model,
+        default_model=episode_default_image_model,
+    )
+    requested_image_provider = _normalize_detail_images_provider(
+        request.provider,
+        default_provider=_resolve_episode_detail_images_provider(episode)
+    ) or None
+    image_debug_meta = _build_image_generation_debug_meta(
+        requested_image_model,
+        provider=requested_image_provider,
+    )
+    actual_model = image_debug_meta["actual_model"]
+
+    image_prompt_prefix = _get_optional_prompt_config_content(
+        STORYBOARD2_IMAGE_PROMPT_KEY,
+        STORYBOARD2_IMAGE_PROMPT_DEFAULT
+    )
+
+    prompt_parts = []
+    if image_prompt_prefix:
+        prompt_parts.append(image_prompt_prefix)
+    if request.requirement and request.requirement.strip():
+        prompt_parts.append(request.requirement.strip())
+    if request.style and request.style.strip():
+        prompt_parts.append(request.style.strip())
+    scene_override_text = _resolve_storyboard2_scene_override_text(
+        sub_shot=sub_shot,
+        storyboard2_shot=storyboard2_shot,
+        db=db
+    )
+    if scene_override_text:
+        prompt_parts.append(scene_override_text)
+    visual_prompt = (sub_shot.sora_prompt or "").strip() or (sub_shot.visual_text or "").strip()
+    if visual_prompt:
+        prompt_parts.append(visual_prompt)
+
+    final_prompt = " ".join(
+        str(part or "").replace("\r", " ").replace("\n", " ").strip()
+        for part in prompt_parts
+        if str(part or "").strip()
+    ).strip()
+    if not final_prompt:
+        raise HTTPException(status_code=400, detail="缺少可用于生成图片的提示词")
+
+    include_scene_references = bool(getattr(episode, "storyboard2_include_scene_references", False)) if episode else False
+    image_cw = _normalize_storyboard2_image_cw(
+        getattr(episode, "storyboard2_image_cw", None),
+        default_value=50
+    ) if episode else 50
+    reference_images = _collect_storyboard2_reference_images(
+        storyboard2_shot,
+        db,
+        sub_shot=sub_shot,
+        include_scene_references=include_scene_references
+    )
+    timeout_seconds = max(60, min(int(request.timeout_seconds or 420), 1800))
+    default_image_ratio = _normalize_jimeng_ratio(getattr(episode, "shot_image_size", None), default_ratio="9:16")
+    selected_size = _normalize_jimeng_ratio(request.size, default_ratio=default_image_ratio)
+
+    try:
+        debug_folder = (
+            f"storyboard2_subshot_{sub_shot.id}_"
+            f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_"
+            f"{uuid.uuid4().hex[:8]}"
+        )
+        debug_dir = os.path.abspath(os.path.join("ai_debug", debug_folder))
+        existing_candidate_count = db.query(models.Storyboard2SubShotImage).filter(
+            models.Storyboard2SubShotImage.sub_shot_id == sub_shot.id
+        ).count()
+
+        _save_storyboard2_image_debug(debug_dir, "input.json", {
+            "sub_shot_id": sub_shot.id,
+            "storyboard2_shot_id": storyboard2_shot.id,
+            "episode_id": storyboard2_shot.episode_id,
+            "source_shot_id": storyboard2_shot.source_shot_id,
+            "sub_shot_index": sub_shot.sub_shot_index,
+            "time_range": sub_shot.time_range,
+            "visual_text": sub_shot.visual_text,
+            "sora_prompt": sub_shot.sora_prompt,
+            "scene_override": scene_override_text,
+            "sub_shot_selected_card_ids": _parse_storyboard2_card_ids(getattr(sub_shot, "selected_card_ids", "[]")),
+            "shot_excerpt": storyboard2_shot.excerpt,
+            "image_prompt_prefix": image_prompt_prefix,
+            "provider": image_debug_meta["provider"],
+            "model": requested_image_model,
+            "actual_model": actual_model,
+            "size": selected_size,
+            "final_prompt": final_prompt,
+            "reference_images": reference_images,
+            "reference_image_count": len(reference_images),
+            "image_cw": image_cw,
+            "include_scene_references": include_scene_references,
+            "existing_candidate_count": existing_candidate_count,
+            "requested_at": datetime.now().isoformat()
+        })
+        print(f"[故事板2镜头图调试] 已创建调试目录: {debug_dir}")
+    except Exception as debug_error:
+        debug_dir = None
+        print(f"[故事板2镜头图调试] 创建调试目录失败: {str(debug_error)}")
+
+    sub_shot.image_generate_status = "processing"
+    sub_shot.image_generate_progress = "1/4"
+    sub_shot.image_generate_error = ""
+    db.commit()
+    _mark_storyboard2_image_task_active(sub_shot.id)
+    thread = Thread(
+        target=_process_storyboard2_sub_shot_image_generation,
+        args=(
+            sub_shot.id,
+            final_prompt,
+            actual_model,
+            image_debug_meta["provider"],
+            selected_size,
+            request.resolution,
+            timeout_seconds,
+            image_cw,
+            reference_images,
+            debug_dir
+        )
+    )
+    thread.daemon = True
+    try:
+        thread.start()
+    except Exception as e:
+        _mark_storyboard2_image_task_inactive(sub_shot.id)
+        sub_shot.image_generate_status = "failed"
+        sub_shot.image_generate_progress = ""
+        sub_shot.image_generate_error = f"任务启动失败: {str(e)}"
+        db.commit()
+        raise HTTPException(status_code=500, detail=f"镜头图任务启动失败: {str(e)}")
+
+    return {
+        "message": "镜头图生成任务已启动",
+        "sub_shot_id": sub_shot.id,
+        "status": "processing",
+        "progress": "1/4",
+        "debug_dir": debug_dir
+    }
+
+
+@router.post("/api/storyboard2/subshots/{sub_shot_id}/generate-video")
+async def generate_storyboard2_sub_shot_video(
+    sub_shot_id: int,
+    request: Storyboard2GenerateVideoRequest,
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """为故事板2某个分镜提交视频生成任务（返回task_id并后台轮询落库）。"""
+    sub_shot, storyboard2_shot = _get_storyboard2_sub_shot_with_permission(sub_shot_id, user, db)
+
+    processing_video = db.query(models.Storyboard2SubShotVideo).filter(
+        models.Storyboard2SubShotVideo.sub_shot_id == sub_shot.id,
+        models.Storyboard2SubShotVideo.is_deleted == False,
+        models.Storyboard2SubShotVideo.status.in_(["submitted", "pending", "processing"])
+    ).order_by(
+        models.Storyboard2SubShotVideo.id.desc()
+    ).first()
+    if processing_video:
+        return {
+            "message": "当前分镜已有视频任务进行中",
+            "sub_shot_id": sub_shot.id,
+            "video_id": processing_video.id,
+            "task_id": processing_video.task_id,
+            "status": "processing",
+            "progress": int(processing_video.progress or 0)
+        }
+
+    episode = db.query(models.Episode).filter(models.Episode.id == storyboard2_shot.episode_id).first()
+    if not episode:
+        raise HTTPException(status_code=404, detail="片段不存在")
+
+    current_image = None
+    if sub_shot.current_image_id:
+        current_image = db.query(models.Storyboard2SubShotImage).filter(
+            models.Storyboard2SubShotImage.id == sub_shot.current_image_id
+        ).first()
+    if not current_image:
+        current_image = db.query(models.Storyboard2SubShotImage).filter(
+            models.Storyboard2SubShotImage.sub_shot_id == sub_shot.id
+        ).order_by(
+            models.Storyboard2SubShotImage.id.asc()
+        ).first()
+    if not current_image or not (current_image.image_url or "").strip():
+        raise HTTPException(status_code=400, detail="请先生成并设置当前图片，再生成视频")
+
+    default_ratio = _normalize_jimeng_ratio(getattr(episode, "shot_image_size", None), default_ratio="9:16")
+    selected_ratio = _normalize_jimeng_ratio(request.aspect_ratio, default_ratio=default_ratio)
+    default_duration = _normalize_storyboard2_video_duration(
+        getattr(episode, "storyboard2_video_duration", None),
+        default_value=6
+    )
+    selected_duration = _normalize_storyboard2_video_duration(request.duration, default_value=default_duration)
+    selected_resolution_name = _normalize_storyboard_video_resolution_name(
+        request.resolution_name,
+        model="grok",
+        default_resolution=getattr(episode, "storyboard_video_resolution_name", None) or "720p"
+    )
+
+    requested_model = (request.model or "").strip() or "grok"
+    actual_model = "grok"
+
+    # 从 GlobalSettings 读取 Grok 准则
+    grok_rule = ""
+    try:
+        grok_setting = db.query(models.GlobalSettings).filter(
+            models.GlobalSettings.key == "grok_rule"
+        ).first()
+        grok_rule = grok_setting.value if grok_setting and grok_setting.value else GROK_RULE_DEFAULT
+    except Exception:
+        grok_rule = GROK_RULE_DEFAULT
+
+    prompt_parts = []
+    if grok_rule:
+        prompt_parts.append(grok_rule)
+    if storyboard2_shot.excerpt and storyboard2_shot.excerpt.strip():
+        prompt_parts.append(storyboard2_shot.excerpt.strip())
+
+    visual_prompt = (sub_shot.sora_prompt or "").strip() or (sub_shot.visual_text or "").strip()
+    if visual_prompt:
+        prompt_parts.append(visual_prompt)
+
+    final_prompt = "\n".join(prompt_parts).strip()
+    if not final_prompt:
+        raise HTTPException(status_code=400, detail="缺少可用于生成视频的提示词")
+
+    debug_dir = None
+    try:
+        request_payload = request.model_dump() if hasattr(request, "model_dump") else request.dict()
+        debug_folder = (
+            f"storyboard2_subshot_video_{sub_shot.id}_"
+            f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_"
+            f"{uuid.uuid4().hex[:8]}"
+        )
+        debug_dir = os.path.abspath(os.path.join("ai_debug", debug_folder))
+        _save_storyboard2_video_debug(debug_dir, "input.json", {
+            "sub_shot_id": sub_shot.id,
+            "storyboard2_shot_id": storyboard2_shot.id,
+            "episode_id": storyboard2_shot.episode_id,
+            "source_shot_id": storyboard2_shot.source_shot_id,
+            "sub_shot_index": sub_shot.sub_shot_index,
+            "time_range": sub_shot.time_range,
+            "visual_text": sub_shot.visual_text,
+            "sora_prompt": sub_shot.sora_prompt,
+            "shot_excerpt": storyboard2_shot.excerpt,
+            "grok_rule": grok_rule,
+            "request": request_payload,
+            "requested_model": requested_model,
+            "actual_model": actual_model,
+            "duration": selected_duration,
+            "aspect_ratio": selected_ratio,
+            "resolution_name": selected_resolution_name,
+            "image_url": current_image.image_url,
+            "final_prompt": final_prompt,
+            "requested_at": datetime.now().isoformat()
+        })
+    except Exception as debug_error:
+        debug_dir = None
+        print(f"[故事板2视频调试] 创建调试目录失败: {str(debug_error)}")
+
+    request_data = {
+        "username": user.username,
+        "provider": "yijia",
+        "model": actual_model,
+        "content": _build_storyboard_video_text_and_images_content(final_prompt, [current_image.image_url]),
+        "ratio": selected_ratio,
+        "duration": selected_duration,
+        "resolution_name": selected_resolution_name,
+    }
+
+    def call_storyboard2_video_api():
+        return requests.post(
+            get_video_task_create_url(),
+            headers=get_video_api_headers(),
+            json=request_data,
+            timeout=60
+        )
+
+    try:
+        loop = asyncio.get_event_loop()
+        submit_response = await loop.run_in_executor(executor, call_storyboard2_video_api)
+    except Exception as e:
+        _save_storyboard2_video_debug(debug_dir, "submit_exception.json", {
+            "error": str(e),
+            "request_data": request_data
+        })
+        raise HTTPException(status_code=500, detail=f"视频任务提交失败: {str(e)}")
+
+    response_json = {}
+    try:
+        response_json = submit_response.json()
+    except Exception:
+        response_json = {"raw_text": submit_response.text}
+
+    if submit_response.status_code != 200:
+        _save_storyboard2_video_debug(debug_dir, "submit_error.json", {
+            "status_code": submit_response.status_code,
+            "request_data": request_data,
+            "response": response_json
+        })
+        raise HTTPException(
+            status_code=500,
+            detail=f"视频任务提交失败: HTTP {submit_response.status_code}"
+        )
+
+    task_id = str(response_json.get("task_id") or "").strip()
+    if not task_id:
+        _save_storyboard2_video_debug(debug_dir, "submit_error.json", {
+            "status_code": submit_response.status_code,
+            "request_data": request_data,
+            "response": response_json
+        })
+        raise HTTPException(status_code=500, detail="视频任务提交失败: 未返回task_id")
+
+    raw_status = str(response_json.get("status") or "pending").strip().lower()
+    initial_status = _normalize_storyboard2_video_status(raw_status, default_value="pending")
+
+    progress_value = response_json.get("progress", 0)
+    try:
+        progress_int = max(0, min(int(progress_value), 100))
+    except Exception:
+        progress_int = 0
+
+    sub_shot_video = models.Storyboard2SubShotVideo(
+        sub_shot_id=sub_shot.id,
+        task_id=task_id,
+        model_name=actual_model,
+        duration=selected_duration,
+        aspect_ratio=selected_ratio,
+        status=initial_status,
+        progress=progress_int,
+        error_message=""
+    )
+    db.add(sub_shot_video)
+    _record_storyboard2_video_charge(
+        db,
+        sub_shot=sub_shot,
+        storyboard2_shot=storyboard2_shot,
+        task_id=task_id,
+        model_name=actual_model,
+        duration=selected_duration,
+        detail_payload={
+            "aspect_ratio": selected_ratio,
+            "resolution_name": selected_resolution_name,
+            "initial_status": initial_status,
+            "video_id_pending": True,
+        },
+    )
+    db.commit()
+    db.refresh(sub_shot_video)
+
+    if initial_status == "completed":
+        billing_service.finalize_charge_entry(
+            db,
+            billing_key=f"video:storyboard2:{sub_shot.id}:task:{task_id}",
+        )
+        db.commit()
+    elif initial_status == "failed":
+        billing_service.reverse_charge_entry(
+            db,
+            billing_key=f"video:storyboard2:{sub_shot.id}:task:{task_id}",
+            reason="submit_failed",
+        )
+        db.commit()
+
+    _save_storyboard2_video_debug(debug_dir, "submit_result.json", {
+        "sub_shot_video_id": sub_shot_video.id,
+        "task_id": task_id,
+        "request_data": request_data,
+        "response": response_json,
+        "submitted_at": datetime.now().isoformat()
+    })
+
+    if _is_storyboard2_video_processing(initial_status):
+        polling_thread = Thread(
+            target=_poll_storyboard2_sub_shot_video_status,
+            args=(sub_shot_video.id, task_id, debug_dir, 3600)
+        )
+        polling_thread.daemon = True
+        polling_thread.start()
+    elif initial_status == "completed":
+        upstream_video_url = str(response_json.get("video_url") or "").strip()
+        upstream_cdn_uploaded = bool(response_json.get("cdn_uploaded", False))
+        final_video_url = upstream_video_url
+        final_thumbnail_url = upstream_video_url
+        final_cdn_uploaded = upstream_cdn_uploaded
+
+        if upstream_video_url and not upstream_cdn_uploaded:
+            processed_video_url, processed_thumbnail_url, processed_cdn_uploaded, _process_meta = _process_storyboard2_video_cover_and_cdn(
+                video_record=sub_shot_video,
+                db=db,
+                upstream_video_url=upstream_video_url,
+                task_id=task_id,
+                debug_dir=debug_dir
+            )
+            final_video_url = processed_video_url or final_video_url
+            final_thumbnail_url = processed_thumbnail_url or final_thumbnail_url
+            final_cdn_uploaded = bool(processed_cdn_uploaded)
+
+        sub_shot_video.video_url = final_video_url
+        if final_thumbnail_url:
+            sub_shot_video.thumbnail_url = final_thumbnail_url
+        sub_shot_video.progress = 100
+        sub_shot_video.cdn_uploaded = final_cdn_uploaded
+        db.commit()
+
+    return {
+        "message": "视频生成任务已启动",
+        "sub_shot_id": sub_shot.id,
+        "video_id": sub_shot_video.id,
+        "task_id": task_id,
+        "status": "processing" if _is_storyboard2_video_processing(sub_shot_video.status) else sub_shot_video.status,
+        "progress": int(sub_shot_video.progress or 0),
+        "debug_dir": debug_dir
+    }
+
 
 
 @router.patch("/api/storyboard2/shots/{storyboard2_shot_id}")

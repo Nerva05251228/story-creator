@@ -136,6 +136,23 @@ class Storyboard2BatchGenerateSoraPromptsRequest(BaseModel):
     shot_ids: Optional[List[int]] = None
 
 
+class Storyboard2GenerateImagesRequest(BaseModel):
+    requirement: str = ""
+    style: str = ""
+    provider: Optional[str] = None
+    model: Optional[str] = None
+    size: str = "9:16"
+    resolution: str = "2K"
+    timeout_seconds: int = 420
+
+
+class Storyboard2GenerateVideoRequest(BaseModel):
+    model: str = "grok"
+    duration: Optional[int] = None
+    aspect_ratio: Optional[str] = None
+    resolution_name: Optional[str] = None
+
+
 class Storyboard2SetCurrentImageRequest(BaseModel):
     current_image_id: Optional[int] = None
 

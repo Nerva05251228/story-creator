@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 This project uses a lightweight `Added`, `Changed`, `Fixed`, `Security`, and `Migration` structure.
 
+## 2026-05-03 - Storyboard2 Generation Route Extraction
+
+### Added
+
+- Added focused route coverage for storyboard2 image and video generation submit flows, including processing-task reuse and route ownership checks.
+
+### Changed
+
+- Moved `POST /api/storyboard2/subshots/{sub_shot_id}/generate-images` and `POST /api/storyboard2/subshots/{sub_shot_id}/generate-video` from `backend/main.py` into `backend/api/routers/episodes.py`.
+- Moved the supporting storyboard2 generation request schemas, debug writers, billing helpers, polling helpers, and image-task state helpers into the episodes router while keeping `backend/main.py` compatibility exports for direct callers.
+- Removed the duplicated storyboard2 generation/edit/delete route bodies from `backend/main.py`, shrinking the file and leaving it as app wiring plus compatibility aliases.
+
 ## 2026-05-02 - Storyboard2 Route Cleanup
 
 ### Added
