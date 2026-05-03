@@ -54,6 +54,7 @@ from api.services import card_image_generation as card_image_generation_service
 from api.services import model_configs as model_configs_service
 from api.services import simple_storyboard_batches as simple_storyboard_batches_service
 from api.services import storyboard_defaults
+from api.services import storyboard_video_settings
 from env_config import get_env, is_placeholder_env_value, load_app_env
 
 
@@ -313,13 +314,8 @@ def _get_private_password_env(name: str) -> str:
 # 管理员通用密码（可登录任意非保留账号）
 MASTER_PASSWORD = _get_private_password_env("MASTER_PASSWORD")
 ADMIN_PANEL_PASSWORD = _get_private_password_env("ADMIN_PANEL_PASSWORD")
-DEFAULT_STORYBOARD_VIDEO_MODEL = "Seedance 2.0 Fast"
-MOTI_STORYBOARD_VIDEO_MODELS = (
-    "Seedance 2.0 Fast VIP",
-    "Seedance 2.0 Fast",
-    "Seedance 2.0 VIP",
-    "Seedance 2.0",
-)
+DEFAULT_STORYBOARD_VIDEO_MODEL = storyboard_video_settings.DEFAULT_STORYBOARD_VIDEO_MODEL
+MOTI_STORYBOARD_VIDEO_MODELS = storyboard_video_settings.MOTI_STORYBOARD_VIDEO_MODELS
 SQLITE_LOCK_RETRY_DELAYS = (0.3, 0.8, 1.5, 3.0)
 STARTUP_BOOTSTRAP_LOCK_PATH = os.path.join(os.path.dirname(__file__), ".startup_bootstrap.lock")
 
@@ -5650,11 +5646,7 @@ class EpisodeStoryboardVideoSettingsUpdateRequest(BaseModel):
 
 
 _get_pydantic_fields_set = storyboard_defaults.get_pydantic_fields_set
-
-
-def _normalize_storyboard_video_appoint_account(value: Any, default_value: str = "") -> str:
-    raw = str(value if value is not None else default_value or "").strip()
-    return raw
+_normalize_storyboard_video_appoint_account = storyboard_video_settings.normalize_storyboard_video_appoint_account
 
 
 _get_first_episode_for_storyboard_defaults = storyboard_defaults.get_first_episode_for_storyboard_defaults
@@ -13707,72 +13699,14 @@ _normalize_storyboard2_video_duration = storyboard_defaults.normalize_storyboard
 _normalize_storyboard2_image_cw = storyboard_defaults.normalize_storyboard2_image_cw
 
 
-_STORYBOARD_VIDEO_MODEL_CONFIG = {
-    "sora-2": {
-        "aspect_ratios": ("16:9", "9:16"),
-        "durations": (10, 15, 25),
-        "default_ratio": "16:9",
-        "default_duration": 15,
-        "resolution_names": (),
-        "default_resolution": "",
-        "provider": "yijia"
-    },
-    "grok": {
-        "aspect_ratios": ("21:9", "16:9", "3:2", "4:3", "1:1", "3:4", "2:3", "9:16"),
-        "durations": (10, 20, 30),
-        "default_ratio": "9:16",
-        "default_duration": 10,
-        "resolution_names": ("480p", "720p"),
-        "default_resolution": "720p",
-        "provider": "yijia"
-    },
-    "Seedance 2.0 Fast VIP": {
-        "aspect_ratios": ("21:9", "16:9", "4:3", "1:1", "3:4", "9:16"),
-        "durations": tuple(range(4, 16)),
-        "default_ratio": "16:9",
-        "default_duration": 10,
-        "resolution_names": (),
-        "default_resolution": "",
-        "provider": "moti"
-    },
-    "Seedance 2.0 Fast": {
-        "aspect_ratios": ("21:9", "16:9", "4:3", "1:1", "3:4", "9:16"),
-        "durations": tuple(range(4, 16)),
-        "default_ratio": "16:9",
-        "default_duration": 10,
-        "resolution_names": (),
-        "default_resolution": "",
-        "provider": "moti"
-    },
-    "Seedance 2.0 VIP": {
-        "aspect_ratios": ("21:9", "16:9", "4:3", "1:1", "3:4", "9:16"),
-        "durations": tuple(range(4, 16)),
-        "default_ratio": "16:9",
-        "default_duration": 10,
-        "resolution_names": (),
-        "default_resolution": "",
-        "provider": "moti"
-    },
-    "Seedance 2.0": {
-        "aspect_ratios": ("21:9", "16:9", "4:3", "1:1", "3:4", "9:16"),
-        "durations": tuple(range(4, 16)),
-        "default_ratio": "16:9",
-        "default_duration": 10,
-        "resolution_names": (),
-        "default_resolution": "",
-        "provider": "moti"
-    }
-}
-
-
-def _normalize_storyboard_video_model(value: Optional[str], default_model: str = DEFAULT_STORYBOARD_VIDEO_MODEL) -> str:
-    raw = (value or "").strip()
-    if raw in _STORYBOARD_VIDEO_MODEL_CONFIG:
-        return raw
-    fallback = (default_model or "").strip()
-    if fallback in _STORYBOARD_VIDEO_MODEL_CONFIG:
-        return fallback
-    return DEFAULT_STORYBOARD_VIDEO_MODEL
+_STORYBOARD_VIDEO_MODEL_CONFIG = storyboard_video_settings.STORYBOARD_VIDEO_MODEL_CONFIG
+_normalize_storyboard_video_model = storyboard_video_settings.normalize_storyboard_video_model
+_normalize_storyboard_video_aspect_ratio = storyboard_video_settings.normalize_storyboard_video_aspect_ratio
+_normalize_storyboard_video_duration = storyboard_video_settings.normalize_storyboard_video_duration
+_normalize_storyboard_video_resolution_name = storyboard_video_settings.normalize_storyboard_video_resolution_name
+_resolve_storyboard_video_provider = storyboard_video_settings.resolve_storyboard_video_provider
+_is_moti_storyboard_video_model = storyboard_video_settings.is_moti_storyboard_video_model
+_resolve_storyboard_video_model_by_provider = storyboard_video_settings.resolve_storyboard_video_model_by_provider
 
 
 def _map_api_model_by_duration(model: str, duration: Optional[int]) -> str:
@@ -13966,79 +13900,6 @@ def _build_moti_v2_content(shot, db, full_prompt: str, first_frame_image_url: st
     return content
 
 
-def _normalize_storyboard_video_aspect_ratio(
-    value: Optional[str],
-    model: str,
-    default_ratio: str = "16:9"
-) -> str:
-    model_key = _normalize_storyboard_video_model(model, default_model=DEFAULT_STORYBOARD_VIDEO_MODEL)
-    config = _STORYBOARD_VIDEO_MODEL_CONFIG[model_key]
-    allowed = tuple(config["aspect_ratios"])
-    legacy_map = {
-        "1:2": "9:16",
-        "2:1": "16:9"
-    }
-    raw = (value or "").strip()
-    normalized = legacy_map.get(raw, raw)
-    if normalized in allowed:
-        return normalized
-    fallback_raw = (default_ratio or "").strip()
-    fallback = legacy_map.get(fallback_raw, fallback_raw)
-    if fallback in allowed:
-        return fallback
-    default_value = config["default_ratio"]
-    if default_value in allowed:
-        return default_value
-    return allowed[0]
-
-
-
-
-def _normalize_storyboard_video_duration(
-    value: Optional[int],
-    model: str,
-    default_duration: Optional[int] = None
-) -> int:
-    model_key = _normalize_storyboard_video_model(model, default_model=DEFAULT_STORYBOARD_VIDEO_MODEL)
-    config = _STORYBOARD_VIDEO_MODEL_CONFIG[model_key]
-    allowed = tuple(int(item) for item in config["durations"])
-    if default_duration is None:
-        fallback = int(config["default_duration"])
-    else:
-        try:
-            fallback = int(default_duration)
-        except Exception:
-            fallback = int(config["default_duration"])
-    if fallback not in allowed:
-        fallback = int(config["default_duration"])
-    try:
-        parsed = int(value) if value is not None else fallback
-    except Exception:
-        parsed = fallback
-    if parsed in allowed:
-        return parsed
-    return fallback
-
-
-
-def _normalize_storyboard_video_resolution_name(
-    value: Optional[str],
-    model: str,
-    default_resolution: str = ""
-) -> str:
-    model_key = _normalize_storyboard_video_model(model, default_model=DEFAULT_STORYBOARD_VIDEO_MODEL)
-    config = _STORYBOARD_VIDEO_MODEL_CONFIG[model_key]
-    allowed = tuple(str(item).strip() for item in config.get("resolution_names", ()) if str(item).strip())
-    if not allowed:
-        return ""
-    fallback_raw = str(default_resolution or config.get("default_resolution") or "").strip().lower()
-    fallback = fallback_raw if fallback_raw in allowed else str(config.get("default_resolution") or allowed[0]).strip().lower()
-    raw = str(value or "").strip().lower()
-    if raw in allowed:
-        return raw
-    return fallback
-
-
 def _build_storyboard_video_text_and_images_content(full_prompt: str, image_urls: List[str]) -> list:
     text = str(full_prompt or "").strip()
     content = [{"type": "text", "text": text}]
@@ -14162,33 +14023,6 @@ def _is_storyboard_shot_duration_override_enabled(shot) -> bool:
 
 def _is_storyboard_shot_model_override_enabled(shot) -> bool:
     return bool(getattr(shot, "storyboard_video_model_override_enabled", False))
-
-
-def _resolve_storyboard_video_provider(model: str) -> str:
-    model_key = _normalize_storyboard_video_model(model, default_model=DEFAULT_STORYBOARD_VIDEO_MODEL)
-    return str(_STORYBOARD_VIDEO_MODEL_CONFIG[model_key]["provider"])
-
-
-def _is_moti_storyboard_video_model(model: Optional[str]) -> bool:
-    return _normalize_storyboard_video_model(
-        model,
-        default_model=DEFAULT_STORYBOARD_VIDEO_MODEL
-    ) in MOTI_STORYBOARD_VIDEO_MODELS
-
-
-def _resolve_storyboard_video_model_by_provider(provider: Optional[str], default_model: str = DEFAULT_STORYBOARD_VIDEO_MODEL) -> str:
-    raw = (provider or "").strip().lower()
-    if raw in {"yijia-grok", "yijia"}:
-        normalized_default = _normalize_storyboard_video_model(default_model, default_model=DEFAULT_STORYBOARD_VIDEO_MODEL)
-        if normalized_default in {"sora-2", "grok"}:
-            return normalized_default
-        return "grok"
-    if raw == "moti":
-        normalized_default = _normalize_storyboard_video_model(default_model, default_model=DEFAULT_STORYBOARD_VIDEO_MODEL)
-        if _is_moti_storyboard_video_model(normalized_default):
-            return normalized_default
-        return DEFAULT_STORYBOARD_VIDEO_MODEL
-    return _normalize_storyboard_video_model(default_model, default_model=DEFAULT_STORYBOARD_VIDEO_MODEL)
 
 
 def _get_episode_storyboard_video_settings(episode) -> Dict[str, Any]:

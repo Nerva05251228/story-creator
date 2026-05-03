@@ -6,13 +6,6 @@ from sqlalchemy.orm import Session
 
 import billing_service
 import models
-from api.routers.episodes import (
-    _normalize_storyboard_video_appoint_account,
-    _normalize_storyboard_video_aspect_ratio,
-    _normalize_storyboard_video_duration,
-    _normalize_storyboard_video_model,
-    _normalize_storyboard_video_resolution_name,
-)
 from api.schemas.episodes import DEFAULT_STORYBOARD_VIDEO_MODEL
 from api.schemas.scripts import (
     CopyScriptRequest,
@@ -23,6 +16,7 @@ from api.schemas.scripts import (
 from api.services.card_media import _safe_audio_duration_seconds
 from api.services.episode_cleanup import clear_episode_dependencies
 from api.services import storyboard_defaults
+from api.services import storyboard_video_settings
 from auth import get_current_user
 from database import get_db
 
@@ -35,6 +29,11 @@ _resolve_episode_detail_images_provider = storyboard_defaults.resolve_episode_de
 _normalize_detail_images_model = storyboard_defaults.normalize_detail_images_model
 _normalize_storyboard2_video_duration = storyboard_defaults.normalize_storyboard2_video_duration
 _normalize_storyboard2_image_cw = storyboard_defaults.normalize_storyboard2_image_cw
+_normalize_storyboard_video_appoint_account = storyboard_video_settings.normalize_storyboard_video_appoint_account
+_normalize_storyboard_video_model = storyboard_video_settings.normalize_storyboard_video_model
+_normalize_storyboard_video_aspect_ratio = storyboard_video_settings.normalize_storyboard_video_aspect_ratio
+_normalize_storyboard_video_duration = storyboard_video_settings.normalize_storyboard_video_duration
+_normalize_storyboard_video_resolution_name = storyboard_video_settings.normalize_storyboard_video_resolution_name
 
 
 @router.post("/api/scripts", response_model=ScriptResponse)

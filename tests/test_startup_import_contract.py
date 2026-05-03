@@ -159,13 +159,15 @@ class StartupImportContractTests(unittest.TestCase):
         source = (BACKEND_DIR / "api" / "routers" / "episodes.py").read_text(encoding="utf-8-sig")
         top_level_defs = _top_level_definition_names(source)
 
-        required_helpers = {
-            "_resolve_storyboard_video_model_by_provider",
-            "_is_moti_storyboard_video_model",
-            "_record_storyboard_video_charge",
-        }
-
-        self.assertEqual(required_helpers - top_level_defs, set())
+        self.assertIn("_record_storyboard_video_charge", top_level_defs)
+        self.assertIn(
+            "_resolve_storyboard_video_model_by_provider = storyboard_video_settings.resolve_storyboard_video_model_by_provider",
+            source,
+        )
+        self.assertIn(
+            "_is_moti_storyboard_video_model = storyboard_video_settings.is_moti_storyboard_video_model",
+            source,
+        )
 
     def test_billing_charge_helpers_live_in_service_module(self):
         main_source = MAIN_PATH.read_text(encoding="utf-8-sig")
@@ -268,6 +270,49 @@ class StartupImportContractTests(unittest.TestCase):
             self.assertIn(f"{name} = storyboard_defaults.{name[1:]}", main_source)
             self.assertIn(f"{name} = storyboard_defaults.{name[1:]}", episodes_source)
             self.assertIn(f"{name} = storyboard_defaults.{name[1:]}", scripts_source)
+
+    def test_storyboard_video_setting_helpers_live_in_service_module(self):
+        main_source = MAIN_PATH.read_text(encoding="utf-8-sig")
+        episodes_source = (BACKEND_DIR / "api" / "routers" / "episodes.py").read_text(encoding="utf-8-sig")
+        scripts_source = (BACKEND_DIR / "api" / "routers" / "scripts.py").read_text(encoding="utf-8-sig")
+        delegated_names = {
+            "_normalize_storyboard_video_appoint_account",
+            "_normalize_storyboard_video_model",
+            "_normalize_storyboard_video_aspect_ratio",
+            "_normalize_storyboard_video_duration",
+            "_normalize_storyboard_video_resolution_name",
+            "_resolve_storyboard_video_provider",
+            "_is_moti_storyboard_video_model",
+            "_resolve_storyboard_video_model_by_provider",
+        }
+
+        self.assertIn("from api.services import storyboard_video_settings", main_source)
+        self.assertIn("from api.services import storyboard_video_settings", episodes_source)
+        self.assertIn("from api.services import storyboard_video_settings", scripts_source)
+        self.assertNotIn("_STORYBOARD_VIDEO_MODEL_CONFIG = {", main_source)
+        self.assertNotIn("_STORYBOARD_VIDEO_MODEL_CONFIG = {", episodes_source)
+        for source in (main_source, episodes_source, scripts_source):
+            self.assertEqual(_top_level_definition_names(source) & delegated_names, set())
+        self.assertIn(
+            "_STORYBOARD_VIDEO_MODEL_CONFIG = storyboard_video_settings.STORYBOARD_VIDEO_MODEL_CONFIG",
+            main_source,
+        )
+        self.assertIn(
+            "_STORYBOARD_VIDEO_MODEL_CONFIG = storyboard_video_settings.STORYBOARD_VIDEO_MODEL_CONFIG",
+            episodes_source,
+        )
+        for name in delegated_names:
+            service_name = name[1:]
+            self.assertIn(f"{name} = storyboard_video_settings.{service_name}", main_source)
+            self.assertIn(f"{name} = storyboard_video_settings.{service_name}", episodes_source)
+        for name in {
+            "_normalize_storyboard_video_appoint_account",
+            "_normalize_storyboard_video_model",
+            "_normalize_storyboard_video_aspect_ratio",
+            "_normalize_storyboard_video_duration",
+            "_normalize_storyboard_video_resolution_name",
+        }:
+            self.assertIn(f"{name} = storyboard_video_settings.{name[1:]}", scripts_source)
 
     def test_web_startup_event_excludes_schema_bootstrap_and_preflight_responsibilities(self):
         source = MAIN_PATH.read_text(encoding="utf-8-sig")

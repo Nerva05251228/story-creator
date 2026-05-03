@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 This project uses a lightweight `Added`, `Changed`, `Fixed`, `Security`, and `Migration` structure.
 
+## 2026-05-03 - Storyboard Video Settings Service Extraction
+
+### Added
+
+- Added `backend/api/services/storyboard_video_settings.py` for shared storyboard video model configuration, provider resolution, and model/ratio/duration/resolution/account normalization.
+- Added service-level and import-contract tests so video setting helper bodies stay out of `backend/main.py`, the episodes router, and the scripts router.
+
+### Changed
+
+- Updated `backend/main.py`, `backend/api/routers/episodes.py`, and `backend/api/routers/scripts.py` to share storyboard video setting helpers through compatibility aliases instead of maintaining duplicate implementations.
+
 ## 2026-05-03 - Storyboard Defaults Service Extraction
 
 ### Added
