@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 This project uses a lightweight `Added`, `Changed`, `Fixed`, `Security`, and `Migration` structure.
 
+## 2026-05-03 - Storyboard Reference Asset Service Extraction
+
+### Added
+
+- Added `backend/api/services/storyboard_reference_assets.py` for shared selected-card parsing, ordered card resolution, subject-card reference image lookup, and selected scene reference image resolution.
+- Added focused service tests for selected card ID parsing, library-scoped card resolution, reference URL ordering/deduplication, uploaded-image fallback behavior, and uploaded scene image selection.
+- Added import-contract coverage so storyboard reference asset helper bodies stay out of `backend/main.py`, the episodes router, and the storyboard video payload service.
+
+### Changed
+
+- Updated `backend/main.py`, `backend/api/routers/episodes.py`, and `backend/api/services/storyboard_video_payload.py` to reuse storyboard reference asset helpers through compatibility aliases instead of maintaining duplicate implementations.
+
 ## 2026-05-03 - Storyboard Video Effective Settings Service Extraction
 
 ### Added

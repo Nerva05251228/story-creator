@@ -37,6 +37,7 @@ from database import SessionLocal, get_db
 from managed_generation_service import ACTIVE_MANAGED_SESSION_STATUSES
 from api.services import billing_charges
 from api.services import storyboard_defaults
+from api.services import storyboard_reference_assets
 from api.services import storyboard_video_settings
 from api.services import storyboard_video_payload
 from api.services.simple_storyboard_batches import (
@@ -210,6 +211,7 @@ _is_storyboard_shot_model_override_enabled = storyboard_video_settings.is_storyb
 _get_episode_storyboard_video_settings = storyboard_video_settings.get_episode_storyboard_video_settings
 _get_effective_storyboard_video_settings_for_shot = storyboard_video_settings.get_effective_storyboard_video_settings_for_shot
 _build_unified_storyboard_video_task_payload = storyboard_video_payload._build_unified_storyboard_video_task_payload
+_resolve_selected_cards = storyboard_reference_assets.resolve_selected_cards
 
 def _rollback_quietly(db: Session):
     try:
@@ -4367,25 +4369,6 @@ async def create_from_storyboard(
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"创建失败: {str(e)}")
-
-def _resolve_selected_cards(
-    db: Session,
-    selected_ids: List[int],
-    library_id: Optional[int] = None
-) -> List[models.SubjectCard]:
-    """Resolve selected subject cards in selected_ids order."""
-    if not selected_ids:
-        return []
-
-    query = db.query(models.SubjectCard).filter(
-        models.SubjectCard.id.in_(selected_ids)
-    )
-    if library_id is not None:
-        query = query.filter(models.SubjectCard.library_id == library_id)
-
-    cards = query.all()
-    card_map = {card.id: card for card in cards if card}
-    return [card_map[card_id] for card_id in selected_ids if card_id in card_map]
 
 def _build_subject_text_for_ai(selected_cards: List[models.SubjectCard]) -> str:
     """Build subject_text for Sora prompt generation with protagonist support."""

@@ -350,6 +350,68 @@ class StartupImportContractTests(unittest.TestCase):
             episodes_source,
         )
 
+    def test_storyboard_reference_asset_helpers_live_in_service_module(self):
+        main_source = MAIN_PATH.read_text(encoding="utf-8-sig")
+        episodes_source = (BACKEND_DIR / "api" / "routers" / "episodes.py").read_text(encoding="utf-8-sig")
+        payload_source = (BACKEND_DIR / "api" / "services" / "storyboard_video_payload.py").read_text(encoding="utf-8-sig")
+        service_source = (BACKEND_DIR / "api" / "services" / "storyboard_reference_assets.py").read_text(encoding="utf-8-sig")
+        delegated_names = {
+            "_debug_parse_card_ids",
+            "_resolve_selected_cards",
+            "_get_subject_card_reference_image_url",
+            "_collect_storyboard_subject_reference_urls",
+            "_get_selected_scene_card_image_url",
+            "_resolve_selected_scene_reference_image_url",
+        }
+
+        self.assertIn("from api.services import storyboard_reference_assets", main_source)
+        self.assertIn("from api.services import storyboard_reference_assets", episodes_source)
+        self.assertIn("from api.services import storyboard_reference_assets", payload_source)
+        self.assertEqual(_top_level_definition_names(main_source) & delegated_names, set())
+        self.assertEqual(_top_level_definition_names(episodes_source) & {"_resolve_selected_cards"}, set())
+        self.assertEqual(
+            _top_level_definition_names(payload_source)
+            & {
+                "_resolve_selected_cards",
+                "_debug_parse_card_ids",
+                "_get_subject_card_reference_image_url",
+                "_get_selected_scene_card_image_url",
+                "_resolve_selected_scene_reference_image_url",
+            },
+            set(),
+        )
+        self.assertIn("def parse_card_ids", service_source)
+        self.assertIn("def resolve_selected_cards", service_source)
+        self.assertIn("def get_subject_card_reference_image_url", service_source)
+        self.assertIn("def collect_storyboard_subject_reference_urls", service_source)
+        self.assertIn("def get_selected_scene_card_image_url", service_source)
+        self.assertIn("def resolve_selected_scene_reference_image_url", service_source)
+        self.assertIn("_debug_parse_card_ids = storyboard_reference_assets.parse_card_ids", main_source)
+        self.assertIn("_resolve_selected_cards = storyboard_reference_assets.resolve_selected_cards", main_source)
+        self.assertIn(
+            "_get_subject_card_reference_image_url = storyboard_reference_assets.get_subject_card_reference_image_url",
+            main_source,
+        )
+        self.assertIn(
+            "_collect_storyboard_subject_reference_urls = storyboard_reference_assets.collect_storyboard_subject_reference_urls",
+            main_source,
+        )
+        self.assertIn(
+            "_get_selected_scene_card_image_url = storyboard_reference_assets.get_selected_scene_card_image_url",
+            main_source,
+        )
+        self.assertIn(
+            "_resolve_selected_scene_reference_image_url = storyboard_reference_assets.resolve_selected_scene_reference_image_url",
+            main_source,
+        )
+        self.assertIn("_resolve_selected_cards = storyboard_reference_assets.resolve_selected_cards", episodes_source)
+        self.assertIn("_resolve_selected_cards = storyboard_reference_assets.resolve_selected_cards", payload_source)
+        self.assertIn("_debug_parse_card_ids = storyboard_reference_assets.parse_card_ids", payload_source)
+        self.assertIn(
+            "_resolve_selected_scene_reference_image_url = storyboard_reference_assets.resolve_selected_scene_reference_image_url",
+            payload_source,
+        )
+
     def test_web_startup_event_excludes_schema_bootstrap_and_preflight_responsibilities(self):
         source = MAIN_PATH.read_text(encoding="utf-8-sig")
         startup_node = _function_node(source, "startup_event")

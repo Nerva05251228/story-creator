@@ -54,6 +54,7 @@ from api.services import card_image_generation as card_image_generation_service
 from api.services import model_configs as model_configs_service
 from api.services import simple_storyboard_batches as simple_storyboard_batches_service
 from api.services import storyboard_defaults
+from api.services import storyboard_reference_assets
 from api.services import storyboard_video_settings
 from api.services import storyboard_video_payload
 from env_config import get_env, is_placeholder_env_value, load_app_env
@@ -10165,30 +10166,7 @@ async def duplicate_shot(
     return new_shot
 
 
-def _debug_parse_card_ids(raw_value) -> List[int]:
-    """Best-effort parser for selected_card_ids debug logging."""
-    if raw_value is None:
-        return []
-    try:
-        parsed = json.loads(raw_value) if isinstance(raw_value, str) else raw_value
-    except Exception:
-        return []
-    if not isinstance(parsed, list):
-        return []
-
-    resolved = []
-    seen = set()
-    for item in parsed:
-        card_id = None
-        if isinstance(item, int):
-            card_id = item
-        elif isinstance(item, str) and item.strip().isdigit():
-            card_id = int(item.strip())
-        if not card_id or card_id in seen:
-            continue
-        seen.add(card_id)
-        resolved.append(card_id)
-    return resolved
+_debug_parse_card_ids = storyboard_reference_assets.parse_card_ids
 
 
 def _debug_resolve_subject_names(
@@ -10211,24 +10189,7 @@ def _debug_resolve_subject_names(
     return [card_name_map[card_id] for card_id in selected_ids if card_id in card_name_map]
 
 
-def _resolve_selected_cards(
-    db: Session,
-    selected_ids: List[int],
-    library_id: Optional[int] = None
-) -> List[models.SubjectCard]:
-    """Resolve selected subject cards in selected_ids order."""
-    if not selected_ids:
-        return []
-
-    query = db.query(models.SubjectCard).filter(
-        models.SubjectCard.id.in_(selected_ids)
-    )
-    if library_id is not None:
-        query = query.filter(models.SubjectCard.library_id == library_id)
-
-    cards = query.all()
-    card_map = {card.id: card for card in cards if card}
-    return [card_map[card_id] for card_id in selected_ids if card_id in card_map]
+_resolve_selected_cards = storyboard_reference_assets.resolve_selected_cards
 
 
 def _parse_storyboard_sound_card_ids(raw_value: Any) -> Optional[List[int]]:
@@ -14591,64 +14552,8 @@ def _get_shot_first_frame_candidate_urls(shot: models.StoryboardShot, db: Sessio
     )
 
 
-def _get_subject_card_reference_image_url(
-    card_id: int,
-    db: Session,
-    *,
-    allow_uploaded_fallback: bool = True,
-) -> str:
-    reference_image = db.query(models.GeneratedImage).filter(
-        models.GeneratedImage.card_id == card_id,
-        models.GeneratedImage.is_reference == True,
-        models.GeneratedImage.status == "completed",
-    ).order_by(
-        models.GeneratedImage.created_at.desc(),
-        models.GeneratedImage.id.desc(),
-    ).first()
-    if reference_image and str(reference_image.image_path or "").strip():
-        return str(reference_image.image_path).strip()
-
-    if not allow_uploaded_fallback:
-        return ""
-
-    uploaded_image = db.query(models.CardImage).filter(
-        models.CardImage.card_id == card_id
-    ).order_by(
-        models.CardImage.order.desc(),
-        models.CardImage.id.desc(),
-    ).first()
-    if uploaded_image and str(uploaded_image.image_path or "").strip():
-        return str(uploaded_image.image_path).strip()
-    return ""
-
-
-def _collect_storyboard_subject_reference_urls(
-    shot: models.StoryboardShot,
-    db: Session,
-    *,
-    allow_uploaded_fallback: bool = True,
-) -> List[str]:
-    selected_ids = _debug_parse_card_ids(getattr(shot, "selected_card_ids", "[]"))
-    if not selected_ids:
-        return []
-
-    selected_cards = _resolve_selected_cards(db, selected_ids)
-    reference_urls: List[str] = []
-    seen_urls = set()
-    for card in selected_cards:
-        if not card:
-            continue
-        image_url = _get_subject_card_reference_image_url(
-            card.id,
-            db,
-            allow_uploaded_fallback=allow_uploaded_fallback,
-        )
-        normalized_url = str(image_url or "").strip()
-        if not normalized_url or normalized_url in seen_urls:
-            continue
-        seen_urls.add(normalized_url)
-        reference_urls.append(normalized_url)
-    return reference_urls
+_get_subject_card_reference_image_url = storyboard_reference_assets.get_subject_card_reference_image_url
+_collect_storyboard_subject_reference_urls = storyboard_reference_assets.collect_storyboard_subject_reference_urls
 
 
 def _resolve_storyboard_sora_image_ratio(
@@ -14664,34 +14569,8 @@ def _resolve_storyboard_sora_image_ratio(
     return _normalize_jimeng_ratio(requested_size, default_ratio="9:16")
 
 
-def _get_selected_scene_card_image_url(
-    shot: models.StoryboardShot,
-    db: Session,
-) -> str:
-    selected_ids = _debug_parse_card_ids(getattr(shot, "selected_card_ids", "[]"))
-    selected_cards = _resolve_selected_cards(db, selected_ids)
-    for card in selected_cards:
-        if not card or card.card_type != "场景":
-            continue
-        image_url = _get_subject_card_reference_image_url(
-            card.id,
-            db,
-            allow_uploaded_fallback=False,
-        )
-        if image_url:
-            return image_url
-    return ""
-
-
-def _resolve_selected_scene_reference_image_url(
-    shot: models.StoryboardShot,
-    db: Session,
-) -> str:
-    return resolve_scene_reference_image_url(
-        selected_scene_card_image_url=_get_selected_scene_card_image_url(shot, db),
-        uploaded_scene_image_url=getattr(shot, "uploaded_scene_image_url", ""),
-        use_uploaded_scene_image=bool(getattr(shot, "use_uploaded_scene_image", False)),
-    )
+_get_selected_scene_card_image_url = storyboard_reference_assets.get_selected_scene_card_image_url
+_resolve_selected_scene_reference_image_url = storyboard_reference_assets.resolve_selected_scene_reference_image_url
 
 
 def _backfill_storyboard_visual_references_from_family(

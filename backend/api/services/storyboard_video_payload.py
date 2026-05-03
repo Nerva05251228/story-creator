@@ -3,18 +3,17 @@ from typing import Any, Dict, List, Optional
 
 import models
 from api.services.card_media import _ensure_audio_duration_seconds_cached
+from api.services import storyboard_reference_assets
 from api.services import storyboard_video_settings
 from storyboard_video_reference import (
     build_seedance_content_text,
     build_seedance_prompt,
     build_seedance_reference_images,
-    resolve_scene_reference_image_url,
 )
 
 
 SOUND_CARD_TYPE = "声音"
 ROLE_CARD_TYPE = "角色"
-SCENE_CARD_TYPE = "场景"
 PROP_CARD_TYPE = "道具"
 MOTI_REFERENCE_IMAGE_ROLE = "reference_image"
 
@@ -30,6 +29,11 @@ normalize_storyboard_video_resolution_name = storyboard_video_settings.normalize
 resolve_storyboard_video_provider = storyboard_video_settings.resolve_storyboard_video_provider
 is_moti_storyboard_video_model = storyboard_video_settings.is_moti_storyboard_video_model
 resolve_storyboard_video_model_by_provider = storyboard_video_settings.resolve_storyboard_video_model_by_provider
+_resolve_selected_cards = storyboard_reference_assets.resolve_selected_cards
+_debug_parse_card_ids = storyboard_reference_assets.parse_card_ids
+_get_subject_card_reference_image_url = storyboard_reference_assets.get_subject_card_reference_image_url
+_get_selected_scene_card_image_url = storyboard_reference_assets.get_selected_scene_card_image_url
+_resolve_selected_scene_reference_image_url = storyboard_reference_assets.resolve_selected_scene_reference_image_url
 
 
 def get_seedance_audio_validation_error(audio_items: List[dict], total_audio_duration_seconds: float) -> str:
@@ -45,101 +49,6 @@ def _get_episode_story_library(episode_id: int, db):
     return db.query(models.StoryLibrary).filter(
         models.StoryLibrary.episode_id == episode_id
     ).first()
-
-
-def _resolve_selected_cards(db, selected_ids: List[int], library_id: Optional[int] = None) -> List[models.SubjectCard]:
-    if not selected_ids:
-        return []
-
-    query = db.query(models.SubjectCard).filter(
-        models.SubjectCard.id.in_(selected_ids)
-    )
-    if library_id is not None:
-        query = query.filter(models.SubjectCard.library_id == library_id)
-
-    cards = query.all()
-    card_map = {card.id: card for card in cards if card}
-    return [card_map[card_id] for card_id in selected_ids if card_id in card_map]
-
-
-def _debug_parse_card_ids(raw_value) -> List[int]:
-    if raw_value is None:
-        return []
-    try:
-        parsed = json.loads(raw_value) if isinstance(raw_value, str) else raw_value
-    except Exception:
-        return []
-    if not isinstance(parsed, list):
-        return []
-
-    resolved = []
-    seen = set()
-    for item in parsed:
-        card_id = None
-        if isinstance(item, int):
-            card_id = item
-        elif isinstance(item, str) and item.strip().isdigit():
-            card_id = int(item.strip())
-        if not card_id or card_id in seen:
-            continue
-        seen.add(card_id)
-        resolved.append(card_id)
-    return resolved
-
-
-def _get_subject_card_reference_image_url(
-    card_id: int,
-    db,
-    *,
-    allow_uploaded_fallback: bool = True,
-) -> str:
-    reference_image = db.query(models.GeneratedImage).filter(
-        models.GeneratedImage.card_id == card_id,
-        models.GeneratedImage.is_reference == True,
-        models.GeneratedImage.status == "completed",
-    ).order_by(
-        models.GeneratedImage.created_at.desc(),
-        models.GeneratedImage.id.desc(),
-    ).first()
-    if reference_image and str(reference_image.image_path or "").strip():
-        return str(reference_image.image_path).strip()
-
-    if not allow_uploaded_fallback:
-        return ""
-
-    uploaded_image = db.query(models.CardImage).filter(
-        models.CardImage.card_id == card_id
-    ).order_by(
-        models.CardImage.order.desc(),
-        models.CardImage.id.desc(),
-    ).first()
-    if uploaded_image and str(uploaded_image.image_path or "").strip():
-        return str(uploaded_image.image_path).strip()
-    return ""
-
-
-def _get_selected_scene_card_image_url(shot: models.StoryboardShot, db) -> str:
-    selected_ids = _debug_parse_card_ids(getattr(shot, "selected_card_ids", "[]"))
-    selected_cards = _resolve_selected_cards(db, selected_ids)
-    for card in selected_cards:
-        if not card or card.card_type != SCENE_CARD_TYPE:
-            continue
-        image_url = _get_subject_card_reference_image_url(
-            card.id,
-            db,
-            allow_uploaded_fallback=False,
-        )
-        if image_url:
-            return image_url
-    return ""
-
-
-def _resolve_selected_scene_reference_image_url(shot: models.StoryboardShot, db) -> str:
-    return resolve_scene_reference_image_url(
-        selected_scene_card_image_url=_get_selected_scene_card_image_url(shot, db),
-        uploaded_scene_image_url=getattr(shot, "uploaded_scene_image_url", ""),
-        use_uploaded_scene_image=bool(getattr(shot, "use_uploaded_scene_image", False)),
-    )
 
 
 def _parse_storyboard_sound_card_ids(raw_value: Any) -> Optional[List[int]]:
