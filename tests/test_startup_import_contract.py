@@ -412,6 +412,35 @@ class StartupImportContractTests(unittest.TestCase):
             payload_source,
         )
 
+    def test_voiceover_merge_helpers_live_in_service_module(self):
+        main_source = MAIN_PATH.read_text(encoding="utf-8-sig")
+        episodes_source = (BACKEND_DIR / "api" / "routers" / "episodes.py").read_text(encoding="utf-8-sig")
+        service_source = (BACKEND_DIR / "api" / "services" / "voiceover_data.py").read_text(encoding="utf-8-sig")
+        delegated_names = {
+            "_voiceover_shot_match_key",
+            "_merge_voiceover_line_preserving_tts",
+            "_merge_voiceover_dialogue_preserving_tts",
+            "_merge_voiceover_shots_preserving_extensions",
+        }
+        service_aliases = {
+            "_voiceover_shot_match_key": "voiceover_shot_match_key",
+            "_merge_voiceover_line_preserving_tts": "merge_voiceover_line_preserving_tts",
+            "_merge_voiceover_dialogue_preserving_tts": "merge_voiceover_dialogue_preserving_tts",
+            "_merge_voiceover_shots_preserving_extensions": "merge_voiceover_shots_preserving_extensions",
+        }
+
+        self.assertIn("from api.services import voiceover_data", main_source)
+        self.assertIn("from api.services import voiceover_data", episodes_source)
+        self.assertEqual(_top_level_definition_names(main_source) & delegated_names, set())
+        self.assertEqual(_top_level_definition_names(episodes_source) & delegated_names, set())
+        self.assertIn("def voiceover_shot_match_key", service_source)
+        self.assertIn("def merge_voiceover_line_preserving_tts", service_source)
+        self.assertIn("def merge_voiceover_dialogue_preserving_tts", service_source)
+        self.assertIn("def merge_voiceover_shots_preserving_extensions", service_source)
+        for name, service_name in service_aliases.items():
+            self.assertIn(f"{name} = voiceover_data.{service_name}", main_source)
+            self.assertIn(f"{name} = voiceover_data.{service_name}", episodes_source)
+
     def test_web_startup_event_excludes_schema_bootstrap_and_preflight_responsibilities(self):
         source = MAIN_PATH.read_text(encoding="utf-8-sig")
         startup_node = _function_node(source, "startup_event")

@@ -57,6 +57,7 @@ from api.services import storyboard_defaults
 from api.services import storyboard_reference_assets
 from api.services import storyboard_video_settings
 from api.services import storyboard_video_payload
+from api.services import voiceover_data
 from env_config import get_env, is_placeholder_env_value, load_app_env
 
 
@@ -4311,160 +4312,10 @@ class PasswordVerifyRequest(BaseModel):
 
 # ==================== 工具函数 ====================
 
-def _voiceover_shot_match_key(shot: dict, fallback_index: Optional[int] = None) -> str:
-    """为voiceover单镜头生成稳定匹配键。"""
-    if not isinstance(shot, dict):
-        return f"index:{fallback_index}" if fallback_index is not None else ""
-
-    shot_number = shot.get("shot_number")
-    if shot_number is not None:
-        normalized = str(shot_number).strip()
-        if normalized:
-            return f"shot_number:{normalized}"
-
-    return f"index:{fallback_index}" if fallback_index is not None else ""
-
-def _merge_voiceover_line_preserving_tts(
-    existing_line: Any,
-    incoming_line: Any,
-    fallback_line_id: str = ""
-) -> Any:
-    """合并单条配音行，优先使用新字段，同时尽量保留旧的tts配置。"""
-    if not isinstance(incoming_line, dict):
-        return incoming_line
-
-    existing = existing_line if isinstance(existing_line, dict) else {}
-    merged = dict(existing)
-    merged.update(incoming_line)
-
-    incoming_has_tts = "tts" in incoming_line
-    existing_tts = existing.get("tts")
-    incoming_tts = incoming_line.get("tts")
-
-    if incoming_has_tts:
-        if isinstance(incoming_tts, dict) and isinstance(existing_tts, dict):
-            merged_tts = dict(existing_tts)
-            merged_tts.update(incoming_tts)
-            merged["tts"] = merged_tts
-        else:
-            merged["tts"] = incoming_tts
-    elif isinstance(existing_tts, dict):
-        merged["tts"] = existing_tts
-
-    line_id = str(merged.get("line_id") or "").strip()
-    if not line_id:
-        old_line_id = str(existing.get("line_id") or "").strip()
-        if old_line_id:
-            merged["line_id"] = old_line_id
-        elif fallback_line_id:
-            merged["line_id"] = fallback_line_id
-
-    return merged
-
-def _merge_voiceover_dialogue_preserving_tts(
-    existing_dialogue: Any,
-    incoming_dialogue: Any,
-    shot_number: Any
-) -> Any:
-    """按 line_id（其次按位置）合并对白数组并保留旧tts。"""
-    if not isinstance(incoming_dialogue, list):
-        return incoming_dialogue
-
-    existing_list = existing_dialogue if isinstance(existing_dialogue, list) else []
-    by_line_id = {}
-    by_index = {}
-    for idx, item in enumerate(existing_list, start=1):
-        if not isinstance(item, dict):
-            continue
-        by_index[idx] = item
-        line_id = str(item.get("line_id") or "").strip()
-        if line_id and line_id not in by_line_id:
-            by_line_id[line_id] = item
-
-    normalized_shot_number = str(shot_number or "").strip() or "0"
-    merged_list = []
-    for idx, incoming_item in enumerate(incoming_dialogue, start=1):
-        incoming_dict = incoming_item if isinstance(incoming_item, dict) else {}
-        incoming_line_id = str(incoming_dict.get("line_id") or "").strip()
-        existing_item = by_line_id.get(incoming_line_id) if incoming_line_id else None
-        if not isinstance(existing_item, dict):
-            existing_item = by_index.get(idx)
-        fallback_line_id = incoming_line_id or f"shot_{normalized_shot_number}_dialogue_{idx}"
-        merged_item = _merge_voiceover_line_preserving_tts(existing_item, incoming_dict, fallback_line_id)
-        merged_list.append(merged_item)
-
-    return merged_list
-
-def _merge_voiceover_shots_preserving_extensions(
-    existing_voiceover_data: str,
-    incoming_voiceover_shots: list
-) -> dict:
-    """
-    合并voiceover镜头数据：
-    - 基础字段（shot_number/voice_type/narration/dialogue）以新数据为准；
-    - 其他扩展字段（如tts等）按镜头匹配后保留。
-    """
-    existing_payload = {}
-    if isinstance(existing_voiceover_data, str) and existing_voiceover_data.strip():
-        try:
-            parsed = json.loads(existing_voiceover_data)
-            if isinstance(parsed, dict):
-                existing_payload = parsed
-        except Exception:
-            existing_payload = {}
-
-    existing_shots = existing_payload.get("shots", [])
-    if not isinstance(existing_shots, list):
-        existing_shots = []
-
-    existing_shot_map = {}
-    for idx, item in enumerate(existing_shots):
-        if not isinstance(item, dict):
-            continue
-        key = _voiceover_shot_match_key(item, idx)
-        if key and key not in existing_shot_map:
-            existing_shot_map[key] = item
-
-    if not isinstance(incoming_voiceover_shots, list):
-        incoming_voiceover_shots = []
-
-    merged_shots = []
-    for idx, incoming in enumerate(incoming_voiceover_shots):
-        incoming_shot = incoming if isinstance(incoming, dict) else {}
-        key = _voiceover_shot_match_key(incoming_shot, idx)
-        existing_shot = existing_shot_map.get(key, {})
-
-        merged_shot = dict(existing_shot) if isinstance(existing_shot, dict) else {}
-        merged_shot["shot_number"] = incoming_shot.get("shot_number")
-        merged_shot["voice_type"] = incoming_shot.get("voice_type")
-
-        shot_number_for_line = str(
-            incoming_shot.get("shot_number")
-            or merged_shot.get("shot_number")
-            or idx + 1
-        ).strip()
-
-        incoming_narration = incoming_shot.get("narration")
-        existing_narration = existing_shot.get("narration") if isinstance(existing_shot, dict) else None
-        if isinstance(incoming_narration, dict):
-            merged_shot["narration"] = _merge_voiceover_line_preserving_tts(
-                existing_narration,
-                incoming_narration,
-                f"shot_{shot_number_for_line}_narration"
-            )
-        else:
-            merged_shot["narration"] = incoming_narration
-
-        merged_shot["dialogue"] = _merge_voiceover_dialogue_preserving_tts(
-            existing_shot.get("dialogue") if isinstance(existing_shot, dict) else None,
-            incoming_shot.get("dialogue"),
-            shot_number_for_line
-        )
-        merged_shots.append(merged_shot)
-
-    merged_payload = dict(existing_payload) if isinstance(existing_payload, dict) else {}
-    merged_payload["shots"] = merged_shots
-    return merged_payload
+_voiceover_shot_match_key = voiceover_data.voiceover_shot_match_key
+_merge_voiceover_line_preserving_tts = voiceover_data.merge_voiceover_line_preserving_tts
+_merge_voiceover_dialogue_preserving_tts = voiceover_data.merge_voiceover_dialogue_preserving_tts
+_merge_voiceover_shots_preserving_extensions = voiceover_data.merge_voiceover_shots_preserving_extensions
 
 VOICEOVER_TTS_API_URL = get_env("VOICEOVER_TTS_API_URL", "")
 VOICEOVER_TTS_METHOD_SAME = "与音色参考音频相同"

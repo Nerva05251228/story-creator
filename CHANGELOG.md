@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 This project uses a lightweight `Added`, `Changed`, `Fixed`, `Security`, and `Migration` structure.
 
+## 2026-05-03 - Voiceover Data Merge Service Extraction
+
+### Added
+
+- Added `backend/api/services/voiceover_data.py` for shared voiceover shot, narration, and dialogue merge helpers that preserve existing TTS extensions.
+- Added focused service tests for voiceover line merge behavior, TTS field preservation, dialogue line matching, fallback line IDs, and invalid payload handling.
+- Added import-contract coverage so voiceover merge helper bodies stay out of `backend/main.py` and the episodes router.
+
+### Changed
+
+- Updated `backend/main.py` and `backend/api/routers/episodes.py` to reuse voiceover merge helpers through compatibility aliases without changing route paths, responses, or authorization behavior.
+
 ## 2026-05-03 - Storyboard Reference Asset Service Extraction
 
 ### Added
