@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 This project uses a lightweight `Added`, `Changed`, `Fixed`, `Security`, and `Migration` structure.
 
+## 2026-05-03 - Episode Metadata Compatibility Cleanup
+
+### Added
+
+- Added an AST import-contract guard so `backend/main.py` cannot reintroduce duplicate episode metadata route helper implementations already owned by the episodes router.
+
+### Changed
+
+- Replaced duplicate `backend/main.py` implementations for episode get/update, poll status, total cost, and storyboard2 duration helpers with compatibility aliases to `backend/api/routers/episodes.py`.
+
 ## 2026-05-03 - Billing Charge Helper Extraction
 
 ### Added

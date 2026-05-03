@@ -197,6 +197,23 @@ class StartupImportContractTests(unittest.TestCase):
             set(),
         )
 
+    def test_episode_metadata_helpers_are_not_redefined_in_main(self):
+        source = MAIN_PATH.read_text(encoding="utf-8-sig")
+        top_level_defs = _top_level_definition_names(source)
+        delegated_names = {
+            "get_episode",
+            "_build_episode_poll_status_payload",
+            "_count_storyboard_items",
+            "get_episode_poll_status",
+            "get_episode_total_cost",
+            "update_episode",
+            "update_episode_storyboard2_duration",
+        }
+
+        self.assertEqual(top_level_defs & delegated_names, set())
+        for name in delegated_names:
+            self.assertIn(f"{name} = episodes.{name}", source)
+
     def test_web_startup_event_excludes_schema_bootstrap_and_preflight_responsibilities(self):
         source = MAIN_PATH.read_text(encoding="utf-8-sig")
         startup_node = _function_node(source, "startup_event")
