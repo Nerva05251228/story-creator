@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 This project uses a lightweight `Added`, `Changed`, `Fixed`, `Security`, and `Migration` structure.
 
+## 2026-05-03 - Storyboard Subject Helper Deduplication
+
+### Added
+
+- Added an AST import-contract guard so `backend/main.py` cannot reintroduce duplicate storyboard subject reconciliation helper implementations already owned by the episodes router.
+
+### Changed
+
+- Replaced duplicate `backend/main.py` implementations for storyboard subject normalization, matching, inferred role resolution, and shot subject reconciliation with compatibility aliases to `backend/api/routers/episodes.py`.
+- Kept the `backend/main.py` stage2 subject wrapper local because it is not duplicated in the episodes router and is still used by main's detailed storyboard pipeline.
+
 ## 2026-05-03 - Episode Metadata Compatibility Cleanup
 
 ### Added

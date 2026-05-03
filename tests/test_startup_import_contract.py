@@ -214,6 +214,24 @@ class StartupImportContractTests(unittest.TestCase):
         for name in delegated_names:
             self.assertIn(f"{name} = episodes.{name}", source)
 
+    def test_storyboard_subject_helpers_are_not_redefined_in_main(self):
+        source = MAIN_PATH.read_text(encoding="utf-8-sig")
+        top_level_defs = _top_level_definition_names(source)
+        delegated_names = {
+            "_normalize_subject_detail_entry",
+            "_build_subject_detail_map",
+            "_normalize_storyboard_generation_subjects",
+            "_find_meaningful_common_fragment",
+            "_infer_storyboard_role_name_from_shot",
+            "_resolve_storyboard_subject_name",
+            "_reconcile_storyboard_shot_subjects",
+        }
+
+        self.assertEqual(top_level_defs & delegated_names, set())
+        for name in delegated_names:
+            self.assertIn(f"{name} = episodes.{name}", source)
+        self.assertIn("_SUBJECT_MATCH_STOP_FRAGMENTS = episodes._SUBJECT_MATCH_STOP_FRAGMENTS", source)
+
     def test_web_startup_event_excludes_schema_bootstrap_and_preflight_responsibilities(self):
         source = MAIN_PATH.read_text(encoding="utf-8-sig")
         startup_node = _function_node(source, "startup_event")
