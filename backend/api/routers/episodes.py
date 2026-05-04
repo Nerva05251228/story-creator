@@ -38,6 +38,7 @@ from dashboard_service import log_file_task_event, sync_managed_task_to_dashboar
 from database import SessionLocal, get_db
 from managed_generation_service import ACTIVE_MANAGED_SESSION_STATUSES
 from api.services import billing_charges
+from api.services import episode_cleanup
 from api.services import storyboard_defaults
 from api.services import storyboard_reference_assets
 from api.services import storyboard_prompt_context
@@ -884,108 +885,10 @@ async def update_episode_storyboard2_duration(
     db.refresh(episode)
     return {"message": "时长规格已更新", "duration": duration}
 
-def _normalize_storyboard_shot_ids(shot_ids: List[int], allow_zero: bool = False) -> List[int]:
-    normalized_ids = []
-    seen_ids = set()
-    for raw_shot_id in shot_ids or []:
-        try:
-            shot_id = int(raw_shot_id or 0)
-        except (TypeError, ValueError):
-            continue
-        if shot_id < 0 or (shot_id == 0 and not allow_zero) or shot_id in seen_ids:
-            continue
-        seen_ids.add(shot_id)
-        normalized_ids.append(shot_id)
-    return normalized_ids
-
-def _clear_storyboard_shot_dependencies(shot_ids: List[int], db: Session, allow_zero: bool = False) -> Dict[str, int]:
-    """
-    删除镜头前先清理直接依赖 storyboard_shots.id 的记录。
-
-    PostgreSQL 外键不会替 ORM bulk delete 自动兜底，所以这里要显式处理
-    storyboard2_shots.source_shot_id / managed_tasks / collages / videos / detail_images。
-    """
-    normalized_shot_ids = _normalize_storyboard_shot_ids(shot_ids, allow_zero=allow_zero)
-    if not normalized_shot_ids:
-        return {
-            "storyboard2_unlinked": 0,
-            "deleted_collages": 0,
-            "deleted_videos": 0,
-            "deleted_detail_images": 0,
-            "deleted_managed_tasks": 0,
-        }
-
-    storyboard2_unlinked = db.query(models.Storyboard2Shot).filter(
-        models.Storyboard2Shot.source_shot_id.in_(normalized_shot_ids)
-    ).update(
-        {models.Storyboard2Shot.source_shot_id: None},
-        synchronize_session=False
-    )
-
-    deleted_collages = db.query(models.ShotCollage).filter(
-        models.ShotCollage.shot_id.in_(normalized_shot_ids)
-    ).delete(synchronize_session=False)
-    deleted_videos = db.query(models.ShotVideo).filter(
-        models.ShotVideo.shot_id.in_(normalized_shot_ids)
-    ).delete(synchronize_session=False)
-    deleted_detail_images = db.query(models.ShotDetailImage).filter(
-        models.ShotDetailImage.shot_id.in_(normalized_shot_ids)
-    ).delete(synchronize_session=False)
-    deleted_managed_tasks = db.query(models.ManagedTask).filter(
-        models.ManagedTask.shot_id.in_(normalized_shot_ids)
-    ).delete(synchronize_session=False)
-
-    return {
-        "storyboard2_unlinked": int(storyboard2_unlinked or 0),
-        "deleted_collages": int(deleted_collages or 0),
-        "deleted_videos": int(deleted_videos or 0),
-        "deleted_detail_images": int(deleted_detail_images or 0),
-        "deleted_managed_tasks": int(deleted_managed_tasks or 0),
-    }
-
-def _delete_storyboard_shots_by_ids(
-    shot_ids: List[int],
-    db: Session,
-    log_context: str = "",
-    allow_zero: bool = False
-) -> int:
-    normalized_shot_ids = _normalize_storyboard_shot_ids(shot_ids, allow_zero=allow_zero)
-    if not normalized_shot_ids:
-        return 0
-
-    cleanup_stats = _clear_storyboard_shot_dependencies(
-        normalized_shot_ids,
-        db,
-        allow_zero=allow_zero
-    )
-    deleted_shots = db.query(models.StoryboardShot).filter(
-        models.StoryboardShot.id.in_(normalized_shot_ids)
-    ).delete(synchronize_session=False)
-
-    print(
-        "[分镜删除清理] "
-        f"{log_context} shots={deleted_shots} "
-        f"collages={cleanup_stats['deleted_collages']} "
-        f"videos={cleanup_stats['deleted_videos']} "
-        f"detail_images={cleanup_stats['deleted_detail_images']} "
-        f"managed_tasks={cleanup_stats['deleted_managed_tasks']} "
-        f"storyboard2_unlinked={cleanup_stats['storyboard2_unlinked']}"
-    )
-    return deleted_shots
-
-def _delete_episode_storyboard_shots(episode_id: int, db: Session) -> int:
-    shot_ids = [
-        shot_id
-        for shot_id, in db.query(models.StoryboardShot.id).filter(
-            models.StoryboardShot.episode_id == episode_id
-        ).all()
-    ]
-    return _delete_storyboard_shots_by_ids(
-        shot_ids,
-        db,
-        log_context=f"episode_id={episode_id}",
-        allow_zero=True
-    )
+_normalize_storyboard_shot_ids = episode_cleanup.normalize_storyboard_shot_ids
+_clear_storyboard_shot_dependencies = episode_cleanup.clear_storyboard_shot_dependencies
+_delete_storyboard_shots_by_ids = episode_cleanup.delete_storyboard_shots_by_ids
+_delete_episode_storyboard_shots = episode_cleanup.delete_episode_storyboard_shots
 
 def _create_shots_from_storyboard_data(episode_id: int, db: Session):
     """

@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 This project uses a lightweight `Added`, `Changed`, `Fixed`, `Security`, and `Migration` structure.
 
+## 2026-05-04 - Episode Cleanup Service Expansion
+
+### Added
+
+- Added focused service and import-contract coverage for storyboard shot ID normalization, dependency cleanup, shot deletion by IDs, and episode-wide storyboard shot deletion.
+
+### Changed
+
+- Moved duplicated storyboard shot cleanup helpers out of `backend/main.py` and `backend/api/routers/episodes.py` into `backend/api/services/episode_cleanup.py` while keeping compatibility aliases for existing direct callers.
+- Reused the existing episode cleanup service for the legacy `_clear_episode_dependencies` export in `backend/main.py`.
+
 ## 2026-05-04 - Storyboard2 Reference Image Service Extraction
 
 ### Added

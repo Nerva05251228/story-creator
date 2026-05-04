@@ -211,6 +211,32 @@ class StartupImportContractTests(unittest.TestCase):
             self.assertIn(f"{name} = storyboard2_reference_images.{service_name}", router_source)
             self.assertIn(f"def {service_name}", service_source)
 
+    def test_episode_cleanup_helpers_live_in_service_module(self):
+        main_source = MAIN_PATH.read_text(encoding="utf-8-sig")
+        episodes_source = (BACKEND_DIR / "api" / "routers" / "episodes.py").read_text(encoding="utf-8-sig")
+        service_source = (BACKEND_DIR / "api" / "services" / "episode_cleanup.py").read_text(encoding="utf-8-sig")
+        shared_aliases = {
+            "_normalize_storyboard_shot_ids": "normalize_storyboard_shot_ids",
+            "_clear_storyboard_shot_dependencies": "clear_storyboard_shot_dependencies",
+            "_delete_storyboard_shots_by_ids": "delete_storyboard_shots_by_ids",
+            "_delete_episode_storyboard_shots": "delete_episode_storyboard_shots",
+        }
+        main_only_aliases = {
+            "_clear_episode_dependencies": "clear_episode_dependencies",
+        }
+
+        self.assertIn("from api.services import episode_cleanup", main_source)
+        self.assertIn("from api.services import episode_cleanup", episodes_source)
+        self.assertEqual(_top_level_definition_names(main_source) & (set(shared_aliases) | set(main_only_aliases)), set())
+        self.assertEqual(_top_level_definition_names(episodes_source) & set(shared_aliases), set())
+        for name, service_name in shared_aliases.items():
+            self.assertIn(f"{name} = episode_cleanup.{service_name}", main_source)
+            self.assertIn(f"{name} = episode_cleanup.{service_name}", episodes_source)
+            self.assertIn(f"def {service_name}", service_source)
+        for name, service_name in main_only_aliases.items():
+            self.assertIn(f"{name} = episode_cleanup.{service_name}", main_source)
+            self.assertIn(f"def {service_name}", service_source)
+
     def test_storyboard_excel_route_module_owns_storyboard_excel_routes(self):
         main_source = MAIN_PATH.read_text(encoding="utf-8-sig")
         episodes_source = (BACKEND_DIR / "api" / "routers" / "episodes.py").read_text(encoding="utf-8-sig")
