@@ -464,6 +464,61 @@ class StartupImportContractTests(unittest.TestCase):
             self.assertIn(f"{name} = storyboard_video_generation_limits.{service_name}", main_source)
             self.assertIn(f"{name} = storyboard_video_generation_limits.{service_name}", episodes_source)
 
+    def test_storyboard_prompt_context_helpers_live_in_service_module(self):
+        main_source = MAIN_PATH.read_text(encoding="utf-8-sig")
+        episodes_source = (BACKEND_DIR / "api" / "routers" / "episodes.py").read_text(encoding="utf-8-sig")
+        storyboard2_source = (BACKEND_DIR / "api" / "routers" / "storyboard2.py").read_text(encoding="utf-8-sig")
+        service_path = BACKEND_DIR / "api" / "services" / "storyboard_prompt_context.py"
+
+        self.assertTrue(service_path.exists())
+        service_source = service_path.read_text(encoding="utf-8-sig")
+        main_delegated_names = {
+            "_debug_resolve_subject_names",
+            "_build_subject_text_for_ai",
+            "_build_storyboard2_subject_text",
+            "_resolve_large_shot_template",
+            "_append_sora_reference_prompt",
+            "_resolve_sora_reference_prompt",
+        }
+        episodes_delegated_names = {
+            "_build_subject_text_for_ai",
+            "_resolve_large_shot_template",
+            "_append_sora_reference_prompt",
+            "_resolve_sora_reference_prompt",
+        }
+        storyboard2_delegated_names = {"_build_storyboard2_subject_text"}
+        aliases = {
+            "_debug_resolve_subject_names": "debug_resolve_subject_names",
+            "_build_subject_text_for_ai": "build_subject_text_for_ai",
+            "_build_storyboard2_subject_text": "build_storyboard2_subject_text",
+            "_resolve_large_shot_template": "resolve_large_shot_template",
+            "_append_sora_reference_prompt": "append_sora_reference_prompt",
+            "_resolve_sora_reference_prompt": "resolve_sora_reference_prompt",
+        }
+
+        self.assertIn("from api.services import storyboard_prompt_context", main_source)
+        self.assertIn("from api.services import storyboard_prompt_context", episodes_source)
+        self.assertIn("storyboard_prompt_context", storyboard2_source)
+        self.assertEqual(_top_level_definition_names(main_source) & main_delegated_names, set())
+        self.assertEqual(_top_level_definition_names(episodes_source) & episodes_delegated_names, set())
+        self.assertEqual(_top_level_definition_names(storyboard2_source) & storyboard2_delegated_names, set())
+        self.assertIn(
+            "SORA_REFERENCE_PROMPT_INSTRUCTION = storyboard_prompt_context.SORA_REFERENCE_PROMPT_INSTRUCTION",
+            main_source,
+        )
+        self.assertIn(
+            "SORA_REFERENCE_PROMPT_INSTRUCTION = storyboard_prompt_context.SORA_REFERENCE_PROMPT_INSTRUCTION",
+            episodes_source,
+        )
+        for name, service_name in aliases.items():
+            self.assertIn(f"def {service_name}", service_source)
+            if name in main_delegated_names:
+                self.assertIn(f"{name} = storyboard_prompt_context.{service_name}", main_source)
+            if name in episodes_delegated_names:
+                self.assertIn(f"{name} = storyboard_prompt_context.{service_name}", episodes_source)
+            if name in storyboard2_delegated_names:
+                self.assertIn(f"{name} = storyboard_prompt_context.{service_name}", storyboard2_source)
+
     def test_shot_image_generation_helpers_live_in_service_module(self):
         main_source = MAIN_PATH.read_text(encoding="utf-8-sig")
         shots_source = (BACKEND_DIR / "api" / "routers" / "shots.py").read_text(encoding="utf-8-sig")

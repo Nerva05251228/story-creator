@@ -40,7 +40,13 @@ from api.schemas.episodes import (
     Storyboard2UpdateShotRequest,
     Storyboard2UpdateSubShotRequest,
 )
-from api.services import billing_charges, storyboard_defaults, storyboard_sync, storyboard_video_settings
+from api.services import (
+    billing_charges,
+    storyboard_defaults,
+    storyboard_prompt_context,
+    storyboard_sync,
+    storyboard_video_settings,
+)
 
 
 router = APIRouter()
@@ -115,25 +121,7 @@ def _build_image_generation_debug_meta(
         ),
     }
 
-def _build_storyboard2_subject_text(selected_cards: List[models.SubjectCard]) -> str:
-    """Build candidate subject text for storyboard2 prompts with role personality context."""
-    if not selected_cards:
-        return "无"
-
-    lines = []
-    for card in selected_cards:
-        if not card:
-            continue
-        name = ((getattr(card, "name", "") or "")).strip()
-        if not name:
-            continue
-        if getattr(card, "card_type", "") == "角色":
-            personality = (getattr(card, "role_personality", "") or "").strip()
-            lines.append(f"{name}-{personality}" if personality else name)
-        else:
-            lines.append(name)
-
-    return "\n".join(lines) if lines else "无"
+_build_storyboard2_subject_text = storyboard_prompt_context.build_storyboard2_subject_text
 
 def _refresh_storyboard2_prompt_batch_state(episode_id: int, db: Session):
     pending_count = db.query(models.TextRelayTask).filter(

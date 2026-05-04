@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 This project uses a lightweight `Added`, `Changed`, `Fixed`, `Security`, and `Migration` structure.
 
+## 2026-05-04 - Storyboard Prompt Context Service Extraction
+
+### Added
+
+- Added `backend/api/services/storyboard_prompt_context.py` for shared storyboard subject text, Sora reference prompt, large-shot template, and debug subject-name resolution helpers.
+- Added focused service and import-contract coverage for storyboard prompt context helper behavior.
+
+### Changed
+
+- Moved duplicated prompt context helpers out of `backend/main.py`, `backend/api/routers/episodes.py`, and `backend/api/routers/storyboard2.py` while keeping compatibility aliases for existing direct callers.
+
 ## 2026-05-04 - Storyboard Video Generation Limit Service Extraction
 
 ### Added

@@ -40,6 +40,7 @@ from managed_generation_service import ACTIVE_MANAGED_SESSION_STATUSES
 from api.services import billing_charges
 from api.services import storyboard_defaults
 from api.services import storyboard_reference_assets
+from api.services import storyboard_prompt_context
 from api.services import storyboard_sync
 from api.services import storyboard_video_generation_limits
 from api.services import storyboard_video_settings
@@ -126,7 +127,7 @@ SIMPLE_STORYBOARD_TIMEOUT_SECONDS = 3600
 
 SIMPLE_STORYBOARD_TIMEOUT_ERROR = "简单分镜生成超时（超过 1 小时），已自动标记为失败，请重新生成。"
 
-SORA_REFERENCE_PROMPT_INSTRUCTION = "请你参考这段提示词中的人物站位进行编写新的提示词："
+SORA_REFERENCE_PROMPT_INSTRUCTION = storyboard_prompt_context.SORA_REFERENCE_PROMPT_INSTRUCTION
 
 ACTIVE_VIDEO_GENERATION_STATUSES = storyboard_video_generation_limits.ACTIVE_VIDEO_GENERATION_STATUSES
 
@@ -2083,108 +2084,10 @@ async def create_from_storyboard(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"创建失败: {str(e)}")
 
-def _build_subject_text_for_ai(selected_cards: List[models.SubjectCard]) -> str:
-    """Build subject_text for Sora prompt generation with protagonist support."""
-    if not selected_cards:
-        return "无"
-
-    def format_subject_label(card: models.SubjectCard) -> str:
-        name = ((getattr(card, "name", "") or "")).strip()
-        if not name:
-            return ""
-        if getattr(card, "card_type", "") == "角色":
-            personality = (getattr(card, "role_personality", "") or "").strip()
-            if personality:
-                return f"{name}-{personality}"
-        return name
-
-    male_protagonists = []
-    female_protagonists = []
-    other_subjects = []
-
-    for card in selected_cards:
-        if not card:
-            continue
-        name = (card.name or "").strip()
-        if not name:
-            continue
-        subject_label = format_subject_label(card)
-        if not subject_label:
-            continue
-        card_gender = getattr(card, "protagonist_gender", "") or ""
-        is_protagonist = bool(getattr(card, "is_protagonist", False))
-        if card.card_type == "角色" and is_protagonist and card_gender in ("male", "female"):
-            if card_gender == "male":
-                male_protagonists.append(subject_label)
-            else:
-                female_protagonists.append(subject_label)
-        else:
-            other_subjects.append(subject_label)
-
-    segments = []
-    for idx, name in enumerate(male_protagonists, start=1):
-        segments.append(f"男主{idx}：{name}")
-    for idx, name in enumerate(female_protagonists, start=1):
-        segments.append(f"女主{idx}：{name}")
-    if other_subjects:
-        segments.append(f"其他角色、场景或道具：{'、'.join(other_subjects)}")
-
-    if segments:
-        return "，".join(segments)
-
-    names = [format_subject_label(card) for card in selected_cards if card]
-    names = [name for name in names if name]
-    return "、".join(names) if names else "无"
-
-
-def _resolve_large_shot_template(
-    db: Session,
-    template_id: Optional[int] = None
-) -> Optional[models.LargeShotTemplate]:
-    query = db.query(models.LargeShotTemplate)
-    if template_id:
-        return query.filter(models.LargeShotTemplate.id == template_id).first()
-
-    default_template = query.filter(models.LargeShotTemplate.is_default == True).order_by(
-        models.LargeShotTemplate.id.asc()
-    ).first()
-    if default_template:
-        return default_template
-
-    return query.order_by(
-        models.LargeShotTemplate.created_at.asc(),
-        models.LargeShotTemplate.id.asc()
-    ).first()
-
-def _append_sora_reference_prompt(base_prompt: str, reference_prompt: str) -> str:
-    clean_base = str(base_prompt or "").strip()
-    clean_reference = str(reference_prompt or "").strip()
-    if not clean_reference:
-        return clean_base
-    reference_block = f"{SORA_REFERENCE_PROMPT_INSTRUCTION}{clean_reference}"
-    if not clean_base:
-        return reference_block
-    return f"{clean_base}\n\n{reference_block}"
-
-def _resolve_sora_reference_prompt(
-    db: Session,
-    episode_id: int,
-    reference_shot_id: Optional[int] = None,
-) -> str:
-    try:
-        clean_reference_id = int(reference_shot_id or 0)
-    except Exception:
-        clean_reference_id = 0
-    if clean_reference_id <= 0:
-        return ""
-
-    reference_shot = db.query(models.StoryboardShot).filter(
-        models.StoryboardShot.id == clean_reference_id,
-        models.StoryboardShot.episode_id == episode_id,
-    ).first()
-    if not reference_shot:
-        return ""
-    return str(reference_shot.sora_prompt or "").strip()
+_build_subject_text_for_ai = storyboard_prompt_context.build_subject_text_for_ai
+_resolve_large_shot_template = storyboard_prompt_context.resolve_large_shot_template
+_append_sora_reference_prompt = storyboard_prompt_context.append_sora_reference_prompt
+_resolve_sora_reference_prompt = storyboard_prompt_context.resolve_sora_reference_prompt
 
 def _build_storyboard_prompt_request_data(
     db: Session,
