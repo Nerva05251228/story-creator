@@ -83,6 +83,12 @@ class BatchGenerateSoraPromptsRequest(BaseModel):
     duration: Optional[int] = None
 
 
+class BatchGenerateSoraPromptsResponse(BaseModel):
+    success_count: int
+    failed_count: int
+    total_count: int
+
+
 class BatchGenerateSoraVideosRequest(BaseModel):
     aspect_ratio: Optional[str] = None
     duration: Optional[int] = None

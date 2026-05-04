@@ -22,7 +22,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Up
 from fastapi.responses import FileResponse
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Alignment, Font, PatternFill
-from sqlalchemy import and_, func, or_
+from sqlalchemy import func
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
@@ -41,6 +41,7 @@ from api.services import billing_charges
 from api.services import storyboard_defaults
 from api.services import storyboard_reference_assets
 from api.services import storyboard_sync
+from api.services import storyboard_video_generation_limits
 from api.services import storyboard_video_settings
 from api.services import storyboard_video_payload
 from api.services import voiceover_data
@@ -127,11 +128,11 @@ SIMPLE_STORYBOARD_TIMEOUT_ERROR = "简单分镜生成超时（超过 1 小时）
 
 SORA_REFERENCE_PROMPT_INSTRUCTION = "请你参考这段提示词中的人物站位进行编写新的提示词："
 
-ACTIVE_VIDEO_GENERATION_STATUSES = ("submitting", "preparing", "processing")
+ACTIVE_VIDEO_GENERATION_STATUSES = storyboard_video_generation_limits.ACTIVE_VIDEO_GENERATION_STATUSES
 
-ACTIVE_MANAGED_TASK_STATUSES = ("pending", "processing")
+ACTIVE_MANAGED_TASK_STATUSES = storyboard_video_generation_limits.ACTIVE_MANAGED_TASK_STATUSES
 
-MAX_ACTIVE_VIDEO_GENERATIONS_PER_SHOT = 1
+MAX_ACTIVE_VIDEO_GENERATIONS_PER_SHOT = storyboard_video_generation_limits.MAX_ACTIVE_VIDEO_GENERATIONS_PER_SHOT
 
 
 _safe_json_dumps = billing_charges.safe_json_dumps
@@ -3023,150 +3024,12 @@ async def refresh_episode_videos(
     }
 
 
-def _get_storyboard_shot_family_identity(shot: models.StoryboardShot) -> str:
-    stable_id = str(getattr(shot, "stable_id", "") or "").strip()
-    if stable_id:
-        return f"stable:{int(getattr(shot, 'episode_id', 0) or 0)}:{stable_id}"
-    return f"shot_number:{int(getattr(shot, 'episode_id', 0) or 0)}:{int(getattr(shot, 'shot_number', 0) or 0)}"
-
-def _get_storyboard_shot_family_filters(shot: models.StoryboardShot):
-    stable_id = str(getattr(shot, "stable_id", "") or "").strip()
-    if stable_id:
-        return [
-            models.StoryboardShot.episode_id == shot.episode_id,
-            or_(
-                models.StoryboardShot.stable_id == stable_id,
-                and_(
-                    models.StoryboardShot.shot_number == shot.shot_number,
-                    or_(
-                        models.StoryboardShot.stable_id.is_(None),
-                        models.StoryboardShot.stable_id == "",
-                    ),
-                ),
-            ),
-        ]
-    return [
-        models.StoryboardShot.episode_id == shot.episode_id,
-        models.StoryboardShot.shot_number == shot.shot_number,
-    ]
-
-def _count_active_video_generations_for_shot_family(
-    shot: models.StoryboardShot,
-    db: Session
-) -> int:
-    family_rows = db.query(
-        models.StoryboardShot.id,
-        models.StoryboardShot.video_status,
-    ).filter(
-        *_get_storyboard_shot_family_filters(shot)
-    ).all()
-
-    family_shot_ids = []
-    active_shot_ids = set()
-    for shot_id, video_status in family_rows:
-        numeric_shot_id = int(shot_id or 0)
-        if numeric_shot_id <= 0:
-            continue
-        family_shot_ids.append(numeric_shot_id)
-        if str(video_status or "").strip().lower() in ACTIVE_VIDEO_GENERATION_STATUSES:
-            active_shot_ids.add(numeric_shot_id)
-
-    active_count = len(active_shot_ids)
-    stable_id = str(getattr(shot, "stable_id", "") or "").strip()
-
-    if stable_id:
-        managed_tasks = db.query(
-            models.ManagedTask.id,
-            models.ManagedTask.shot_id,
-        ).filter(
-            models.ManagedTask.shot_stable_id == stable_id,
-            models.ManagedTask.status.in_(ACTIVE_MANAGED_TASK_STATUSES),
-        ).all()
-    elif family_shot_ids:
-        managed_tasks = db.query(
-            models.ManagedTask.id,
-            models.ManagedTask.shot_id,
-        ).filter(
-            models.ManagedTask.shot_id.in_(family_shot_ids),
-            models.ManagedTask.status.in_(ACTIVE_MANAGED_TASK_STATUSES),
-        ).all()
-    else:
-        managed_tasks = []
-
-    for _, managed_shot_id in managed_tasks:
-        numeric_shot_id = int(managed_shot_id or 0)
-        if numeric_shot_id <= 0 or numeric_shot_id not in active_shot_ids:
-            active_count += 1
-
-    return active_count
-
-def _build_active_video_generation_limit_message(
-    blocked_entries: List[Dict[str, Any]]
-) -> str:
-    if not blocked_entries:
-        return ""
-
-    if len(blocked_entries) == 1:
-        entry = blocked_entries[0]
-        shot = entry["shot"]
-        current_active = int(entry["current_active"] or 0)
-        remaining = max(0, MAX_ACTIVE_VIDEO_GENERATIONS_PER_SHOT - current_active)
-        if remaining <= 0:
-            return f"镜头{shot.shot_number}已有{current_active}个正在生成中的视频，请等待完成"
-        return (
-            f"镜头{shot.shot_number}当前已有{current_active}个正在生成中的视频，"
-            f"本次最多还能再提交{remaining}个，请等待完成"
-        )
-
-    labels = []
-    for entry in blocked_entries[:6]:
-        shot = entry["shot"]
-        labels.append(f"镜头{shot.shot_number}")
-    labels_text = "、".join(labels)
-    if len(blocked_entries) > 6:
-        labels_text += "等"
-    return (
-        f"{labels_text}已达到同时生成上限或本次提交后会超出上限，"
-        f"当前每个镜头最多只能有{MAX_ACTIVE_VIDEO_GENERATIONS_PER_SHOT}个正在生成中的视频，请等待完成"
-    )
-
-def _ensure_storyboard_video_generation_slots_available(
-    shots: List[models.StoryboardShot],
-    db: Session,
-    requested_count_per_shot: int = 1,
-):
-    blocked_entries = []
-    family_entries: Dict[str, Dict[str, Any]] = {}
-    requested_count = max(1, int(requested_count_per_shot or 1))
-
-    for shot in shots or []:
-        if not shot:
-            continue
-
-        family_key = _get_storyboard_shot_family_identity(shot)
-        entry = family_entries.get(family_key)
-        if not entry:
-            entry = {
-                "shot": shot,
-                "requested_count": 0,
-            }
-            family_entries[family_key] = entry
-        entry["requested_count"] += requested_count
-
-    for entry in family_entries.values():
-        shot = entry["shot"]
-        current_active = _count_active_video_generations_for_shot_family(shot, db)
-        if current_active + int(entry["requested_count"] or 0) > MAX_ACTIVE_VIDEO_GENERATIONS_PER_SHOT:
-            blocked_entries.append({
-                "shot": shot,
-                "current_active": current_active,
-            })
-
-    if blocked_entries:
-        raise HTTPException(
-            status_code=400,
-            detail=_build_active_video_generation_limit_message(blocked_entries),
-        )
+_get_storyboard_shot_family_identity = storyboard_video_generation_limits.get_storyboard_shot_family_identity
+_get_storyboard_shot_family_filters = storyboard_video_generation_limits.get_storyboard_shot_family_filters
+_count_active_video_generations_for_shot_family = storyboard_video_generation_limits.count_active_video_generations_for_shot_family
+_is_storyboard_shot_generation_active = storyboard_video_generation_limits.is_storyboard_shot_generation_active
+_build_active_video_generation_limit_message = storyboard_video_generation_limits.build_active_video_generation_limit_message
+_ensure_storyboard_video_generation_slots_available = storyboard_video_generation_limits.ensure_storyboard_video_generation_slots_available
 
 def _normalize_jimeng_ratio(value: Optional[str], default_ratio: str = "9:16") -> str:
     allowed_ratios = {"21:9", "16:9", "3:2", "4:3", "1:1", "3:4", "2:3", "9:16"}

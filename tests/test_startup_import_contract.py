@@ -423,6 +423,47 @@ class StartupImportContractTests(unittest.TestCase):
             episodes_source,
         )
 
+    def test_storyboard_video_generation_limit_helpers_live_in_service_module(self):
+        main_source = MAIN_PATH.read_text(encoding="utf-8-sig")
+        episodes_source = (BACKEND_DIR / "api" / "routers" / "episodes.py").read_text(encoding="utf-8-sig")
+        service_path = BACKEND_DIR / "api" / "services" / "storyboard_video_generation_limits.py"
+
+        self.assertTrue(service_path.exists())
+        service_source = service_path.read_text(encoding="utf-8-sig")
+        delegated_names = {
+            "_get_storyboard_shot_family_identity",
+            "_get_storyboard_shot_family_filters",
+            "_count_active_video_generations_for_shot_family",
+            "_is_storyboard_shot_generation_active",
+            "_build_active_video_generation_limit_message",
+            "_ensure_storyboard_video_generation_slots_available",
+        }
+        service_aliases = {
+            "_get_storyboard_shot_family_identity": "get_storyboard_shot_family_identity",
+            "_get_storyboard_shot_family_filters": "get_storyboard_shot_family_filters",
+            "_count_active_video_generations_for_shot_family": "count_active_video_generations_for_shot_family",
+            "_is_storyboard_shot_generation_active": "is_storyboard_shot_generation_active",
+            "_build_active_video_generation_limit_message": "build_active_video_generation_limit_message",
+            "_ensure_storyboard_video_generation_slots_available": "ensure_storyboard_video_generation_slots_available",
+        }
+
+        self.assertIn("from api.services import storyboard_video_generation_limits", main_source)
+        self.assertIn("from api.services import storyboard_video_generation_limits", episodes_source)
+        self.assertIn(
+            "ACTIVE_VIDEO_GENERATION_STATUSES = storyboard_video_generation_limits.ACTIVE_VIDEO_GENERATION_STATUSES",
+            main_source,
+        )
+        self.assertIn(
+            "ACTIVE_VIDEO_GENERATION_STATUSES = storyboard_video_generation_limits.ACTIVE_VIDEO_GENERATION_STATUSES",
+            episodes_source,
+        )
+        self.assertEqual(_top_level_definition_names(main_source) & delegated_names, set())
+        self.assertEqual(_top_level_definition_names(episodes_source) & delegated_names, set())
+        for name, service_name in service_aliases.items():
+            self.assertIn(f"def {service_name}", service_source)
+            self.assertIn(f"{name} = storyboard_video_generation_limits.{service_name}", main_source)
+            self.assertIn(f"{name} = storyboard_video_generation_limits.{service_name}", episodes_source)
+
     def test_shot_image_generation_helpers_live_in_service_module(self):
         main_source = MAIN_PATH.read_text(encoding="utf-8-sig")
         shots_source = (BACKEND_DIR / "api" / "routers" / "shots.py").read_text(encoding="utf-8-sig")
@@ -610,6 +651,45 @@ class StartupImportContractTests(unittest.TestCase):
 
         self.assertIn("SetFirstFrameReferenceRequest", schema_defs)
         self.assertIn("SetShotSceneImageSelectionRequest", schema_defs)
+
+    def test_main_shot_and_video_workflow_schemas_are_schema_aliases(self):
+        main_source = MAIN_PATH.read_text(encoding="utf-8-sig")
+        shot_schema_source = (BACKEND_DIR / "api" / "schemas" / "shots.py").read_text(encoding="utf-8-sig")
+        episode_schema_source = (BACKEND_DIR / "api" / "schemas" / "episodes.py").read_text(encoding="utf-8-sig")
+        main_defs = _top_level_definition_names(main_source)
+        shot_schema_defs = _top_level_definition_names(shot_schema_source)
+        episode_schema_defs = _top_level_definition_names(episode_schema_source)
+        shot_schema_names = {
+            "ShotCreate",
+            "ShotUpdate",
+            "ManualSoraPromptRequest",
+            "ShotResponse",
+            "ShotVideoResponse",
+            "GenerateVideoRequest",
+            "ThumbnailUpdate",
+            "GenerateSoraPromptRequest",
+            "GenerateLargeShotPromptRequest",
+            "VideoStatusInfoResponse",
+        }
+        episode_schema_names = {
+            "BatchGenerateSoraPromptsRequest",
+            "BatchGenerateSoraPromptsResponse",
+            "BatchGenerateSoraVideosRequest",
+            "ManagedTaskResponse",
+            "StartManagedGenerationRequest",
+            "ManagedSessionStatusResponse",
+        }
+
+        self.assertTrue(shot_schema_names <= shot_schema_defs)
+        self.assertTrue(episode_schema_names <= episode_schema_defs)
+        self.assertEqual(main_defs & shot_schema_names, set())
+        self.assertEqual(main_defs & episode_schema_names, set())
+        self.assertIn("from api.schemas import shots as shot_schemas", main_source)
+        self.assertIn("from api.schemas import episodes as episode_schemas", main_source)
+        for name in shot_schema_names:
+            self.assertIn(f"{name} = shot_schemas.{name}", main_source)
+        for name in episode_schema_names:
+            self.assertIn(f"{name} = episode_schemas.{name}", main_source)
 
     def test_voiceover_merge_helpers_live_in_service_module(self):
         main_source = MAIN_PATH.read_text(encoding="utf-8-sig")

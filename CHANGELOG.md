@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 This project uses a lightweight `Added`, `Changed`, `Fixed`, `Security`, and `Migration` structure.
 
+## 2026-05-04 - Storyboard Video Generation Limit Service Extraction
+
+### Added
+
+- Added `backend/api/services/storyboard_video_generation_limits.py` for shared storyboard shot-family video generation concurrency guards.
+- Added focused service and import-contract coverage for active video/managed-task limit behavior.
+
+### Changed
+
+- Moved duplicated shot-family active generation limit helpers out of `backend/main.py` and `backend/api/routers/episodes.py` while keeping compatibility aliases for existing callers.
+- Replaced duplicate shot and video workflow request/response schema definitions in `backend/main.py` with aliases to `backend/api/schemas/shots.py` and `backend/api/schemas/episodes.py`.
+
 ## 2026-05-04 - Shot Reference Workflow Service Extraction
 
 ### Added

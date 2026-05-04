@@ -64,9 +64,12 @@ from api.services import storyboard_defaults
 from api.services import storyboard_reference_assets
 from api.services import shot_image_generation
 from api.services import storyboard_sync
+from api.services import storyboard_video_generation_limits
 from api.services import storyboard_video_settings
 from api.services import storyboard_video_payload
 from api.services import voiceover_data
+from api.schemas import episodes as episode_schemas
+from api.schemas import shots as shot_schemas
 from api.schemas.shots import GenerateStoryboardImageRequest, GenerateDetailImagesRequest, SetDetailImageCoverRequest
 from env_config import get_env, is_placeholder_env_value, load_app_env
 
@@ -8067,170 +8070,22 @@ update_card_prompt = subject_cards.update_card_prompt
 
 # ==================== 故事板镜头API ====================
 
-class ShotCreate(BaseModel):
-    shot_number: int
-    prompt_template: str = ""
-    storyboard_video_prompt: str = ""
-    storyboard_audio_prompt: str = ""
-    storyboard_dialogue: str = ""
-    sora_prompt: str = ""
-    selected_card_ids: List[int] = []
-    selected_sound_card_ids: Optional[List[int]] = None
-    aspect_ratio: str = "16:9"
-    duration: int = 15
-
-class ShotUpdate(BaseModel):
-    prompt_template: Optional[str] = None
-    script_excerpt: Optional[str] = None
-    storyboard_video_prompt: Optional[str] = None
-    storyboard_audio_prompt: Optional[str] = None
-    storyboard_dialogue: Optional[str] = None
-    scene_override: Optional[str] = None  # 场景描述（用户可编辑）
-    scene_override_locked: Optional[bool] = None
-    sora_prompt: Optional[str] = None
-    sora_prompt_status: Optional[str] = None
-    selected_card_ids: Optional[List[int]] = None
-    selected_sound_card_ids: Optional[List[int]] = None
-    aspect_ratio: Optional[str] = None
-    duration: Optional[int] = None
-    storyboard_video_model: Optional[str] = None
-    storyboard_video_model_override_enabled: Optional[bool] = None
-    duration_override_enabled: Optional[bool] = None
-    provider: Optional[str] = None
-    storyboard_image_path: Optional[str] = None
-    storyboard_image_status: Optional[str] = None
-    storyboard_image_model: Optional[str] = None
-    first_frame_reference_image_url: Optional[str] = None
-    uploaded_scene_image_url: Optional[str] = None
-    use_uploaded_scene_image: Optional[bool] = None
-
-class ManualSoraPromptRequest(BaseModel):
-    sora_prompt: str
-
-class ShotResponse(BaseModel):
-    id: int
-    episode_id: int
-    shot_number: int
-    variant_index: int
-    prompt_template: str
-    script_excerpt: str
-    storyboard_video_prompt: str
-    storyboard_audio_prompt: str
-    storyboard_dialogue: str
-    scene_override: str  # 场景描述（用户可编辑）
-    scene_override_locked: bool = False  # 场景描述是否锁定（不再自动填充）
-    sora_prompt: Optional[str]  # 允许为None，支持"生成中"状态
-    sora_prompt_status: str  # idle/generating/completed/failed
-    selected_card_ids: str
-    selected_sound_card_ids: Optional[str] = None
-    video_path: str
-    thumbnail_video_path: str
-    video_status: str  # idle/processing/completed/failed
-    task_id: str  # Sora??ID
-    managed_task_id: str = ""  # 托管镜头当前/最近一次上游任务ID（task_id 为空时用于展示）
-    aspect_ratio: str
-    duration: int
-    storyboard_video_model: str = ""
-    storyboard_video_model_override_enabled: bool = False
-    duration_override_enabled: bool = False
-    provider: str
-    storyboard_image_path: str  # 分镜图路径
-    storyboard_image_status: str  # 分镜图状态: idle/processing/completed/failed
-    storyboard_image_task_id: str  # 分镜图任务ID
-    first_frame_reference_image_url: str = ""  # 视频首帧参考图 URL（为空表示未选择）
-    uploaded_scene_image_url: str = ""  # 镜头级上传的场景图片 URL
-    use_uploaded_scene_image: bool = False  # 是否使用镜头级上传场景图
-    selected_scene_image_url: str = ""  # 当前生效的场景图片 URL
-    timeline_json: Optional[str] = ""  # Sora解析后的时间线JSON（用于镜头图弹窗选子镜头）
-    detail_image_prompt_overrides: Optional[str] = "{}"  # 镜头图文案覆盖（JSON）
-    detail_images_status: str  # 镜头细化图片状态: idle/processing/completed/failed
-    detail_images_progress: Optional[str] = None  # 镜头细化图片进度: "3/5"
-    detail_images_preview_path: Optional[str] = None  # 镜头细化图片预览（取第一张）
-    created_at: datetime
-
-    class Config:
-        from_attributes = True
-
-class ShotVideoResponse(BaseModel):
-    id: int
-    shot_id: int
-    video_path: str
-    created_at: datetime
-
-    class Config:
-        from_attributes = True
-
-class GenerateVideoRequest(BaseModel):
-    appoint_account: Optional[str] = None
-
-class ThumbnailUpdate(BaseModel):
-    video_id: int
-
-class BatchGenerateSoraPromptsRequest(BaseModel):
-    default_template: str = "2d漫画风格（细）"
-    shot_ids: Optional[List[int]] = None  # 可选：指定要生成的镜头ID列表
-    duration: Optional[int] = None  # 可选：视频时长（秒），用于选择对应的时长模板
-
-class BatchGenerateSoraPromptsResponse(BaseModel):
-    success_count: int
-    failed_count: int
-    total_count: int
-
-class BatchGenerateSoraVideosRequest(BaseModel):
-    # 以下字段保留兼容旧前端，实际以剧集「视频设置」为准
-    aspect_ratio: Optional[str] = None
-    duration: Optional[int] = None
-    provider: Optional[str] = None
-    model: Optional[str] = None
-    appoint_account: Optional[str] = None
-    shot_ids: Optional[List[int]] = None  # 可选：指定要生成的镜头ID列表
-
-# 托管生成相关模型
-class ManagedTaskResponse(BaseModel):
-    id: int
-    session_id: int
-    shot_id: int
-    shot_stable_id: str
-    shot_number: int
-    variant_index: int
-    video_path: str
-    status: str  # pending/processing/completed/failed
-    error_message: str
-    task_id: str
-    prompt_text: str = ""
-    created_at: datetime
-    completed_at: Optional[datetime]
-
-    class Config:
-        from_attributes = True
-
-class StartManagedGenerationRequest(BaseModel):
-    # 以下字段保留兼容旧前端，实际以剧集「视频设置」为准
-    provider: Optional[str] = None
-    model: Optional[str] = None
-    aspect_ratio: Optional[str] = None
-    duration: Optional[int] = None
-    shot_ids: Optional[List[int]] = None  # 可选：指定镜头ID列表
-    variant_count: int = 1  # 每个镜头生成的视频数量，默认1
-
-class ManagedSessionStatusResponse(BaseModel):
-    session_id: Optional[int]
-    status: str  # running/detached/completed/failed/stopped/none
-    total_shots: int
-    completed_shots: int
-    created_at: Optional[datetime]
-
-    class Config:
-        from_attributes = True
-
-
-class VideoStatusInfoResponse(BaseModel):
-    shot_id: int
-    task_id: str
-    status: str
-    progress: int = 0
-    info: str = ""
-    error_message: str = ""
+ShotCreate = shot_schemas.ShotCreate
+ShotUpdate = shot_schemas.ShotUpdate
+ManualSoraPromptRequest = shot_schemas.ManualSoraPromptRequest
+ShotResponse = shot_schemas.ShotResponse
+ShotVideoResponse = shot_schemas.ShotVideoResponse
+GenerateVideoRequest = shot_schemas.GenerateVideoRequest
+ThumbnailUpdate = shot_schemas.ThumbnailUpdate
+GenerateSoraPromptRequest = shot_schemas.GenerateSoraPromptRequest
+GenerateLargeShotPromptRequest = shot_schemas.GenerateLargeShotPromptRequest
+VideoStatusInfoResponse = shot_schemas.VideoStatusInfoResponse
+BatchGenerateSoraPromptsRequest = episode_schemas.BatchGenerateSoraPromptsRequest
+BatchGenerateSoraPromptsResponse = episode_schemas.BatchGenerateSoraPromptsResponse
+BatchGenerateSoraVideosRequest = episode_schemas.BatchGenerateSoraVideosRequest
+ManagedTaskResponse = episode_schemas.ManagedTaskResponse
+StartManagedGenerationRequest = episode_schemas.StartManagedGenerationRequest
+ManagedSessionStatusResponse = episode_schemas.ManagedSessionStatusResponse
 
 async def create_shot(
     episode_id: int,
@@ -9741,10 +9596,6 @@ def _queue_single_storyboard_prompt_generation(
     }
 
 
-class GenerateSoraPromptRequest(BaseModel):
-    reference_shot_id: Optional[int] = None
-
-
 async def generate_sora_prompt(
     shot_id: int,
     background_tasks: BackgroundTasks,
@@ -9763,10 +9614,6 @@ async def generate_sora_prompt(
         started_message="Sora提示词生成任务已开始，请稍后刷新页面查看结果。",
         reference_shot_id=(request.reference_shot_id if request else None),
     )
-
-
-class GenerateLargeShotPromptRequest(BaseModel):
-    template_id: Optional[int] = None
 
 
 async def generate_large_shot_prompt(
@@ -11560,177 +11407,15 @@ def _generate_collage_and_video(shot_id: int, full_prompt: str, include_scenes: 
 
 # ==================== 视频生成API ====================
 
-ACTIVE_VIDEO_GENERATION_STATUSES = ("submitting", "preparing", "processing")
-ACTIVE_MANAGED_TASK_STATUSES = ("pending", "processing")
-MAX_ACTIVE_VIDEO_GENERATIONS_PER_SHOT = 1
-
-
-def _get_storyboard_shot_family_identity(shot: models.StoryboardShot) -> str:
-    stable_id = str(getattr(shot, "stable_id", "") or "").strip()
-    if stable_id:
-        return f"stable:{int(getattr(shot, 'episode_id', 0) or 0)}:{stable_id}"
-    return f"shot_number:{int(getattr(shot, 'episode_id', 0) or 0)}:{int(getattr(shot, 'shot_number', 0) or 0)}"
-
-
-def _get_storyboard_shot_family_filters(shot: models.StoryboardShot):
-    stable_id = str(getattr(shot, "stable_id", "") or "").strip()
-    if stable_id:
-        return [
-            models.StoryboardShot.episode_id == shot.episode_id,
-            or_(
-                models.StoryboardShot.stable_id == stable_id,
-                and_(
-                    models.StoryboardShot.shot_number == shot.shot_number,
-                    or_(
-                        models.StoryboardShot.stable_id.is_(None),
-                        models.StoryboardShot.stable_id == "",
-                    ),
-                ),
-            ),
-        ]
-    return [
-        models.StoryboardShot.episode_id == shot.episode_id,
-        models.StoryboardShot.shot_number == shot.shot_number,
-    ]
-
-
-def _count_active_video_generations_for_shot_family(
-    shot: models.StoryboardShot,
-    db: Session
-) -> int:
-    family_rows = db.query(
-        models.StoryboardShot.id,
-        models.StoryboardShot.video_status,
-    ).filter(
-        *_get_storyboard_shot_family_filters(shot)
-    ).all()
-
-    family_shot_ids = []
-    active_shot_ids = set()
-    for shot_id, video_status in family_rows:
-        numeric_shot_id = int(shot_id or 0)
-        if numeric_shot_id <= 0:
-            continue
-        family_shot_ids.append(numeric_shot_id)
-        if str(video_status or "").strip().lower() in ACTIVE_VIDEO_GENERATION_STATUSES:
-            active_shot_ids.add(numeric_shot_id)
-
-    active_count = len(active_shot_ids)
-    stable_id = str(getattr(shot, "stable_id", "") or "").strip()
-
-    if stable_id:
-        managed_tasks = db.query(
-            models.ManagedTask.id,
-            models.ManagedTask.shot_id,
-        ).filter(
-            models.ManagedTask.shot_stable_id == stable_id,
-            models.ManagedTask.status.in_(ACTIVE_MANAGED_TASK_STATUSES),
-        ).all()
-    elif family_shot_ids:
-        managed_tasks = db.query(
-            models.ManagedTask.id,
-            models.ManagedTask.shot_id,
-        ).filter(
-            models.ManagedTask.shot_id.in_(family_shot_ids),
-            models.ManagedTask.status.in_(ACTIVE_MANAGED_TASK_STATUSES),
-        ).all()
-    else:
-        managed_tasks = []
-
-    for _, managed_shot_id in managed_tasks:
-        numeric_shot_id = int(managed_shot_id or 0)
-        if numeric_shot_id <= 0 or numeric_shot_id not in active_shot_ids:
-            active_count += 1
-
-    return active_count
-
-
-def _is_storyboard_shot_generation_active(
-    shot: models.StoryboardShot,
-    db: Session
-) -> bool:
-    if str(getattr(shot, "video_status", "") or "").strip().lower() in ACTIVE_VIDEO_GENERATION_STATUSES:
-        return True
-
-    shot_id = int(getattr(shot, "id", 0) or 0)
-    if shot_id <= 0:
-        return False
-
-    active_task = db.query(models.ManagedTask.id).filter(
-        models.ManagedTask.shot_id == shot_id,
-        models.ManagedTask.status.in_(ACTIVE_MANAGED_TASK_STATUSES),
-    ).first()
-    return active_task is not None
-
-
-def _build_active_video_generation_limit_message(
-    blocked_entries: List[Dict[str, Any]]
-) -> str:
-    if not blocked_entries:
-        return ""
-
-    if len(blocked_entries) == 1:
-        entry = blocked_entries[0]
-        shot = entry["shot"]
-        current_active = int(entry["current_active"] or 0)
-        remaining = max(0, MAX_ACTIVE_VIDEO_GENERATIONS_PER_SHOT - current_active)
-        if remaining <= 0:
-            return f"镜头{shot.shot_number}已有{current_active}个正在生成中的视频，请等待完成"
-        return (
-            f"镜头{shot.shot_number}当前已有{current_active}个正在生成中的视频，"
-            f"本次最多还能再提交{remaining}个，请等待完成"
-        )
-
-    labels = []
-    for entry in blocked_entries[:6]:
-        shot = entry["shot"]
-        labels.append(f"镜头{shot.shot_number}")
-    labels_text = "、".join(labels)
-    if len(blocked_entries) > 6:
-        labels_text += "等"
-    return (
-        f"{labels_text}已达到同时生成上限或本次提交后会超出上限，"
-        f"当前每个镜头最多只能有{MAX_ACTIVE_VIDEO_GENERATIONS_PER_SHOT}个正在生成中的视频，请等待完成"
-    )
-
-
-def _ensure_storyboard_video_generation_slots_available(
-    shots: List[models.StoryboardShot],
-    db: Session,
-    requested_count_per_shot: int = 1,
-):
-    blocked_entries = []
-    family_entries: Dict[str, Dict[str, Any]] = {}
-    requested_count = max(1, int(requested_count_per_shot or 1))
-
-    for shot in shots or []:
-        if not shot:
-            continue
-
-        family_key = _get_storyboard_shot_family_identity(shot)
-        entry = family_entries.get(family_key)
-        if not entry:
-            entry = {
-                "shot": shot,
-                "requested_count": 0,
-            }
-            family_entries[family_key] = entry
-        entry["requested_count"] += requested_count
-
-    for entry in family_entries.values():
-        shot = entry["shot"]
-        current_active = _count_active_video_generations_for_shot_family(shot, db)
-        if current_active + int(entry["requested_count"] or 0) > MAX_ACTIVE_VIDEO_GENERATIONS_PER_SHOT:
-            blocked_entries.append({
-                "shot": shot,
-                "current_active": current_active,
-            })
-
-    if blocked_entries:
-        raise HTTPException(
-            status_code=400,
-            detail=_build_active_video_generation_limit_message(blocked_entries),
-        )
+ACTIVE_VIDEO_GENERATION_STATUSES = storyboard_video_generation_limits.ACTIVE_VIDEO_GENERATION_STATUSES
+ACTIVE_MANAGED_TASK_STATUSES = storyboard_video_generation_limits.ACTIVE_MANAGED_TASK_STATUSES
+MAX_ACTIVE_VIDEO_GENERATIONS_PER_SHOT = storyboard_video_generation_limits.MAX_ACTIVE_VIDEO_GENERATIONS_PER_SHOT
+_get_storyboard_shot_family_identity = storyboard_video_generation_limits.get_storyboard_shot_family_identity
+_get_storyboard_shot_family_filters = storyboard_video_generation_limits.get_storyboard_shot_family_filters
+_count_active_video_generations_for_shot_family = storyboard_video_generation_limits.count_active_video_generations_for_shot_family
+_is_storyboard_shot_generation_active = storyboard_video_generation_limits.is_storyboard_shot_generation_active
+_build_active_video_generation_limit_message = storyboard_video_generation_limits.build_active_video_generation_limit_message
+_ensure_storyboard_video_generation_slots_available = storyboard_video_generation_limits.ensure_storyboard_video_generation_slots_available
 
 async def generate_video(
     shot_id: int,
