@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Optional
 import models
 from api.services.card_media import _ensure_audio_duration_seconds_cached
 from api.services import storyboard_reference_assets
+from api.services import storyboard_sound_cards
 from api.services import storyboard_video_settings
 from storyboard_video_reference import (
     build_seedance_content_text,
@@ -12,8 +13,6 @@ from storyboard_video_reference import (
 )
 
 
-SOUND_CARD_TYPE = "声音"
-ROLE_CARD_TYPE = "角色"
 PROP_CARD_TYPE = "道具"
 MOTI_REFERENCE_IMAGE_ROLE = "reference_image"
 
@@ -45,40 +44,8 @@ def get_seedance_audio_validation_error(audio_items: List[dict], total_audio_dur
     return ""
 
 
-def _get_episode_story_library(episode_id: int, db):
-    return db.query(models.StoryLibrary).filter(
-        models.StoryLibrary.episode_id == episode_id
-    ).first()
-
-
-def _parse_storyboard_sound_card_ids(raw_value: Any) -> Optional[List[int]]:
-    if raw_value is None:
-        return None
-    if isinstance(raw_value, str):
-        if not raw_value.strip():
-            return None
-        try:
-            parsed = json.loads(raw_value)
-        except Exception:
-            return None
-    else:
-        parsed = raw_value
-
-    if parsed is None or not isinstance(parsed, list):
-        return None
-
-    normalized = []
-    seen = set()
-    for item in parsed:
-        try:
-            card_id = int(item)
-        except Exception:
-            continue
-        if card_id <= 0 or card_id in seen:
-            continue
-        seen.add(card_id)
-        normalized.append(card_id)
-    return normalized
+_get_episode_story_library = storyboard_sound_cards.get_episode_story_library
+_parse_storyboard_sound_card_ids = storyboard_sound_cards.parse_storyboard_sound_card_ids
 
 
 def _is_prop_subject_card_type(card_type: str) -> bool:
@@ -128,62 +95,7 @@ def _collect_reference_items(db, cards: List[models.SubjectCard]) -> List[tuple[
     return items
 
 
-def _resolve_storyboard_selected_sound_cards(
-    shot: models.StoryboardShot,
-    db,
-) -> List[models.SubjectCard]:
-    library = _get_episode_story_library(shot.episode_id, db)
-    if not library:
-        return []
-
-    sound_cards = db.query(models.SubjectCard).filter(
-        models.SubjectCard.library_id == library.id,
-        models.SubjectCard.card_type == SOUND_CARD_TYPE,
-    ).all()
-    if not sound_cards:
-        return []
-
-    sound_card_map = {card.id: card for card in sound_cards}
-    explicit_sound_ids = _parse_storyboard_sound_card_ids(getattr(shot, "selected_sound_card_ids", None))
-    if explicit_sound_ids is not None:
-        return [sound_card_map[card_id] for card_id in explicit_sound_ids if card_id in sound_card_map]
-
-    selected_role_cards = []
-    try:
-        selected_ids = json.loads(getattr(shot, "selected_card_ids", "[]") or "[]")
-    except Exception:
-        selected_ids = []
-    if selected_ids:
-        selected_cards = _resolve_selected_cards(db, selected_ids, library.id)
-        selected_role_cards = [card for card in selected_cards if getattr(card, "card_type", "") == ROLE_CARD_TYPE]
-
-    linked_sound_map = {}
-    fallback_name_map = {}
-    narrator_card = None
-    for sound_card in sound_cards:
-        if (sound_card.name or "").strip() == "旁白" and narrator_card is None:
-            narrator_card = sound_card
-        linked_id = getattr(sound_card, "linked_card_id", None)
-        if linked_id and linked_id not in linked_sound_map:
-            linked_sound_map[int(linked_id)] = sound_card
-        name_key = (sound_card.name or "").strip()
-        if name_key and name_key not in fallback_name_map:
-            fallback_name_map[name_key] = sound_card
-
-    resolved = []
-    seen = set()
-    for role_card in selected_role_cards:
-        sound_card = linked_sound_map.get(role_card.id)
-        if not sound_card:
-            sound_card = fallback_name_map.get((role_card.name or "").strip())
-        if sound_card and sound_card.id not in seen:
-            resolved.append(sound_card)
-            seen.add(sound_card.id)
-
-    if narrator_card and narrator_card.id not in seen:
-        resolved.append(narrator_card)
-
-    return resolved
+_resolve_storyboard_selected_sound_cards = storyboard_sound_cards.resolve_storyboard_selected_sound_cards
 
 
 def _collect_moti_v2_reference_assets(shot, db, first_frame_image_url: str = "") -> dict:

@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 This project uses a lightweight `Added`, `Changed`, `Fixed`, `Security`, and `Migration` structure.
 
+## 2026-05-04 - Storyboard Sound Card Service Extraction
+
+### Added
+
+- Added `backend/api/services/storyboard_sound_cards.py` for storyboard selected sound-card parsing, episode-library validation, and default sound-card resolution.
+- Added focused service and import-contract coverage for explicit sound-card IDs, invalid library scope, linked role sound cards, same-name fallback, and narrator inclusion.
+
+### Changed
+
+- Moved duplicated storyboard sound-card helper logic out of `backend/main.py` and `backend/api/services/storyboard_video_payload.py` while keeping compatibility aliases for existing direct callers.
+
 ## 2026-05-04 - Storyboard Prompt Context Service Extraction
 
 ### Added

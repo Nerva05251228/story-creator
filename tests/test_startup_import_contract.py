@@ -423,6 +423,41 @@ class StartupImportContractTests(unittest.TestCase):
             episodes_source,
         )
 
+    def test_storyboard_sound_card_helpers_live_in_service_module(self):
+        main_source = MAIN_PATH.read_text(encoding="utf-8-sig")
+        payload_source = (BACKEND_DIR / "api" / "services" / "storyboard_video_payload.py").read_text(encoding="utf-8-sig")
+        service_path = BACKEND_DIR / "api" / "services" / "storyboard_sound_cards.py"
+
+        self.assertTrue(service_path.exists())
+        service_source = service_path.read_text(encoding="utf-8-sig")
+        delegated_names = {
+            "_parse_storyboard_sound_card_ids",
+            "_get_episode_story_library",
+            "_normalize_storyboard_selected_sound_card_ids",
+            "_resolve_storyboard_selected_sound_cards",
+        }
+        service_aliases = {
+            "_parse_storyboard_sound_card_ids": "parse_storyboard_sound_card_ids",
+            "_get_episode_story_library": "get_episode_story_library",
+            "_normalize_storyboard_selected_sound_card_ids": "normalize_storyboard_selected_sound_card_ids",
+            "_resolve_storyboard_selected_sound_cards": "resolve_storyboard_selected_sound_cards",
+        }
+
+        self.assertIn("from api.services import storyboard_sound_cards", main_source)
+        self.assertIn("from api.services import storyboard_sound_cards", payload_source)
+        self.assertEqual(_top_level_definition_names(main_source) & delegated_names, set())
+        self.assertEqual(_top_level_definition_names(payload_source) & delegated_names, set())
+        for name, service_name in service_aliases.items():
+            self.assertIn(f"{name} = storyboard_sound_cards.{service_name}", main_source)
+        for name, service_name in {
+            "_parse_storyboard_sound_card_ids": "parse_storyboard_sound_card_ids",
+            "_get_episode_story_library": "get_episode_story_library",
+            "_resolve_storyboard_selected_sound_cards": "resolve_storyboard_selected_sound_cards",
+        }.items():
+            self.assertIn(f"{name} = storyboard_sound_cards.{service_name}", payload_source)
+        for service_name in service_aliases.values():
+            self.assertIn(f"def {service_name}", service_source)
+
     def test_storyboard_video_generation_limit_helpers_live_in_service_module(self):
         main_source = MAIN_PATH.read_text(encoding="utf-8-sig")
         episodes_source = (BACKEND_DIR / "api" / "routers" / "episodes.py").read_text(encoding="utf-8-sig")
