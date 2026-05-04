@@ -423,6 +423,104 @@ class StartupImportContractTests(unittest.TestCase):
             episodes_source,
         )
 
+    def test_shot_image_generation_helpers_live_in_service_module(self):
+        main_source = MAIN_PATH.read_text(encoding="utf-8-sig")
+        shots_source = (BACKEND_DIR / "api" / "routers" / "shots.py").read_text(encoding="utf-8-sig")
+        service_path = BACKEND_DIR / "api" / "services" / "shot_image_generation.py"
+        service_source = service_path.read_text(encoding="utf-8-sig")
+        delegated_names = {
+            "_DETAIL_IMAGES_MODEL_CONFIG",
+            "_resolve_storyboard_sora_image_ratio",
+            "_resolve_detail_images_actual_model",
+            "_build_image_generation_debug_meta",
+            "_build_image_generation_request_payload",
+            "_submit_single_image_generation_task",
+            "_save_detail_images_debug",
+            "_process_detail_images_generation",
+            "generate_detail_images",
+            "get_shot_detail_images",
+            "set_shot_detail_image_cover",
+        }
+
+        self.assertTrue(service_path.exists())
+        self.assertIn("from api.services import shot_image_generation", main_source)
+        self.assertIn("from api.services import shot_image_generation", shots_source)
+        self.assertIn(
+            "from api.schemas.shots import GenerateStoryboardImageRequest, GenerateDetailImagesRequest, SetDetailImageCoverRequest",
+            main_source,
+        )
+        self.assertEqual(_top_level_definition_names(main_source) & delegated_names, set())
+        self.assertIn("_DETAIL_IMAGES_MODEL_CONFIG = {", service_source)
+        self.assertIn("def _resolve_storyboard_sora_image_ratio", service_source)
+        self.assertIn("def _resolve_detail_images_actual_model", service_source)
+        self.assertIn("def _build_image_generation_debug_meta", service_source)
+        self.assertIn("def _build_image_generation_request_payload", service_source)
+        self.assertIn("def _submit_single_image_generation_task", service_source)
+        self.assertIn("def _save_detail_images_debug", service_source)
+        self.assertIn("def _process_detail_images_generation", service_source)
+        self.assertIn("def generate_detail_images", service_source)
+        self.assertIn("def get_shot_detail_images", service_source)
+        self.assertIn("def set_shot_detail_image_cover", service_source)
+        self.assertIn("_DETAIL_IMAGES_MODEL_CONFIG = shot_image_generation._DETAIL_IMAGES_MODEL_CONFIG", main_source)
+        self.assertIn(
+            "_resolve_storyboard_sora_image_ratio = shot_image_generation._resolve_storyboard_sora_image_ratio",
+            main_source,
+        )
+        self.assertIn(
+            "_resolve_detail_images_actual_model = shot_image_generation._resolve_detail_images_actual_model",
+            main_source,
+        )
+        self.assertIn(
+            "_build_image_generation_debug_meta = shot_image_generation._build_image_generation_debug_meta",
+            main_source,
+        )
+        self.assertIn(
+            "_build_image_generation_request_payload = shot_image_generation._build_image_generation_request_payload",
+            main_source,
+        )
+
+    def test_managed_generation_helpers_live_in_service_module(self):
+        main_source = MAIN_PATH.read_text(encoding="utf-8-sig")
+        episodes_source = (BACKEND_DIR / "api" / "routers" / "episodes.py").read_text(encoding="utf-8-sig")
+        router_path = BACKEND_DIR / "api" / "routers" / "managed_generation.py"
+        service_path = BACKEND_DIR / "api" / "services" / "managed_generation.py"
+        router_source = router_path.read_text(encoding="utf-8-sig")
+        service_source = service_path.read_text(encoding="utf-8-sig")
+        delegated_names = {
+            "_get_next_managed_reserved_variant_index",
+            "_create_managed_reserved_shot",
+            "_reserve_legacy_managed_session_slots",
+            "stop_managed_generation",
+            "get_managed_tasks",
+            "get_managed_session_status",
+        }
+
+        self.assertTrue(router_path.exists())
+        self.assertTrue(service_path.exists())
+        self.assertIn("managed_generation,", main_source)
+        self.assertIn("app.include_router(managed_generation.router)", main_source)
+        self.assertIn("from api.services import managed_generation", episodes_source)
+        self.assertEqual(_top_level_definition_names(episodes_source) & delegated_names, set())
+        self.assertIn("router = APIRouter()", router_source)
+        self.assertIn("def _get_next_managed_reserved_variant_index", service_source)
+        self.assertIn("def _create_managed_reserved_shot", service_source)
+        self.assertIn("def _reserve_legacy_managed_session_slots", service_source)
+        self.assertIn("def stop_managed_generation", service_source)
+        self.assertIn("def get_managed_tasks", service_source)
+        self.assertIn("def get_managed_session_status", service_source)
+        self.assertIn(
+            "get_managed_tasks = managed_generation.get_managed_tasks",
+            episodes_source,
+        )
+        self.assertIn(
+            "get_managed_session_status = managed_generation.get_managed_session_status",
+            episodes_source,
+        )
+        self.assertIn(
+            "stop_managed_generation = managed_generation.stop_managed_generation",
+            episodes_source,
+        )
+
     def test_storyboard_reference_asset_helpers_live_in_service_module(self):
         main_source = MAIN_PATH.read_text(encoding="utf-8-sig")
         episodes_source = (BACKEND_DIR / "api" / "routers" / "episodes.py").read_text(encoding="utf-8-sig")

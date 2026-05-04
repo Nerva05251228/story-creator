@@ -31,7 +31,7 @@ apply_test_env_defaults()
 
 import database  # noqa: E402
 import models  # noqa: E402
-from api.routers import episodes, storyboard2, storyboard_excel  # noqa: E402
+from api.routers import episodes, managed_generation, storyboard2, storyboard_excel  # noqa: E402
 from api.schemas.episodes import (  # noqa: E402
     BatchGenerateSoraPromptsRequest,
     EpisodeCreate,
@@ -61,11 +61,14 @@ EXPECTED_EPISODE_ROUTES = {
     ("POST", "/api/episodes/{episode_id}/batch-generate-sora-prompts"),
     ("POST", "/api/episodes/{episode_id}/batch-generate-sora-videos"),
     ("POST", "/api/episodes/{episode_id}/start-managed-generation"),
-    ("POST", "/api/episodes/{episode_id}/stop-managed-generation"),
-    ("GET", "/api/episodes/{episode_id}/managed-session-status"),
-    ("GET", "/api/managed-sessions/{session_id}/tasks"),
     ("POST", "/api/episodes/{episode_id}/refresh-videos"),
     ("GET", "/api/episodes/{episode_id}/export-all"),
+}
+
+EXPECTED_MANAGED_GENERATION_ROUTES = {
+    ("POST", "/api/episodes/{episode_id}/stop-managed-generation"),
+    ("GET", "/api/managed-sessions/{session_id}/tasks"),
+    ("GET", "/api/episodes/{episode_id}/managed-session-status"),
 }
 
 EXPECTED_STORYBOARD2_ROUTES = {
@@ -122,10 +125,12 @@ class EpisodeRouterTests(unittest.TestCase):
 
         self.app = FastAPI()
         self.app.include_router(episodes.router)
+        self.app.include_router(managed_generation.router)
         self.app.include_router(storyboard2.router)
         self.app.include_router(storyboard_excel.router)
         self.app.dependency_overrides[database.get_db] = override_get_db
         self.app.dependency_overrides[episodes.get_current_user] = override_get_current_user
+        self.app.dependency_overrides[managed_generation.get_current_user] = override_get_current_user
         self.app.dependency_overrides[storyboard2.get_current_user] = override_get_current_user
         self.app.dependency_overrides[storyboard_excel.get_current_user] = override_get_current_user
         self.client = TestClient(self.app, raise_server_exceptions=False)
@@ -376,6 +381,17 @@ class EpisodeRouterTests(unittest.TestCase):
         self.assertEqual(registered, EXPECTED_EPISODE_ROUTES)
         self.assertNotIn(("POST", "/api/episodes/{episode_id}/shots"), registered)
         self.assertFalse(any(path.startswith("/api/shots/") for _, path in registered))
+
+    def test_managed_generation_router_owns_managed_generation_routes(self):
+        registered = set()
+        for route in managed_generation.router.routes:
+            methods = getattr(route, "methods", set()) or set()
+            path = getattr(route, "path", "")
+            for method in methods:
+                if method not in {"HEAD", "OPTIONS"}:
+                    registered.add((method, path))
+
+        self.assertEqual(registered, EXPECTED_MANAGED_GENERATION_ROUTES)
 
     def test_storyboard2_router_owns_storyboard2_routes(self):
         registered = set()

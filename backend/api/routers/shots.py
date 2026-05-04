@@ -18,9 +18,11 @@ from api.schemas.shots import (
     ShotResponse,
     ShotUpdate,
     ShotVideoResponse,
+    SetDetailImageCoverRequest,
     ThumbnailUpdate,
     VideoStatusInfoResponse,
 )
+from api.services import shot_image_generation
 from auth import get_current_user
 from database import get_db
 
@@ -304,8 +306,7 @@ async def generate_detail_images(
     user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    return await _call_legacy(
-        "generate_detail_images",
+    return await shot_image_generation.generate_detail_images(
         shot_id=shot_id,
         request=request,
         user=user,
@@ -319,9 +320,23 @@ async def get_shot_detail_images(
     user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    return await _call_legacy(
-        "get_shot_detail_images",
+    return await shot_image_generation.get_shot_detail_images(
         shot_id=shot_id,
+        user=user,
+        db=db,
+    )
+
+
+@router.patch("/api/shots/{shot_id}/detail-images/cover")
+async def set_shot_detail_image_cover(
+    shot_id: int,
+    request: SetDetailImageCoverRequest,
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return await shot_image_generation.set_shot_detail_image_cover(
+        shot_id=shot_id,
+        request=request,
         user=user,
         db=db,
     )

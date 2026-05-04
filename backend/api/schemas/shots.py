@@ -143,3 +143,7 @@ class GenerateDetailImagesRequest(BaseModel):
     model: Optional[str] = None
     selected_sub_shot_index: Optional[int] = None
     selected_sub_shot_text: Optional[str] = None
+
+
+class SetDetailImageCoverRequest(BaseModel):
+    image_url: str

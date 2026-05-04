@@ -50,6 +50,7 @@ EXPECTED_SHOT_ROUTES = {
     ("POST", "/api/shots/{shot_id}/generate-storyboard-image"),
     ("POST", "/api/shots/{shot_id}/generate-detail-images"),
     ("GET", "/api/shots/{shot_id}/detail-images"),
+    ("PATCH", "/api/shots/{shot_id}/detail-images/cover"),
     ("POST", "/api/shots/{shot_id}/first-frame-reference-image"),
     ("POST", "/api/shots/{shot_id}/scene-image"),
     ("POST", "/api/shots/{shot_id}/reprocess-video"),
@@ -238,6 +239,118 @@ class ShotRouteTests(unittest.TestCase):
                 "task_id": "task-1",
             },
         )
+
+    def test_detail_images_route_preserves_owner_check_and_legacy_shape(self):
+        owner, other, episode = self._seed_episode_with_users()
+        shot = self._seed_shot(
+            episode.id,
+            storyboard_image_path="https://cdn.example/cover.png",
+            storyboard_image_status="completed",
+        )
+
+        db = self.Session()
+        try:
+            detail_image = models.ShotDetailImage(
+                shot_id=shot.id,
+                sub_shot_index=1,
+                time_range="00:00-00:05",
+                visual_text="visual",
+                audio_text="audio",
+                optimized_prompt="optimized",
+                images_json='["https://cdn.example/detail-a.png"]',
+                status="completed",
+            )
+            db.add(detail_image)
+            db.commit()
+        finally:
+            db.close()
+
+        blocked_response = self.client.get(
+            f"/api/shots/{shot.id}/detail-images",
+            headers=self._auth_headers(other.token),
+        )
+
+        self.assertEqual(blocked_response.status_code, 403)
+        self.assertEqual(blocked_response.json(), {"detail": "无权限"})
+
+        response = self.client.get(
+            f"/api/shots/{shot.id}/detail-images",
+            headers=self._auth_headers(owner.token),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["shot_id"], shot.id)
+        self.assertEqual(payload["cover_image_url"], "https://cdn.example/cover.png")
+        self.assertEqual(payload["detail_images"][0]["images"], ["https://cdn.example/detail-a.png"])
+        self.assertEqual(payload["detail_images"][0]["status"], "completed")
+
+    def test_detail_image_cover_route_preserves_owner_check_and_updates_cover(self):
+        owner, other, episode = self._seed_episode_with_users()
+        shot = self._seed_shot(
+            episode.id,
+            storyboard_image_path="",
+            storyboard_image_status="idle",
+        )
+
+        db = self.Session()
+        try:
+            detail_image = models.ShotDetailImage(
+                shot_id=shot.id,
+                sub_shot_index=1,
+                time_range="00:00-00:05",
+                visual_text="visual",
+                audio_text="audio",
+                optimized_prompt="optimized",
+                images_json='["https://cdn.example/detail-a.png"]',
+                status="completed",
+            )
+            db.add(detail_image)
+            db.commit()
+        finally:
+            db.close()
+
+        blocked_response = self.client.patch(
+            f"/api/shots/{shot.id}/detail-images/cover",
+            json={"image_url": "https://cdn.example/detail-a.png"},
+            headers=self._auth_headers(other.token),
+        )
+
+        self.assertEqual(blocked_response.status_code, 403)
+        self.assertEqual(blocked_response.json(), {"detail": "无权限"})
+
+        unknown_response = self.client.patch(
+            f"/api/shots/{shot.id}/detail-images/cover",
+            json={"image_url": "https://cdn.example/unknown.png"},
+            headers=self._auth_headers(owner.token),
+        )
+
+        self.assertEqual(unknown_response.status_code, 400)
+        self.assertEqual(unknown_response.json(), {"detail": "该图片不属于当前镜头"})
+
+        response = self.client.patch(
+            f"/api/shots/{shot.id}/detail-images/cover",
+            json={"image_url": "https://cdn.example/detail-a.png"},
+            headers=self._auth_headers(owner.token),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json(),
+            {
+                "shot_id": shot.id,
+                "cover_image_url": "https://cdn.example/detail-a.png",
+                "message": "封面镜头图已更新",
+            },
+        )
+
+        db = self.Session()
+        try:
+            updated = db.query(models.StoryboardShot).filter_by(id=shot.id).one()
+            self.assertEqual(updated.storyboard_image_path, "https://cdn.example/detail-a.png")
+            self.assertEqual(updated.storyboard_image_status, "completed")
+        finally:
+            db.close()
 
 
 if __name__ == "__main__":

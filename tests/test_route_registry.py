@@ -30,6 +30,7 @@ from api.routers import (  # noqa: E402
     admin_users,
     billing,
     episodes,
+    managed_generation,
     hit_dramas,
     scripts,
     simple_storyboard,
@@ -402,6 +403,29 @@ class RouteRegistryTests(unittest.TestCase):
 
     def test_episode_routes_are_owned_by_episodes_router(self):
         self._assert_router_routes_owned_by(episodes.router)
+
+    def test_managed_generation_routes_are_owned_by_managed_generation_router(self):
+        expected_routes = [
+            (
+                "POST",
+                "/api/episodes/{episode_id}/stop-managed-generation",
+                "api.routers.managed_generation.stop_managed_generation",
+            ),
+            (
+                "GET",
+                "/api/managed-sessions/{session_id}/tasks",
+                "api.routers.managed_generation.get_managed_tasks",
+            ),
+            (
+                "GET",
+                "/api/episodes/{episode_id}/managed-session-status",
+                "api.routers.managed_generation.get_managed_session_status",
+            ),
+        ]
+
+        for method, path, qualified_name in expected_routes:
+            with self.subTest(method=method, path=path):
+                self._assert_route_owned_by(method, path, qualified_name)
 
     def test_simple_storyboard_routes_are_owned_by_simple_storyboard_router(self):
         expected_routes = [

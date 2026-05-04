@@ -4,6 +4,30 @@ All notable changes to this project will be documented in this file.
 
 This project uses a lightweight `Added`, `Changed`, `Fixed`, `Security`, and `Migration` structure.
 
+## 2026-05-04 - Managed Generation Router Extraction
+
+### Added
+
+- Added `backend/api/routers/managed_generation.py` and `backend/api/services/managed_generation.py` for managed-session control and inspection routes.
+- Added focused route ownership and startup import-contract coverage for managed generation.
+
+### Changed
+
+- Moved `/api/episodes/{episode_id}/stop-managed-generation`, `/api/managed-sessions/{session_id}/tasks`, and `/api/episodes/{episode_id}/managed-session-status` out of `backend/api/routers/episodes.py` without changing API paths, response shapes, or authorization behavior.
+- Registered the managed generation router in `backend/main.py` and kept legacy direct-call compatibility aliases in the episodes router.
+
+## 2026-05-04 - Shot Detail Image Service Extraction
+
+### Added
+
+- Added `backend/api/services/shot_image_generation.py` for detail-image generation, lookup, debug capture, and cover selection logic.
+- Added focused route ownership and startup import-contract coverage for the shot detail-image service extraction.
+
+### Changed
+
+- Moved detail-image helper logic out of `backend/main.py` and `backend/api/routers/shots.py` into the shared shot detail-image service without changing API paths, response shapes, or authorization behavior.
+- Kept the existing detail-image entry points available through the shots router and legacy compatibility aliases.
+
 ## 2026-05-04 - Storyboard Excel Router Extraction
 
 ### Added
