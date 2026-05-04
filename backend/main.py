@@ -61,6 +61,7 @@ from api.services import model_configs as model_configs_service
 from api.services import shot_reference_workflow
 from api.services import simple_storyboard_batches as simple_storyboard_batches_service
 from api.services import storyboard_defaults
+from api.services import storyboard2_reference_images
 from api.services import storyboard_reference_assets
 from api.services import storyboard_sound_cards
 from api.services import storyboard_prompt_context
@@ -12093,71 +12094,7 @@ def _is_prop_subject_card_type(card_type: str) -> bool:
     return False
 
 
-def _collect_storyboard2_reference_images(
-    storyboard2_shot: models.Storyboard2Shot,
-    db: Session,
-    sub_shot: Optional[models.Storyboard2SubShot] = None,
-    include_scene_references: bool = False
-):
-    selected_card_ids = _parse_storyboard2_card_ids(getattr(sub_shot, "selected_card_ids", "[]"))
-    if not selected_card_ids:
-        selected_card_ids = _resolve_storyboard2_selected_card_ids(storyboard2_shot, db)
-    if not selected_card_ids:
-        return []
-
-    filtered_card_ids = list(selected_card_ids)
-    if not include_scene_references and filtered_card_ids:
-        selected_cards = db.query(models.SubjectCard.id, models.SubjectCard.card_type).filter(
-            models.SubjectCard.id.in_(filtered_card_ids)
-        ).all()
-        scene_card_ids = {
-            int(card_id) for card_id, card_type in selected_cards
-            if _is_scene_subject_card_type(card_type)
-        }
-        safe_filtered_ids = []
-        for card_id in filtered_card_ids:
-            try:
-                card_id_int = int(card_id)
-            except Exception:
-                continue
-            if card_id_int not in scene_card_ids:
-                safe_filtered_ids.append(card_id_int)
-        filtered_card_ids = safe_filtered_ids
-        if not filtered_card_ids:
-            return []
-
-    reference_images = []
-    seen_urls = set()
-    for card_id in filtered_card_ids:
-        # 优先使用主体“参考图”（与故事板(sora)一致）
-        ref_image = db.query(models.GeneratedImage).filter(
-            models.GeneratedImage.card_id == card_id,
-            models.GeneratedImage.is_reference == True,
-            models.GeneratedImage.status == "completed"
-        ).order_by(
-            models.GeneratedImage.created_at.desc(),
-            models.GeneratedImage.id.desc()
-        ).first()
-        if ref_image and ref_image.image_path:
-            if ref_image.image_path not in seen_urls:
-                seen_urls.add(ref_image.image_path)
-                reference_images.append(ref_image.image_path)
-            continue
-
-        # 兜底使用主体上传图（确保主体上传后也能参与参考）
-        uploaded_image = db.query(models.CardImage).filter(
-            models.CardImage.card_id == card_id
-        ).order_by(
-            models.CardImage.order.desc(),
-            models.CardImage.created_at.desc(),
-            models.CardImage.id.desc()
-        ).first()
-        if uploaded_image and uploaded_image.image_path:
-            if uploaded_image.image_path not in seen_urls:
-                seen_urls.add(uploaded_image.image_path)
-                reference_images.append(uploaded_image.image_path)
-
-    return reference_images
+_collect_storyboard2_reference_images = storyboard2_reference_images.collect_storyboard2_reference_images
 
 
 # Storyboard2 generation and edit routes now live in api.routers.episodes.
@@ -12193,7 +12130,7 @@ Storyboard2GenerateVideoRequest = storyboard2.Storyboard2GenerateVideoRequest
 Storyboard2UpdateShotRequest = storyboard2.Storyboard2UpdateShotRequest
 Storyboard2UpdateSubShotRequest = storyboard2.Storyboard2UpdateSubShotRequest
 _verify_episode_permission = storyboard2._verify_episode_permission
-_parse_storyboard2_card_ids = storyboard2._parse_storyboard2_card_ids
+_parse_storyboard2_card_ids = storyboard2_reference_images.parse_storyboard2_card_ids
 _clean_scene_ai_prompt_text = storyboard2._clean_scene_ai_prompt_text
 _extract_scene_description_from_card_ids = storyboard2._extract_scene_description_from_card_ids
 _resolve_storyboard2_scene_override_text = storyboard2._resolve_storyboard2_scene_override_text
@@ -12206,8 +12143,8 @@ _recover_orphan_storyboard2_image_tasks = storyboard2._recover_orphan_storyboard
 _serialize_storyboard2_board = storyboard2._serialize_storyboard2_board
 _get_storyboard2_sub_shot_with_permission = storyboard2._get_storyboard2_sub_shot_with_permission
 _get_storyboard2_shot_with_permission = storyboard2._get_storyboard2_shot_with_permission
-_resolve_storyboard2_selected_card_ids = storyboard2._resolve_storyboard2_selected_card_ids
-_is_scene_subject_card_type = storyboard2._is_scene_subject_card_type
+_resolve_storyboard2_selected_card_ids = storyboard2_reference_images.resolve_storyboard2_selected_card_ids
+_is_scene_subject_card_type = storyboard2_reference_images.is_scene_subject_card_type
 _subject_type_sort_key = storyboard2._subject_type_sort_key
 _get_optional_prompt_config_content = storyboard2._get_optional_prompt_config_content
 _save_storyboard2_image_debug = storyboard2._save_storyboard2_image_debug

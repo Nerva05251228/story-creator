@@ -149,6 +149,7 @@ class StartupImportContractTests(unittest.TestCase):
             "Storyboard2UpdateSubShotRequest",
             "_verify_episode_permission",
             "_parse_storyboard2_card_ids",
+            "_collect_storyboard2_reference_images",
             "_clean_scene_ai_prompt_text",
             "_extract_scene_description_from_card_ids",
             "_resolve_storyboard2_scene_override_text",
@@ -173,10 +174,42 @@ class StartupImportContractTests(unittest.TestCase):
             "_process_storyboard2_video_cover_and_cdn",
             "_sync_storyboard2_processing_videos",
         }
+        service_aliases = {
+            "_parse_storyboard2_card_ids": "parse_storyboard2_card_ids",
+            "_resolve_storyboard2_selected_card_ids": "resolve_storyboard2_selected_card_ids",
+            "_is_scene_subject_card_type": "is_scene_subject_card_type",
+            "_collect_storyboard2_reference_images": "collect_storyboard2_reference_images",
+        }
 
         self.assertEqual(top_level_defs & delegated_names, set())
-        for name in delegated_names:
+        self.assertIn("from api.services import storyboard2_reference_images", source)
+        for name in delegated_names - set(service_aliases):
             self.assertIn(f"{name} = storyboard2.{name}", source)
+        for name, service_name in service_aliases.items():
+            self.assertIn(f"{name} = storyboard2_reference_images.{service_name}", source)
+
+    def test_storyboard2_reference_image_helpers_live_in_service_module(self):
+        main_source = MAIN_PATH.read_text(encoding="utf-8-sig")
+        router_source = (BACKEND_DIR / "api" / "routers" / "storyboard2.py").read_text(encoding="utf-8-sig")
+        service_path = BACKEND_DIR / "api" / "services" / "storyboard2_reference_images.py"
+
+        self.assertTrue(service_path.exists())
+        service_source = service_path.read_text(encoding="utf-8-sig")
+        aliases = {
+            "_parse_storyboard2_card_ids": "parse_storyboard2_card_ids",
+            "_resolve_storyboard2_selected_card_ids": "resolve_storyboard2_selected_card_ids",
+            "_is_scene_subject_card_type": "is_scene_subject_card_type",
+            "_collect_storyboard2_reference_images": "collect_storyboard2_reference_images",
+        }
+
+        self.assertIn("from api.services import storyboard2_reference_images", main_source)
+        self.assertIn("storyboard2_reference_images,", router_source)
+        self.assertEqual(_top_level_definition_names(main_source) & set(aliases), set())
+        self.assertEqual(_top_level_definition_names(router_source) & set(aliases), set())
+        for name, service_name in aliases.items():
+            self.assertIn(f"{name} = storyboard2_reference_images.{service_name}", main_source)
+            self.assertIn(f"{name} = storyboard2_reference_images.{service_name}", router_source)
+            self.assertIn(f"def {service_name}", service_source)
 
     def test_storyboard_excel_route_module_owns_storyboard_excel_routes(self):
         main_source = MAIN_PATH.read_text(encoding="utf-8-sig")

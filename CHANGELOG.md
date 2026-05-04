@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 This project uses a lightweight `Added`, `Changed`, `Fixed`, `Security`, and `Migration` structure.
 
+## 2026-05-04 - Storyboard2 Reference Image Service Extraction
+
+### Added
+
+- Added `backend/api/services/storyboard2_reference_images.py` for storyboard2 subject-card ID parsing, selected-card fallback, scene-card filtering, and reference image collection.
+- Added focused service and import-contract coverage for storyboard2 reference image ordering, deduplication, scene inclusion, sub-shot overrides, and source-shot fallback.
+
+### Changed
+
+- Moved duplicated storyboard2 reference-image collection logic out of `backend/main.py` and `backend/api/routers/storyboard2.py` while keeping compatibility aliases and route patch points unchanged.
+
 ## 2026-05-04 - Storyboard Sound Card Service Extraction
 
 ### Added
