@@ -34,6 +34,7 @@ from api.routers import (  # noqa: E402
     scripts,
     simple_storyboard,
     storyboard2,
+    storyboard_excel,
     settings,
     shots,
     templates,
@@ -556,6 +557,24 @@ class RouteRegistryTests(unittest.TestCase):
                 "DELETE",
                 "/api/storyboard2/videos/{video_id}",
                 "api.routers.storyboard2.delete_storyboard2_video",
+            ),
+        ]
+
+        for method, path, qualified_name in expected_routes:
+            with self.subTest(method=method, path=path):
+                self._assert_route_owned_by(method, path, qualified_name)
+
+    def test_storyboard_excel_routes_are_owned_by_storyboard_excel_router(self):
+        expected_routes = [
+            (
+                "POST",
+                "/api/episodes/{episode_id}/import-storyboard",
+                "api.routers.storyboard_excel.import_storyboard",
+            ),
+            (
+                "GET",
+                "/api/episodes/{episode_id}/export-storyboard",
+                "api.routers.storyboard_excel.export_storyboard",
             ),
         ]
 

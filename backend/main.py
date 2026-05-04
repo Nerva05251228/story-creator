@@ -39,6 +39,7 @@ from api.routers import (
     scripts,
     simple_storyboard,
     storyboard2,
+    storyboard_excel,
     subject_cards,
     templates,
     video,
@@ -14033,6 +14034,7 @@ def _save_detail_images_debug(debug_dir: Optional[str], filename: str, payload: 
 
 app.include_router(episodes.router)
 app.include_router(storyboard2.router)
+app.include_router(storyboard_excel.router)
 app.include_router(voiceover.router)
 app.include_router(simple_storyboard.router)
 app.include_router(scripts.router)

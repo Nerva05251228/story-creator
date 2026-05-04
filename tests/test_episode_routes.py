@@ -31,7 +31,7 @@ apply_test_env_defaults()
 
 import database  # noqa: E402
 import models  # noqa: E402
-from api.routers import episodes, storyboard2  # noqa: E402
+from api.routers import episodes, storyboard2, storyboard_excel  # noqa: E402
 from api.schemas.episodes import (  # noqa: E402
     BatchGenerateSoraPromptsRequest,
     EpisodeCreate,
@@ -65,8 +65,6 @@ EXPECTED_EPISODE_ROUTES = {
     ("GET", "/api/episodes/{episode_id}/managed-session-status"),
     ("GET", "/api/managed-sessions/{session_id}/tasks"),
     ("POST", "/api/episodes/{episode_id}/refresh-videos"),
-    ("POST", "/api/episodes/{episode_id}/import-storyboard"),
-    ("GET", "/api/episodes/{episode_id}/export-storyboard"),
     ("GET", "/api/episodes/{episode_id}/export-all"),
 }
 
@@ -80,6 +78,11 @@ EXPECTED_STORYBOARD2_ROUTES = {
     ("PATCH", "/api/storyboard2/subshots/{sub_shot_id}/current-image"),
     ("DELETE", "/api/storyboard2/images/{image_id}"),
     ("DELETE", "/api/storyboard2/videos/{video_id}"),
+}
+
+EXPECTED_STORYBOARD_EXCEL_ROUTES = {
+    ("POST", "/api/episodes/{episode_id}/import-storyboard"),
+    ("GET", "/api/episodes/{episode_id}/export-storyboard"),
 }
 
 
@@ -120,9 +123,11 @@ class EpisodeRouterTests(unittest.TestCase):
         self.app = FastAPI()
         self.app.include_router(episodes.router)
         self.app.include_router(storyboard2.router)
+        self.app.include_router(storyboard_excel.router)
         self.app.dependency_overrides[database.get_db] = override_get_db
         self.app.dependency_overrides[episodes.get_current_user] = override_get_current_user
         self.app.dependency_overrides[storyboard2.get_current_user] = override_get_current_user
+        self.app.dependency_overrides[storyboard_excel.get_current_user] = override_get_current_user
         self.client = TestClient(self.app, raise_server_exceptions=False)
 
     def tearDown(self):
@@ -382,6 +387,17 @@ class EpisodeRouterTests(unittest.TestCase):
                     registered.add((method, path))
 
         self.assertEqual(registered, EXPECTED_STORYBOARD2_ROUTES)
+
+    def test_storyboard_excel_router_owns_storyboard_excel_routes(self):
+        registered = set()
+        for route in storyboard_excel.router.routes:
+            methods = getattr(route, "methods", set()) or set()
+            path = getattr(route, "path", "")
+            for method in methods:
+                if method not in {"HEAD", "OPTIONS"}:
+                    registered.add((method, path))
+
+        self.assertEqual(registered, EXPECTED_STORYBOARD_EXCEL_ROUTES)
 
     def test_schema_defaults_match_legacy_episode_contracts(self):
         self.assertEqual(

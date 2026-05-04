@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 This project uses a lightweight `Added`, `Changed`, `Fixed`, `Security`, and `Migration` structure.
 
+## 2026-05-04 - Storyboard Excel Router Extraction
+
+### Added
+
+- Added `backend/api/routers/storyboard_excel.py` as the owner for storyboard import and export routes.
+- Added focused route ownership and startup import-contract coverage for the storyboard Excel router.
+
+### Changed
+
+- Moved `/api/episodes/{episode_id}/import-storyboard` and `/api/episodes/{episode_id}/export-storyboard` out of `backend/api/routers/episodes.py` without changing API paths, response shapes, or authorization behavior.
+- Registered the storyboard Excel router in `backend/main.py`.
+
 ## 2026-05-04 - Storyboard2 Router Extraction
 
 ### Added

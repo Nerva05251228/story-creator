@@ -178,6 +178,36 @@ class StartupImportContractTests(unittest.TestCase):
         for name in delegated_names:
             self.assertIn(f"{name} = storyboard2.{name}", source)
 
+    def test_storyboard_excel_route_module_owns_storyboard_excel_routes(self):
+        main_source = MAIN_PATH.read_text(encoding="utf-8-sig")
+        episodes_source = (BACKEND_DIR / "api" / "routers" / "episodes.py").read_text(encoding="utf-8-sig")
+        storyboard_excel_path = BACKEND_DIR / "api" / "routers" / "storyboard_excel.py"
+        storyboard_excel_source = storyboard_excel_path.read_text(encoding="utf-8-sig")
+
+        self.assertTrue(storyboard_excel_path.exists())
+        self.assertIn("router = APIRouter()", storyboard_excel_source)
+        self.assertIn("storyboard_excel,", main_source)
+        self.assertIn("app.include_router(storyboard_excel.router)", main_source)
+        self.assertEqual(
+            {
+                path
+                for path in _router_decorator_paths(episodes_source)
+                if "import-storyboard" in path or "export-storyboard" in path
+            },
+            set(),
+        )
+        self.assertEqual(
+            {
+                path
+                for path in _router_decorator_paths(storyboard_excel_source)
+                if "import-storyboard" in path or "export-storyboard" in path
+            },
+            {
+                "/api/episodes/{episode_id}/import-storyboard",
+                "/api/episodes/{episode_id}/export-storyboard",
+            },
+        )
+
     def test_episode_router_batch_video_helpers_are_defined(self):
         source = (BACKEND_DIR / "api" / "routers" / "episodes.py").read_text(encoding="utf-8-sig")
         top_level_defs = _top_level_definition_names(source)
