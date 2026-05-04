@@ -31,7 +31,7 @@ apply_test_env_defaults()
 
 import database  # noqa: E402
 import models  # noqa: E402
-from api.routers import episodes  # noqa: E402
+from api.routers import episodes, storyboard2  # noqa: E402
 from api.schemas.episodes import (  # noqa: E402
     BatchGenerateSoraPromptsRequest,
     EpisodeCreate,
@@ -68,6 +68,9 @@ EXPECTED_EPISODE_ROUTES = {
     ("POST", "/api/episodes/{episode_id}/import-storyboard"),
     ("GET", "/api/episodes/{episode_id}/export-storyboard"),
     ("GET", "/api/episodes/{episode_id}/export-all"),
+}
+
+EXPECTED_STORYBOARD2_ROUTES = {
     ("GET", "/api/episodes/{episode_id}/storyboard2"),
     ("POST", "/api/episodes/{episode_id}/storyboard2/batch-generate-sora-prompts"),
     ("PATCH", "/api/storyboard2/shots/{storyboard2_shot_id}"),
@@ -116,8 +119,10 @@ class EpisodeRouterTests(unittest.TestCase):
 
         self.app = FastAPI()
         self.app.include_router(episodes.router)
+        self.app.include_router(storyboard2.router)
         self.app.dependency_overrides[database.get_db] = override_get_db
         self.app.dependency_overrides[episodes.get_current_user] = override_get_current_user
+        self.app.dependency_overrides[storyboard2.get_current_user] = override_get_current_user
         self.client = TestClient(self.app, raise_server_exceptions=False)
 
     def tearDown(self):
@@ -367,6 +372,17 @@ class EpisodeRouterTests(unittest.TestCase):
         self.assertNotIn(("POST", "/api/episodes/{episode_id}/shots"), registered)
         self.assertFalse(any(path.startswith("/api/shots/") for _, path in registered))
 
+    def test_storyboard2_router_owns_storyboard2_routes(self):
+        registered = set()
+        for route in storyboard2.router.routes:
+            methods = getattr(route, "methods", set()) or set()
+            path = getattr(route, "path", "")
+            for method in methods:
+                if method not in {"HEAD", "OPTIONS"}:
+                    registered.add((method, path))
+
+        self.assertEqual(registered, EXPECTED_STORYBOARD2_ROUTES)
+
     def test_schema_defaults_match_legacy_episode_contracts(self):
         self.assertEqual(
             EpisodeCreate(name="Episode").storyboard_video_model,
@@ -540,26 +556,26 @@ class EpisodeRouterTests(unittest.TestCase):
                 return None
 
         with patch.object(
-            episodes,
+            storyboard2,
             "_build_image_generation_debug_meta",
             return_value={"actual_model": "actual-image-model", "provider": "mock-provider"},
             create=True,
         ), patch.object(
-            episodes,
+            storyboard2,
             "_get_optional_prompt_config_content",
             return_value="image prefix",
             create=True,
         ), patch.object(
-            episodes,
+            storyboard2,
             "_collect_storyboard2_reference_images",
             return_value=["https://cdn.example.test/reference.png"],
             create=True,
         ), patch.object(
-            episodes,
+            storyboard2,
             "_save_storyboard2_image_debug",
             create=True,
         ), patch.object(
-            episodes,
+            storyboard2,
             "Thread",
             FakeThread,
             create=True,
@@ -623,27 +639,27 @@ class EpisodeRouterTests(unittest.TestCase):
                 return None
 
         with patch.object(
-            episodes.requests,
+            storyboard2.requests,
             "post",
             return_value=FakeVideoResponse(),
         ), patch.object(
-            episodes,
+            storyboard2,
             "get_video_task_create_url",
             return_value="https://video.example.test/create",
             create=True,
         ), patch.object(
-            episodes,
+            storyboard2,
             "get_video_api_headers",
             return_value={"Authorization": "Bearer test"},
         ), patch.object(
-            episodes,
+            storyboard2,
             "_save_storyboard2_video_debug",
             create=True,
         ), patch.object(
-            episodes,
+            storyboard2,
             "_record_storyboard2_video_charge",
         ) as record_video_charge, patch.object(
-            episodes,
+            storyboard2,
             "Thread",
             FakeThread,
             create=True,

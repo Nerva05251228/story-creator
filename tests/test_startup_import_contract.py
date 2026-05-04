@@ -176,7 +176,7 @@ class StartupImportContractTests(unittest.TestCase):
 
         self.assertEqual(top_level_defs & delegated_names, set())
         for name in delegated_names:
-            self.assertIn(f"{name} = episodes.{name}", source)
+            self.assertIn(f"{name} = storyboard2.{name}", source)
 
     def test_episode_router_batch_video_helpers_are_defined(self):
         source = (BACKEND_DIR / "api" / "routers" / "episodes.py").read_text(encoding="utf-8-sig")
@@ -665,6 +665,50 @@ class StartupImportContractTests(unittest.TestCase):
             "update_simple_storyboard",
         }:
             self.assertIn(f"{name} = simple_storyboard.{name}", main_source)
+
+    def test_storyboard2_route_module_owns_storyboard2_routes(self):
+        main_source = MAIN_PATH.read_text(encoding="utf-8-sig")
+        episodes_source = (BACKEND_DIR / "api" / "routers" / "episodes.py").read_text(encoding="utf-8-sig")
+        storyboard2_path = BACKEND_DIR / "api" / "routers" / "storyboard2.py"
+        storyboard2_source = storyboard2_path.read_text(encoding="utf-8-sig")
+
+        expected_paths = {
+            "/api/episodes/{episode_id}/storyboard2",
+            "/api/episodes/{episode_id}/storyboard2/batch-generate-sora-prompts",
+            "/api/storyboard2/shots/{storyboard2_shot_id}",
+            "/api/storyboard2/subshots/{sub_shot_id}",
+            "/api/storyboard2/subshots/{sub_shot_id}/generate-images",
+            "/api/storyboard2/subshots/{sub_shot_id}/generate-video",
+            "/api/storyboard2/subshots/{sub_shot_id}/current-image",
+            "/api/storyboard2/images/{image_id}",
+            "/api/storyboard2/videos/{video_id}",
+        }
+
+        self.assertTrue(storyboard2_path.exists())
+        self.assertIn("router = APIRouter()", storyboard2_source)
+        self.assertIn("storyboard2,", main_source)
+        self.assertIn("app.include_router(storyboard2.router)", main_source)
+        self.assertEqual(
+            _router_decorator_paths(episodes_source) & expected_paths,
+            set(),
+        )
+        self.assertEqual(
+            {path for path in _router_decorator_paths(storyboard2_source) if "storyboard2" in path},
+            expected_paths,
+        )
+        for name in {
+            "get_storyboard2_data",
+            "batch_generate_storyboard2_sora_prompts",
+            "generate_storyboard2_sub_shot_images",
+            "generate_storyboard2_sub_shot_video",
+            "update_storyboard2_shot",
+            "update_storyboard2_sub_shot",
+            "delete_storyboard2_video",
+            "set_storyboard2_current_image",
+            "delete_storyboard2_image",
+        }:
+            self.assertIn(f"{name} = storyboard2.{name}", main_source)
+            self.assertIn(f"{name} = storyboard2.{name}", episodes_source)
 
     def test_web_startup_event_excludes_schema_bootstrap_and_preflight_responsibilities(self):
         source = MAIN_PATH.read_text(encoding="utf-8-sig")

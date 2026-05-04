@@ -33,6 +33,7 @@ from api.routers import (  # noqa: E402
     hit_dramas,
     scripts,
     simple_storyboard,
+    storyboard2,
     settings,
     shots,
     templates,
@@ -502,6 +503,59 @@ class RouteRegistryTests(unittest.TestCase):
                 "GET",
                 "/api/episodes/{episode_id}/voiceover/tts-status",
                 "api.routers.voiceover.get_voiceover_tts_status",
+            ),
+        ]
+
+        for method, path, qualified_name in expected_routes:
+            with self.subTest(method=method, path=path):
+                self._assert_route_owned_by(method, path, qualified_name)
+
+    def test_storyboard2_routes_are_owned_by_storyboard2_router(self):
+        expected_routes = [
+            (
+                "GET",
+                "/api/episodes/{episode_id}/storyboard2",
+                "api.routers.storyboard2.get_storyboard2_data",
+            ),
+            (
+                "POST",
+                "/api/episodes/{episode_id}/storyboard2/batch-generate-sora-prompts",
+                "api.routers.storyboard2.batch_generate_storyboard2_sora_prompts",
+            ),
+            (
+                "PATCH",
+                "/api/storyboard2/shots/{storyboard2_shot_id}",
+                "api.routers.storyboard2.update_storyboard2_shot",
+            ),
+            (
+                "PATCH",
+                "/api/storyboard2/subshots/{sub_shot_id}",
+                "api.routers.storyboard2.update_storyboard2_sub_shot",
+            ),
+            (
+                "POST",
+                "/api/storyboard2/subshots/{sub_shot_id}/generate-images",
+                "api.routers.storyboard2.generate_storyboard2_sub_shot_images",
+            ),
+            (
+                "POST",
+                "/api/storyboard2/subshots/{sub_shot_id}/generate-video",
+                "api.routers.storyboard2.generate_storyboard2_sub_shot_video",
+            ),
+            (
+                "PATCH",
+                "/api/storyboard2/subshots/{sub_shot_id}/current-image",
+                "api.routers.storyboard2.set_storyboard2_current_image",
+            ),
+            (
+                "DELETE",
+                "/api/storyboard2/images/{image_id}",
+                "api.routers.storyboard2.delete_storyboard2_image",
+            ),
+            (
+                "DELETE",
+                "/api/storyboard2/videos/{video_id}",
+                "api.routers.storyboard2.delete_storyboard2_video",
             ),
         ]
 

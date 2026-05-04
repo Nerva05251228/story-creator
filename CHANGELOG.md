@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 This project uses a lightweight `Added`, `Changed`, `Fixed`, `Security`, and `Migration` structure.
 
+## 2026-05-04 - Storyboard2 Router Extraction
+
+### Added
+
+- Added `backend/api/routers/storyboard2.py` as the owner for storyboard2 board, prompt batch, edit, image generation, and video generation routes.
+- Added focused storyboard2 route ownership and startup import-contract coverage.
+
+### Changed
+
+- Moved storyboard2 route handlers and their dependent helper block out of `backend/api/routers/episodes.py` without changing API paths, response shapes, or authorization behavior.
+- Registered the storyboard2 router in `backend/main.py` and kept legacy direct-call compatibility aliases in both `backend/main.py` and the episodes router.
+
 ## 2026-05-04 - Simple Storyboard Router Extraction
 
 ### Added

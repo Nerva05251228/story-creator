@@ -1,4 +1,4 @@
-﻿from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form, BackgroundTasks, Query
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form, BackgroundTasks, Query
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -38,6 +38,7 @@ from api.routers import (
     settings,
     scripts,
     simple_storyboard,
+    storyboard2,
     subject_cards,
     templates,
     video,
@@ -13734,9 +13735,9 @@ async def reprocess_shot_video(
 
 # ==================== 故事板2 API ====================
 
-Storyboard2GenerateImagesRequest = episodes.Storyboard2GenerateImagesRequest
-Storyboard2SetCurrentImageRequest = episodes.Storyboard2SetCurrentImageRequest
-Storyboard2GenerateVideoRequest = episodes.Storyboard2GenerateVideoRequest
+Storyboard2GenerateImagesRequest = storyboard2.Storyboard2GenerateImagesRequest
+Storyboard2SetCurrentImageRequest = storyboard2.Storyboard2SetCurrentImageRequest
+Storyboard2GenerateVideoRequest = storyboard2.Storyboard2GenerateVideoRequest
 
 
 def _parse_storyboard2_timeline(timeline_json_value):
@@ -14031,6 +14032,7 @@ def _save_detail_images_debug(debug_dir: Optional[str], filename: str, payload: 
 
 
 app.include_router(episodes.router)
+app.include_router(storyboard2.router)
 app.include_router(voiceover.router)
 app.include_router(simple_storyboard.router)
 app.include_router(scripts.router)
@@ -14047,47 +14049,48 @@ get_simple_storyboard_status = simple_storyboard.get_simple_storyboard_status
 retry_failed_simple_storyboard_batches_api = simple_storyboard.retry_failed_simple_storyboard_batches_api
 update_simple_storyboard = simple_storyboard.update_simple_storyboard
 
-# Compatibility exports for direct callers while storyboard2 routes live in api.routers.episodes.
-Storyboard2SetCurrentImageRequest = episodes.Storyboard2SetCurrentImageRequest
-Storyboard2BatchGenerateSoraPromptsRequest = episodes.Storyboard2BatchGenerateSoraPromptsRequest
-Storyboard2GenerateImagesRequest = episodes.Storyboard2GenerateImagesRequest
-Storyboard2GenerateVideoRequest = episodes.Storyboard2GenerateVideoRequest
-Storyboard2UpdateShotRequest = episodes.Storyboard2UpdateShotRequest
-Storyboard2UpdateSubShotRequest = episodes.Storyboard2UpdateSubShotRequest
-_verify_episode_permission = episodes._verify_episode_permission
-_parse_storyboard2_card_ids = episodes._parse_storyboard2_card_ids
-_clean_scene_ai_prompt_text = episodes._clean_scene_ai_prompt_text
-_extract_scene_description_from_card_ids = episodes._extract_scene_description_from_card_ids
-_resolve_storyboard2_scene_override_text = episodes._resolve_storyboard2_scene_override_text
-_pick_storyboard2_source_shots = episodes._pick_storyboard2_source_shots
-_ensure_storyboard2_initialized = episodes._ensure_storyboard2_initialized
-_mark_storyboard2_image_task_active = episodes._mark_storyboard2_image_task_active
-_mark_storyboard2_image_task_inactive = episodes._mark_storyboard2_image_task_inactive
-_is_storyboard2_image_task_active = episodes._is_storyboard2_image_task_active
-_recover_orphan_storyboard2_image_tasks = episodes._recover_orphan_storyboard2_image_tasks
-_serialize_storyboard2_board = episodes._serialize_storyboard2_board
-_get_storyboard2_sub_shot_with_permission = episodes._get_storyboard2_sub_shot_with_permission
-_get_storyboard2_shot_with_permission = episodes._get_storyboard2_shot_with_permission
-_resolve_storyboard2_selected_card_ids = episodes._resolve_storyboard2_selected_card_ids
-_is_scene_subject_card_type = episodes._is_scene_subject_card_type
-_subject_type_sort_key = episodes._subject_type_sort_key
-_get_optional_prompt_config_content = episodes._get_optional_prompt_config_content
-_save_storyboard2_image_debug = episodes._save_storyboard2_image_debug
-_save_storyboard2_video_debug = episodes._save_storyboard2_video_debug
-_normalize_storyboard2_video_status = episodes._normalize_storyboard2_video_status
-_is_storyboard2_video_processing = episodes._is_storyboard2_video_processing
-_build_storyboard2_video_name_tag = episodes._build_storyboard2_video_name_tag
-_process_storyboard2_video_cover_and_cdn = episodes._process_storyboard2_video_cover_and_cdn
-_sync_storyboard2_processing_videos = episodes._sync_storyboard2_processing_videos
-batch_generate_storyboard2_sora_prompts = episodes.batch_generate_storyboard2_sora_prompts
-generate_storyboard2_sub_shot_images = episodes.generate_storyboard2_sub_shot_images
-generate_storyboard2_sub_shot_video = episodes.generate_storyboard2_sub_shot_video
-_recover_storyboard2_video_polling = episodes._recover_storyboard2_video_polling
-update_storyboard2_shot = episodes.update_storyboard2_shot
-update_storyboard2_sub_shot = episodes.update_storyboard2_sub_shot
-delete_storyboard2_video = episodes.delete_storyboard2_video
-set_storyboard2_current_image = episodes.set_storyboard2_current_image
-delete_storyboard2_image = episodes.delete_storyboard2_image
+# Compatibility exports for direct callers while storyboard2 routes live in api.routers.storyboard2.
+Storyboard2SetCurrentImageRequest = storyboard2.Storyboard2SetCurrentImageRequest
+Storyboard2BatchGenerateSoraPromptsRequest = storyboard2.Storyboard2BatchGenerateSoraPromptsRequest
+Storyboard2GenerateImagesRequest = storyboard2.Storyboard2GenerateImagesRequest
+Storyboard2GenerateVideoRequest = storyboard2.Storyboard2GenerateVideoRequest
+Storyboard2UpdateShotRequest = storyboard2.Storyboard2UpdateShotRequest
+Storyboard2UpdateSubShotRequest = storyboard2.Storyboard2UpdateSubShotRequest
+_verify_episode_permission = storyboard2._verify_episode_permission
+_parse_storyboard2_card_ids = storyboard2._parse_storyboard2_card_ids
+_clean_scene_ai_prompt_text = storyboard2._clean_scene_ai_prompt_text
+_extract_scene_description_from_card_ids = storyboard2._extract_scene_description_from_card_ids
+_resolve_storyboard2_scene_override_text = storyboard2._resolve_storyboard2_scene_override_text
+_pick_storyboard2_source_shots = storyboard2._pick_storyboard2_source_shots
+_ensure_storyboard2_initialized = storyboard2._ensure_storyboard2_initialized
+_mark_storyboard2_image_task_active = storyboard2._mark_storyboard2_image_task_active
+_mark_storyboard2_image_task_inactive = storyboard2._mark_storyboard2_image_task_inactive
+_is_storyboard2_image_task_active = storyboard2._is_storyboard2_image_task_active
+_recover_orphan_storyboard2_image_tasks = storyboard2._recover_orphan_storyboard2_image_tasks
+_serialize_storyboard2_board = storyboard2._serialize_storyboard2_board
+_get_storyboard2_sub_shot_with_permission = storyboard2._get_storyboard2_sub_shot_with_permission
+_get_storyboard2_shot_with_permission = storyboard2._get_storyboard2_shot_with_permission
+_resolve_storyboard2_selected_card_ids = storyboard2._resolve_storyboard2_selected_card_ids
+_is_scene_subject_card_type = storyboard2._is_scene_subject_card_type
+_subject_type_sort_key = storyboard2._subject_type_sort_key
+_get_optional_prompt_config_content = storyboard2._get_optional_prompt_config_content
+_save_storyboard2_image_debug = storyboard2._save_storyboard2_image_debug
+_save_storyboard2_video_debug = storyboard2._save_storyboard2_video_debug
+_normalize_storyboard2_video_status = storyboard2._normalize_storyboard2_video_status
+_is_storyboard2_video_processing = storyboard2._is_storyboard2_video_processing
+_build_storyboard2_video_name_tag = storyboard2._build_storyboard2_video_name_tag
+_process_storyboard2_video_cover_and_cdn = storyboard2._process_storyboard2_video_cover_and_cdn
+_sync_storyboard2_processing_videos = storyboard2._sync_storyboard2_processing_videos
+get_storyboard2_data = storyboard2.get_storyboard2_data
+batch_generate_storyboard2_sora_prompts = storyboard2.batch_generate_storyboard2_sora_prompts
+generate_storyboard2_sub_shot_images = storyboard2.generate_storyboard2_sub_shot_images
+generate_storyboard2_sub_shot_video = storyboard2.generate_storyboard2_sub_shot_video
+_recover_storyboard2_video_polling = storyboard2._recover_storyboard2_video_polling
+update_storyboard2_shot = storyboard2.update_storyboard2_shot
+update_storyboard2_sub_shot = storyboard2.update_storyboard2_sub_shot
+delete_storyboard2_video = storyboard2.delete_storyboard2_video
+set_storyboard2_current_image = storyboard2.set_storyboard2_current_image
+delete_storyboard2_image = storyboard2.delete_storyboard2_image
 
 # Compatibility exports for direct callers while video task routes live in api.routers.video.
 CancelVideoTasksRequest = video.CancelVideoTasksRequest
