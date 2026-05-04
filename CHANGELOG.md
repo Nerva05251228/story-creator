@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 This project uses a lightweight `Added`, `Changed`, `Fixed`, `Security`, and `Migration` structure.
 
+## 2026-05-04 - Shot Reference Workflow Service Extraction
+
+### Added
+
+- Added `backend/api/services/shot_reference_workflow.py` for storyboard image generation, first-frame reference selection/upload, and shot scene image upload/selection logic.
+- Added focused route and startup import-contract coverage for the shot reference workflow.
+
+### Changed
+
+- Moved shot reference workflow implementations out of `backend/main.py` while keeping compatibility aliases for existing direct callers.
+- Routed `/api/shots/{shot_id}/generate-storyboard-image`, `/api/shots/{shot_id}/first-frame-reference-image`, and `/api/shots/{shot_id}/scene-image` through the shared service without changing response payloads or authorization behavior.
+- Moved first-frame and scene-image selection request schemas into `backend/api/schemas/shots.py`.
+
+### Fixed
+
+- Registered the frontend-used `PATCH /api/shots/{shot_id}/first-frame-reference` and `PATCH /api/shots/{shot_id}/scene-image-selection` endpoints in the shots router.
+
 ## 2026-05-04 - Managed Generation Router Extraction
 
 ### Added

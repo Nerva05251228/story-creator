@@ -51,6 +51,8 @@ EXPECTED_SHOT_ROUTES = {
     ("POST", "/api/shots/{shot_id}/generate-detail-images"),
     ("GET", "/api/shots/{shot_id}/detail-images"),
     ("PATCH", "/api/shots/{shot_id}/detail-images/cover"),
+    ("PATCH", "/api/shots/{shot_id}/first-frame-reference"),
+    ("PATCH", "/api/shots/{shot_id}/scene-image-selection"),
     ("POST", "/api/shots/{shot_id}/first-frame-reference-image"),
     ("POST", "/api/shots/{shot_id}/scene-image"),
     ("POST", "/api/shots/{shot_id}/reprocess-video"),
@@ -349,6 +351,121 @@ class ShotRouteTests(unittest.TestCase):
             updated = db.query(models.StoryboardShot).filter_by(id=shot.id).one()
             self.assertEqual(updated.storyboard_image_path, "https://cdn.example/detail-a.png")
             self.assertEqual(updated.storyboard_image_status, "completed")
+        finally:
+            db.close()
+
+    def test_first_frame_reference_route_preserves_owner_check_and_updates_selected_url(self):
+        owner, other, episode = self._seed_episode_with_users()
+        shot = self._seed_shot(
+            episode.id,
+            storyboard_image_path="https://cdn.example/storyboard.png",
+            storyboard_image_status="completed",
+            first_frame_reference_image_url="",
+        )
+
+        blocked_response = self.client.patch(
+            f"/api/shots/{shot.id}/first-frame-reference",
+            json={"image_url": "https://cdn.example/storyboard.png"},
+            headers=self._auth_headers(other.token),
+        )
+
+        self.assertEqual(blocked_response.status_code, 403)
+        self.assertEqual(blocked_response.json(), {"detail": "无权限"})
+
+        response = self.client.patch(
+            f"/api/shots/{shot.id}/first-frame-reference",
+            json={"image_url": "https://cdn.example/storyboard.png"},
+            headers=self._auth_headers(owner.token),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            set(response.json()),
+            {"shot_id", "first_frame_reference_image_url", "message", "candidate_urls"},
+        )
+        self.assertEqual(response.json()["shot_id"], shot.id)
+        self.assertEqual(
+            response.json()["first_frame_reference_image_url"],
+            "https://cdn.example/storyboard.png",
+        )
+        self.assertEqual(
+            response.json()["candidate_urls"],
+            ["https://cdn.example/storyboard.png"],
+        )
+
+        db = self.Session()
+        try:
+            updated = db.query(models.StoryboardShot).filter_by(id=shot.id).one()
+            self.assertEqual(
+                updated.first_frame_reference_image_url,
+                "https://cdn.example/storyboard.png",
+            )
+        finally:
+            db.close()
+
+    def test_scene_image_selection_route_preserves_owner_check_and_toggles_selected_url(self):
+        owner, other, episode = self._seed_episode_with_users()
+        shot = self._seed_shot(
+            episode.id,
+            uploaded_scene_image_url="https://cdn.example/scene-uploaded.png",
+            use_uploaded_scene_image=False,
+        )
+
+        blocked_response = self.client.patch(
+            f"/api/shots/{shot.id}/scene-image-selection",
+            json={"use_uploaded_scene_image": True},
+            headers=self._auth_headers(other.token),
+        )
+
+        self.assertEqual(blocked_response.status_code, 403)
+        self.assertEqual(blocked_response.json(), {"detail": "无权限"})
+
+        enabled_response = self.client.patch(
+            f"/api/shots/{shot.id}/scene-image-selection",
+            json={"use_uploaded_scene_image": True},
+            headers=self._auth_headers(owner.token),
+        )
+
+        self.assertEqual(enabled_response.status_code, 200)
+        self.assertEqual(
+            set(enabled_response.json()),
+            {
+                "shot_id",
+                "uploaded_scene_image_url",
+                "use_uploaded_scene_image",
+                "selected_scene_image_url",
+                "message",
+            },
+        )
+        self.assertEqual(enabled_response.json()["shot_id"], shot.id)
+        self.assertEqual(
+            enabled_response.json()["uploaded_scene_image_url"],
+            "https://cdn.example/scene-uploaded.png",
+        )
+        self.assertTrue(enabled_response.json()["use_uploaded_scene_image"])
+        self.assertEqual(
+            enabled_response.json()["selected_scene_image_url"],
+            "https://cdn.example/scene-uploaded.png",
+        )
+
+        disabled_response = self.client.patch(
+            f"/api/shots/{shot.id}/scene-image-selection",
+            json={"use_uploaded_scene_image": False},
+            headers=self._auth_headers(owner.token),
+        )
+
+        self.assertEqual(disabled_response.status_code, 200)
+        self.assertFalse(disabled_response.json()["use_uploaded_scene_image"])
+        self.assertEqual(disabled_response.json()["selected_scene_image_url"], "")
+
+        db = self.Session()
+        try:
+            updated = db.query(models.StoryboardShot).filter_by(id=shot.id).one()
+            self.assertFalse(updated.use_uploaded_scene_image)
+            self.assertEqual(
+                updated.uploaded_scene_image_url,
+                "https://cdn.example/scene-uploaded.png",
+            )
         finally:
             db.close()
 

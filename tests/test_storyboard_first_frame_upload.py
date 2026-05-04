@@ -21,6 +21,7 @@ if str(BACKEND_DIR) not in sys.path:
 
 import main  # noqa: E402
 import models  # noqa: E402
+from api.services import shot_reference_workflow  # noqa: E402
 
 
 class StoryboardFirstFrameUploadTests(unittest.TestCase):
@@ -69,7 +70,11 @@ class StoryboardFirstFrameUploadTests(unittest.TestCase):
             user = db.query(models.User).filter(models.User.id == self.user_id).first()
             upload = UploadFile(filename="frame.png", file=BytesIO(b"frame-bytes"))
 
-            with patch.object(main, "save_and_upload_to_cdn", return_value="https://cdn.example.com/uploaded-first-frame.png"):
+            with patch.object(
+                shot_reference_workflow,
+                "save_and_upload_to_cdn",
+                return_value="https://cdn.example.com/uploaded-first-frame.png",
+            ):
                 result = asyncio.run(
                     main.upload_shot_first_frame_reference_image(
                         shot_id=self.shot_id,

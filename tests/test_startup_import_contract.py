@@ -583,6 +583,34 @@ class StartupImportContractTests(unittest.TestCase):
             payload_source,
         )
 
+    def test_shot_reference_workflow_helpers_live_in_service_module(self):
+        main_source = MAIN_PATH.read_text(encoding="utf-8-sig")
+        service_path = BACKEND_DIR / "api" / "services" / "shot_reference_workflow.py"
+
+        self.assertTrue(service_path.exists())
+        service_source = service_path.read_text(encoding="utf-8-sig")
+        delegated_names = {
+            "generate_storyboard_image",
+            "set_shot_first_frame_reference",
+            "upload_shot_first_frame_reference_image",
+            "upload_shot_scene_image",
+            "set_shot_scene_image_selection",
+        }
+
+        self.assertIn("from api.services import shot_reference_workflow", main_source)
+        self.assertEqual(_top_level_definition_names(main_source) & delegated_names, set())
+        for name in delegated_names:
+            self.assertIn(f"def {name}", service_source)
+            self.assertIn(f"{name} = shot_reference_workflow.{name}", main_source)
+
+    def test_shot_reference_request_schemas_live_in_api_schemas_shots(self):
+        schema_path = BACKEND_DIR / "api" / "schemas" / "shots.py"
+        schema_source = schema_path.read_text(encoding="utf-8-sig")
+        schema_defs = _top_level_definition_names(schema_source)
+
+        self.assertIn("SetFirstFrameReferenceRequest", schema_defs)
+        self.assertIn("SetShotSceneImageSelectionRequest", schema_defs)
+
     def test_voiceover_merge_helpers_live_in_service_module(self):
         main_source = MAIN_PATH.read_text(encoding="utf-8-sig")
         episodes_source = (BACKEND_DIR / "api" / "routers" / "episodes.py").read_text(encoding="utf-8-sig")

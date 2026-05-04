@@ -19,10 +19,13 @@ from api.schemas.shots import (
     ShotUpdate,
     ShotVideoResponse,
     SetDetailImageCoverRequest,
+    SetFirstFrameReferenceRequest,
+    SetShotSceneImageSelectionRequest,
     ThumbnailUpdate,
     VideoStatusInfoResponse,
 )
 from api.services import shot_image_generation
+from api.services import shot_reference_workflow
 from auth import get_current_user
 from database import get_db
 
@@ -290,8 +293,7 @@ async def generate_storyboard_image(
     user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    return await _call_legacy(
-        "generate_storyboard_image",
+    return await shot_reference_workflow.generate_storyboard_image(
         shot_id=shot_id,
         request=request,
         user=user,
@@ -349,8 +351,7 @@ async def upload_shot_first_frame_reference_image(
     user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    return await _call_legacy(
-        "upload_shot_first_frame_reference_image",
+    return await shot_reference_workflow.upload_shot_first_frame_reference_image(
         shot_id=shot_id,
         file=file,
         user=user,
@@ -365,10 +366,39 @@ async def upload_shot_scene_image(
     user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    return await _call_legacy(
-        "upload_shot_scene_image",
+    return await shot_reference_workflow.upload_shot_scene_image(
         shot_id=shot_id,
         file=file,
+        user=user,
+        db=db,
+    )
+
+
+@router.patch("/api/shots/{shot_id}/first-frame-reference")
+async def set_shot_first_frame_reference(
+    shot_id: int,
+    request: SetFirstFrameReferenceRequest,
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return await shot_reference_workflow.set_shot_first_frame_reference(
+        shot_id=shot_id,
+        request=request,
+        user=user,
+        db=db,
+    )
+
+
+@router.patch("/api/shots/{shot_id}/scene-image-selection")
+async def set_shot_scene_image_selection(
+    shot_id: int,
+    request: SetShotSceneImageSelectionRequest,
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return await shot_reference_workflow.set_shot_scene_image_selection(
+        shot_id=shot_id,
+        request=request,
         user=user,
         db=db,
     )

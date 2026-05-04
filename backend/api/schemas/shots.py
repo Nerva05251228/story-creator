@@ -147,3 +147,11 @@ class GenerateDetailImagesRequest(BaseModel):
 
 class SetDetailImageCoverRequest(BaseModel):
     image_url: str
+
+
+class SetFirstFrameReferenceRequest(BaseModel):
+    image_url: str = ""
+
+
+class SetShotSceneImageSelectionRequest(BaseModel):
+    use_uploaded_scene_image: bool = False
