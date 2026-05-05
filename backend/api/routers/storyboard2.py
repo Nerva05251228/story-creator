@@ -31,7 +31,7 @@ from image_generation_service import (
 )
 from text_relay_service import submit_and_persist_text_task
 from video_api_config import get_video_api_headers, get_video_task_create_url, get_video_task_status_url
-from video_service import check_video_status, is_transient_video_status_error, process_and_upload_video_with_cover
+from video_service import check_video_status, is_transient_video_status_error
 from api.schemas.episodes import (
     Storyboard2BatchGenerateSoraPromptsRequest,
     Storyboard2GenerateImagesRequest,
@@ -46,6 +46,7 @@ from api.services import (
     storyboard2_media,
     storyboard2_permissions,
     storyboard2_reference_images,
+    storyboard2_video_tasks,
     storyboard_defaults,
     storyboard_prompt_context,
     storyboard_sync,
@@ -319,48 +320,8 @@ _subject_type_sort_key = storyboard2_board.subject_type_sort_key
 _normalize_storyboard2_video_status = storyboard2_media.normalize_storyboard2_video_status
 _is_storyboard2_video_processing = storyboard2_media.is_storyboard2_video_processing
 
-def _build_storyboard2_video_name_tag(video_record: models.Storyboard2SubShotVideo, db: Session) -> str:
-    default_tag = f"storyboard2_subshot_{video_record.sub_shot_id}_video_{video_record.id}"
-    try:
-        sub_shot = db.query(models.Storyboard2SubShot).filter(
-            models.Storyboard2SubShot.id == video_record.sub_shot_id
-        ).first()
-        if not sub_shot:
-            return default_tag
-
-        storyboard2_shot = db.query(models.Storyboard2Shot).filter(
-            models.Storyboard2Shot.id == sub_shot.storyboard2_shot_id
-        ).first()
-        shot_label = str(getattr(storyboard2_shot, "shot_number", "x"))
-        sub_index = str(getattr(sub_shot, "sub_shot_index", "x"))
-        return f"storyboard2_shot_{shot_label}_sub_{sub_index}_video_{video_record.id}"
-    except Exception:
-        return default_tag
-
-def _process_storyboard2_video_cover_and_cdn(
-    video_record: models.Storyboard2SubShotVideo,
-    db: Session,
-    upstream_video_url: str,
-    task_id: str,
-    debug_dir: Optional[str] = None
-):
-    source_url = str(upstream_video_url or "").strip()
-    if not source_url:
-        return source_url, source_url, False, {"success": False, "error": "empty video url"}
-
-    name_tag = _build_storyboard2_video_name_tag(video_record, db)
-    task_id_value = str(task_id or video_record.task_id or "").strip()
-    process_result = process_and_upload_video_with_cover(
-        remote_url=source_url,
-        task_id=task_id_value,
-        name_tag=name_tag
-    )
-
-    if process_result.get("success") and str(process_result.get("cdn_url") or "").strip():
-        final_url = str(process_result.get("cdn_url")).strip()
-        return final_url, final_url, True, process_result
-
-    return source_url, source_url, False, process_result
+_build_storyboard2_video_name_tag = storyboard2_video_tasks.build_storyboard2_video_name_tag
+_process_storyboard2_video_cover_and_cdn = storyboard2_video_tasks.process_storyboard2_video_cover_and_cdn
 
 
 def _get_optional_prompt_config_content(key: str, fallback: str = "") -> str:

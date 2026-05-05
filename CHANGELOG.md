@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 This project uses a lightweight `Added`, `Changed`, `Fixed`, `Security`, and `Migration` structure.
 
+## 2026-05-05 - Storyboard2 Video Task Service Extraction
+
+### Added
+
+- Added focused service and import-contract coverage for storyboard2 video task name-tag generation and CDN cover processing helper behavior.
+
+### Changed
+
+- Moved storyboard2 video task helper logic into `backend/api/services/storyboard2_video_tasks.py`, with compatibility aliases kept in `backend/main.py`, `backend/api/routers/episodes.py`, and `backend/api/routers/storyboard2.py`.
+
 ## 2026-05-05 - Storyboard2 Permission Service Extraction
 
 ### Added

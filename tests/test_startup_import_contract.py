@@ -208,13 +208,18 @@ class StartupImportContractTests(unittest.TestCase):
             "_get_storyboard2_sub_shot_with_permission": "get_storyboard2_sub_shot_with_permission",
             "_get_storyboard2_shot_with_permission": "get_storyboard2_shot_with_permission",
         }
+        video_task_service_aliases = {
+            "_build_storyboard2_video_name_tag": "build_storyboard2_video_name_tag",
+            "_process_storyboard2_video_cover_and_cdn": "process_storyboard2_video_cover_and_cdn",
+        }
 
         self.assertEqual(top_level_defs & delegated_names, set())
         self.assertIn("from api.services import storyboard2_reference_images", source)
         self.assertIn("from api.services import storyboard2_board", source)
         self.assertIn("from api.services import storyboard2_media", source)
         self.assertIn("from api.services import storyboard2_permissions", source)
-        for name in delegated_names - set(service_aliases) - set(board_service_aliases) - set(media_service_aliases) - set(permission_service_aliases):
+        self.assertIn("from api.services import storyboard2_video_tasks", source)
+        for name in delegated_names - set(service_aliases) - set(board_service_aliases) - set(media_service_aliases) - set(permission_service_aliases) - set(video_task_service_aliases):
             self.assertIn(f"{name} = storyboard2.{name}", source)
         for name, service_name in service_aliases.items():
             self.assertIn(f"{name} = storyboard2_reference_images.{service_name}", source)
@@ -224,6 +229,8 @@ class StartupImportContractTests(unittest.TestCase):
             self.assertIn(f"{name} = storyboard2_media.{service_name}", source)
         for name, service_name in permission_service_aliases.items():
             self.assertIn(f"{name} = storyboard2_permissions.{service_name}", source)
+        for name, service_name in video_task_service_aliases.items():
+            self.assertIn(f"{name} = storyboard2_video_tasks.{service_name}", source)
 
     def test_storyboard2_reference_image_helpers_live_in_service_module(self):
         main_source = MAIN_PATH.read_text(encoding="utf-8-sig")
@@ -326,6 +333,29 @@ class StartupImportContractTests(unittest.TestCase):
             self.assertIn(f"{name} = storyboard2_permissions.{service_name}", main_source)
             self.assertIn(f"{name} = storyboard2_permissions.{service_name}", episodes_source)
             self.assertIn(f"{name} = storyboard2_permissions.{service_name}", router_source)
+
+    def test_storyboard2_video_task_helpers_live_in_service_module(self):
+        main_source = MAIN_PATH.read_text(encoding="utf-8-sig")
+        episodes_source = (BACKEND_DIR / "api" / "routers" / "episodes.py").read_text(encoding="utf-8-sig")
+        router_source = (BACKEND_DIR / "api" / "routers" / "storyboard2.py").read_text(encoding="utf-8-sig")
+        service_path = BACKEND_DIR / "api" / "services" / "storyboard2_video_tasks.py"
+
+        self.assertTrue(service_path.exists())
+        service_source = service_path.read_text(encoding="utf-8-sig")
+        aliases = {
+            "_build_storyboard2_video_name_tag": "build_storyboard2_video_name_tag",
+            "_process_storyboard2_video_cover_and_cdn": "process_storyboard2_video_cover_and_cdn",
+        }
+
+        self.assertIn("from api.services import storyboard2_video_tasks", main_source)
+        self.assertIn("from api.services import storyboard2_video_tasks", episodes_source)
+        self.assertIn("storyboard2_video_tasks,", router_source)
+        self.assertEqual(_top_level_definition_names(router_source) & set(aliases), set())
+        for name, service_name in aliases.items():
+            self.assertIn(f"def {service_name}", service_source)
+            self.assertIn(f"{name} = storyboard2_video_tasks.{service_name}", main_source)
+            self.assertIn(f"{name} = storyboard2_video_tasks.{service_name}", episodes_source)
+            self.assertIn(f"{name} = storyboard2_video_tasks.{service_name}", router_source)
 
     def test_episode_cleanup_helpers_live_in_service_module(self):
         main_source = MAIN_PATH.read_text(encoding="utf-8-sig")
