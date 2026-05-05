@@ -199,16 +199,23 @@ class StartupImportContractTests(unittest.TestCase):
             "_serialize_storyboard2_board": "serialize_storyboard2_board",
             "_subject_type_sort_key": "subject_type_sort_key",
         }
+        media_service_aliases = {
+            "_normalize_storyboard2_video_status": "normalize_storyboard2_video_status",
+            "_is_storyboard2_video_processing": "is_storyboard2_video_processing",
+        }
 
         self.assertEqual(top_level_defs & delegated_names, set())
         self.assertIn("from api.services import storyboard2_reference_images", source)
         self.assertIn("from api.services import storyboard2_board", source)
-        for name in delegated_names - set(service_aliases) - set(board_service_aliases):
+        self.assertIn("from api.services import storyboard2_media", source)
+        for name in delegated_names - set(service_aliases) - set(board_service_aliases) - set(media_service_aliases):
             self.assertIn(f"{name} = storyboard2.{name}", source)
         for name, service_name in service_aliases.items():
             self.assertIn(f"{name} = storyboard2_reference_images.{service_name}", source)
         for name, service_name in board_service_aliases.items():
             self.assertIn(f"{name} = storyboard2_board.{service_name}", source)
+        for name, service_name in media_service_aliases.items():
+            self.assertIn(f"{name} = storyboard2_media.{service_name}", source)
 
     def test_storyboard2_reference_image_helpers_live_in_service_module(self):
         main_source = MAIN_PATH.read_text(encoding="utf-8-sig")
@@ -262,6 +269,31 @@ class StartupImportContractTests(unittest.TestCase):
             self.assertIn(f"{name} = storyboard2_board.{service_name}", episodes_source)
             self.assertIn(f"{name} = storyboard2_board.{service_name}", router_source)
             self.assertIn(f"def {service_name}", service_source)
+
+    def test_storyboard2_media_helpers_live_in_service_module(self):
+        main_source = MAIN_PATH.read_text(encoding="utf-8-sig")
+        router_source = (BACKEND_DIR / "api" / "routers" / "storyboard2.py").read_text(encoding="utf-8-sig")
+        board_source = (BACKEND_DIR / "api" / "services" / "storyboard2_board.py").read_text(encoding="utf-8-sig")
+        service_path = BACKEND_DIR / "api" / "services" / "storyboard2_media.py"
+
+        self.assertTrue(service_path.exists())
+        service_source = service_path.read_text(encoding="utf-8-sig")
+        aliases = {
+            "_normalize_jimeng_ratio": "normalize_jimeng_ratio",
+            "_normalize_storyboard2_video_status": "normalize_storyboard2_video_status",
+            "_is_storyboard2_video_processing": "is_storyboard2_video_processing",
+        }
+
+        self.assertIn("from api.services import storyboard2_media", main_source)
+        self.assertIn("storyboard2_media,", router_source)
+        self.assertIn("storyboard2_media", board_source)
+        self.assertEqual(_top_level_definition_names(main_source) & set(aliases), set())
+        self.assertEqual(_top_level_definition_names(router_source) & set(aliases), set())
+        for name, service_name in aliases.items():
+            self.assertIn(f"def {service_name}", service_source)
+            if name in {"_normalize_storyboard2_video_status", "_is_storyboard2_video_processing"}:
+                self.assertIn(f"{name} = storyboard2_media.{service_name}", main_source)
+            self.assertIn(f"{name} = storyboard2_media.{service_name}", router_source)
 
     def test_episode_cleanup_helpers_live_in_service_module(self):
         main_source = MAIN_PATH.read_text(encoding="utf-8-sig")

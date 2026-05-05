@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 This project uses a lightweight `Added`, `Changed`, `Fixed`, `Security`, and `Migration` structure.
 
+## 2026-05-05 - Storyboard2 Media Helper Service Extraction
+
+### Added
+
+- Added focused service and import-contract coverage for storyboard2 image ratio normalization and provider video status normalization.
+
+### Changed
+
+- Moved duplicated storyboard2 media helper logic into `backend/api/services/storyboard2_media.py`, with compatibility aliases kept in `backend/main.py` and `backend/api/routers/storyboard2.py`.
+
 ## 2026-05-05 - Storyboard2 Board Service Extraction
 
 ### Added

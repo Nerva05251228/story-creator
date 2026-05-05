@@ -43,6 +43,7 @@ from api.schemas.episodes import (
 from api.services import (
     billing_charges,
     storyboard2_board,
+    storyboard2_media,
     storyboard2_reference_images,
     storyboard_defaults,
     storyboard_prompt_context,
@@ -215,18 +216,7 @@ def _submit_storyboard2_prompt_task(
         task_payload=task_payload,
     )
 
-def _normalize_jimeng_ratio(value: Optional[str], default_ratio: str = "9:16") -> str:
-    allowed_ratios = {"21:9", "16:9", "3:2", "4:3", "1:1", "3:4", "2:3", "9:16"}
-    legacy_map = {
-        "1:2": "9:16",
-        "2:1": "16:9"
-    }
-    raw = (value or "").strip()
-    normalized = legacy_map.get(raw, raw)
-    if normalized in allowed_ratios:
-        return normalized
-    fallback = legacy_map.get((default_ratio or "").strip(), (default_ratio or "").strip())
-    return fallback if fallback in allowed_ratios else "9:16"
+_normalize_jimeng_ratio = storyboard2_media.normalize_jimeng_ratio
 
 def _build_storyboard_video_text_and_images_content(full_prompt: str, image_urls: List[str]) -> list:
     content = [{"type": "text", "text": full_prompt}]
@@ -360,20 +350,8 @@ def _is_storyboard2_image_task_active(sub_shot_id: int) -> bool:
 _subject_type_sort_key = storyboard2_board.subject_type_sort_key
 
 
-def _normalize_storyboard2_video_status(status: str, default_value: str = "processing") -> str:
-    normalized = (status or "").strip().lower()
-    if normalized in {"completed", "success", "succeeded", "done"}:
-        return "completed"
-    if normalized in {"failed", "failure", "error", "cancelled", "canceled", "timeout", "timed_out"}:
-        return "failed"
-    if normalized in {"submitted", "pending", "queued", "waiting"}:
-        return "pending"
-    if normalized in {"processing", "running", "in_progress", "preparing", "starting"}:
-        return "processing"
-    return default_value
-
-def _is_storyboard2_video_processing(status: str) -> bool:
-    return _normalize_storyboard2_video_status(status, default_value="processing") in {"pending", "processing"}
+_normalize_storyboard2_video_status = storyboard2_media.normalize_storyboard2_video_status
+_is_storyboard2_video_processing = storyboard2_media.is_storyboard2_video_processing
 
 def _build_storyboard2_video_name_tag(video_record: models.Storyboard2SubShotVideo, db: Session) -> str:
     default_tag = f"storyboard2_subshot_{video_record.sub_shot_id}_video_{video_record.id}"

@@ -62,6 +62,7 @@ from api.services import shot_reference_workflow
 from api.services import simple_storyboard_batches as simple_storyboard_batches_service
 from api.services import storyboard_defaults
 from api.services import storyboard2_board
+from api.services import storyboard2_media
 from api.services import storyboard2_reference_images
 from api.services import storyboard_reference_assets
 from api.services import storyboard_sound_cards
@@ -11025,18 +11026,7 @@ def _generate_single_image_with_polling(
     }
 
 
-def _normalize_jimeng_ratio(value: Optional[str], default_ratio: str = "9:16") -> str:
-    allowed_ratios = {"21:9", "16:9", "3:2", "4:3", "1:1", "3:4", "2:3", "9:16"}
-    legacy_map = {
-        "1:2": "9:16",
-        "2:1": "16:9"
-    }
-    raw = (value or "").strip()
-    normalized = legacy_map.get(raw, raw)
-    if normalized in allowed_ratios:
-        return normalized
-    fallback = legacy_map.get((default_ratio or "").strip(), (default_ratio or "").strip())
-    return fallback if fallback in allowed_ratios else "9:16"
+_normalize_jimeng_ratio = storyboard2_media.normalize_jimeng_ratio
 
 
 _normalize_storyboard2_video_duration = storyboard_defaults.normalize_storyboard2_video_duration
@@ -11446,8 +11436,8 @@ _subject_type_sort_key = storyboard2_board.subject_type_sort_key
 _get_optional_prompt_config_content = storyboard2._get_optional_prompt_config_content
 _save_storyboard2_image_debug = storyboard2._save_storyboard2_image_debug
 _save_storyboard2_video_debug = storyboard2._save_storyboard2_video_debug
-_normalize_storyboard2_video_status = storyboard2._normalize_storyboard2_video_status
-_is_storyboard2_video_processing = storyboard2._is_storyboard2_video_processing
+_normalize_storyboard2_video_status = storyboard2_media.normalize_storyboard2_video_status
+_is_storyboard2_video_processing = storyboard2_media.is_storyboard2_video_processing
 _build_storyboard2_video_name_tag = storyboard2._build_storyboard2_video_name_tag
 _process_storyboard2_video_cover_and_cdn = storyboard2._process_storyboard2_video_cover_and_cdn
 _sync_storyboard2_processing_videos = storyboard2._sync_storyboard2_processing_videos
