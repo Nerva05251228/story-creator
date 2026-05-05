@@ -44,6 +44,7 @@ from api.services import (
     billing_charges,
     storyboard2_board,
     storyboard2_media,
+    storyboard2_permissions,
     storyboard2_reference_images,
     storyboard_defaults,
     storyboard_prompt_context,
@@ -230,44 +231,9 @@ _parse_storyboard2_card_ids = storyboard2_reference_images.parse_storyboard2_car
 _resolve_storyboard2_selected_card_ids = storyboard2_reference_images.resolve_storyboard2_selected_card_ids
 _is_scene_subject_card_type = storyboard2_reference_images.is_scene_subject_card_type
 _collect_storyboard2_reference_images = storyboard2_reference_images.collect_storyboard2_reference_images
-
-def _verify_episode_permission(episode_id: int, user: models.User, db: Session) -> models.Episode:
-    episode = db.query(models.Episode).filter(models.Episode.id == episode_id).first()
-    if not episode:
-        raise HTTPException(status_code=404, detail="片段不存在")
-
-    script = db.query(models.Script).filter(models.Script.id == episode.script_id).first()
-    if not script or script.user_id != user.id:
-        raise HTTPException(status_code=403, detail="无权限")
-
-    return episode
-
-def _get_storyboard2_sub_shot_with_permission(sub_shot_id: int, user: models.User, db: Session):
-    sub_shot = db.query(models.Storyboard2SubShot).filter(
-        models.Storyboard2SubShot.id == sub_shot_id
-    ).first()
-    if not sub_shot:
-        raise HTTPException(status_code=404, detail="分镜不存在")
-
-    storyboard2_shot = db.query(models.Storyboard2Shot).filter(
-        models.Storyboard2Shot.id == sub_shot.storyboard2_shot_id
-    ).first()
-    if not storyboard2_shot:
-        raise HTTPException(status_code=404, detail="镜头不存在")
-
-    _verify_episode_permission(storyboard2_shot.episode_id, user, db)
-    return sub_shot, storyboard2_shot
-
-
-def _get_storyboard2_shot_with_permission(storyboard2_shot_id: int, user: models.User, db: Session):
-    storyboard2_shot = db.query(models.Storyboard2Shot).filter(
-        models.Storyboard2Shot.id == storyboard2_shot_id
-    ).first()
-    if not storyboard2_shot:
-        raise HTTPException(status_code=404, detail="镜头不存在")
-
-    _verify_episode_permission(storyboard2_shot.episode_id, user, db)
-    return storyboard2_shot
+_verify_episode_permission = storyboard2_permissions.verify_episode_permission
+_get_storyboard2_sub_shot_with_permission = storyboard2_permissions.get_storyboard2_sub_shot_with_permission
+_get_storyboard2_shot_with_permission = storyboard2_permissions.get_storyboard2_shot_with_permission
 
 
 _clean_scene_ai_prompt_text = storyboard2_board.clean_scene_ai_prompt_text
