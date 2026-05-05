@@ -1,4 +1,6 @@
 import json
+import os
+import shutil
 import traceback
 import uuid
 from typing import Any, Optional
@@ -6,6 +8,7 @@ from typing import Any, Optional
 from sqlalchemy.orm import Session
 
 import models
+from api.services.episode_cleanup import delete_episode_storyboard_shots
 from storyboard_variant import build_storyboard_sync_variant_payload
 
 
@@ -23,6 +26,14 @@ SUBJECT_MATCH_STOP_FRAGMENTS = {
     "\u5ba4\u5185",
     "\u5ba4\u5916",
 }
+
+
+def _safe_audio_duration_seconds(value: Any) -> float:
+    try:
+        duration_seconds = float(value or 0)
+    except (TypeError, ValueError):
+        return 0.0
+    return duration_seconds if duration_seconds > 0 else 0.0
 
 
 def normalize_subject_detail_entry(subject: dict, fallback: Optional[dict] = None) -> Optional[dict]:
@@ -270,6 +281,354 @@ def reconcile_storyboard_shot_subjects(
         })
 
     return reconciled_subjects
+
+
+def create_shots_from_storyboard_data(episode_id: int, db: Session):
+    """
+    从episode.storyboard_data JSON创建storyboard_shots表记录
+
+    此函数被以下场景调用：
+    1. AI生成分镜完成后自动调用
+    2. 用户手动点击"创建镜头"按钮
+    """
+    episode = db.query(models.Episode).filter(models.Episode.id == episode_id).first()
+    if not episode or not episode.storyboard_data:
+        return
+
+    # 解析JSON数据
+    try:
+        storyboard = json.loads(episode.storyboard_data)
+        shots_data = storyboard.get("shots", [])
+        subjects_data = storyboard.get("subjects", [])
+    except Exception as e:
+        print(f"解析storyboard_data失败: {e}")
+        return
+
+    if not shots_data:
+        return
+
+    canonical_subject_map = build_subject_detail_map(subjects_data)
+    reconciled_shots_data = []
+    combined_subject_map = dict(canonical_subject_map)
+    for shot_data in shots_data:
+        shot_copy = dict(shot_data)
+        shot_copy["subjects"] = reconcile_storyboard_shot_subjects(
+            shot_copy,
+            canonical_subject_map,
+        )
+        for subject in shot_copy.get("subjects", []):
+            subject_key = (subject["name"], subject["type"])
+            if subject_key not in combined_subject_map:
+                combined_subject_map[subject_key] = normalize_subject_detail_entry(subject)
+        reconciled_shots_data.append(shot_copy)
+
+    shots_data = reconciled_shots_data
+    subjects_data = list(combined_subject_map.values())
+
+    # 获取剧本和主体库
+    script = db.query(models.Script).filter(models.Script.id == episode.script_id).first()
+    if not script:
+        return
+
+    library = db.query(models.StoryLibrary).filter(
+        models.StoryLibrary.episode_id == episode.id
+    ).first()
+    if not library:
+        return
+
+    # ========== 清理旧数据（避免孤儿记录） ==========
+    # 获取当前主体库的所有旧主体
+    old_cards = db.query(models.SubjectCard).filter(
+        models.SubjectCard.library_id == library.id
+    ).all()
+
+    # 先删除这些主体的所有图片（避免孤儿记录）
+    for old_card in old_cards:
+        # 删除手动上传的图片
+        db.query(models.CardImage).filter(
+            models.CardImage.card_id == old_card.id
+        ).delete()
+        # 删除AI生成的图片
+        db.query(models.GeneratedImage).filter(
+            models.GeneratedImage.card_id == old_card.id
+        ).delete()
+        # 删除声音素材
+        db.query(models.SubjectCardAudio).filter(
+            models.SubjectCardAudio.card_id == old_card.id
+        ).delete()
+
+    # 再删除主体卡片
+    db.query(models.SubjectCard).filter(
+        models.SubjectCard.library_id == library.id
+    ).delete()
+    db.commit()
+    print(f"[清理] 已清空当前主体库的所有旧主体、图片和声音素材")
+
+    allowed_subject_types = set(ALLOWED_CARD_TYPES)
+    existing_names_to_ids = {}
+
+    # ========== 渐进式回退：从最新到最旧的剧集查找可复用主体 ==========
+    # 获取当前剧集需要的所有主体
+    needed_subjects = set()
+    for subj in subjects_data:
+        name = subj.get('name', '').strip()
+        subject_type = (subj.get('type') or "角色").strip() or "角色"
+        if name and subject_type in allowed_subject_types:
+            needed_subjects.add((name, subject_type))
+
+    # 获取同一剧本下其他剧集（按创建时间倒序：从新到旧）
+    other_episodes = db.query(models.Episode).filter(
+        models.Episode.script_id == script.id,
+        models.Episode.id != episode.id
+    ).order_by(models.Episode.created_at.desc()).all()
+
+    # 已找到的主体字典：(name, card_type) -> SubjectCard
+    found_subjects = {}
+
+    # 遍历每个剧集（从新到旧）
+    for ep in other_episodes:
+        # 获取这个剧集的主体库
+        ep_library = db.query(models.StoryLibrary).filter(
+            models.StoryLibrary.episode_id == ep.id
+        ).first()
+
+        if not ep_library:
+            continue
+
+        # 获取这个主体库的所有符合类型的主体
+        ep_cards = db.query(models.SubjectCard).filter(
+            models.SubjectCard.library_id == ep_library.id,
+            models.SubjectCard.card_type.in_(allowed_subject_types)
+        ).all()
+
+        # 遍历这个剧集的主体
+        for card in ep_cards:
+            key = (card.name, card.card_type)
+            # 如果需要这个主体 且 还没找到过，则记录
+            if key in needed_subjects and key not in found_subjects:
+                found_subjects[key] = card
+                print(f"[素材查找] 从剧集 '{ep.name}' 找到可复用主体：{card.name}（{card.card_type}）")
+
+        # 如果所有需要的主体都找到了，提前退出
+        if len(found_subjects) >= len(needed_subjects):
+            print(f"[素材查找] 所有需要的主体都已找到，停止查找")
+            break
+
+    print(f"[素材查找] 共找到 {len(found_subjects)}/{len(needed_subjects)} 个可复用主体")
+
+    # 创建新主体卡片
+    for subj in subjects_data:
+        name = subj.get('name', '').strip()
+        subject_type = (subj.get('type') or "角色").strip() or "角色"
+        # 跳过空名字或已创建的名字（防止同批次重复）
+        if not name or name in existing_names_to_ids:
+            continue
+        if subject_type not in allowed_subject_types:
+            continue
+
+        # ========== 检查是否有可复用的主体 ==========
+        key = (name, subject_type)
+        source_card = found_subjects.get(key)
+
+        if source_card:
+            # 找到可复用的主体，复制 SubjectCard
+            new_card = models.SubjectCard(
+                library_id=library.id,
+                name=source_card.name,
+                alias=source_card.alias,
+                card_type=source_card.card_type,
+                ai_prompt=source_card.ai_prompt,
+                role_personality=(getattr(source_card, "role_personality", "") or ""),
+                style_template_id=source_card.style_template_id
+            )
+            db.add(new_card)
+            db.flush()
+
+            # 复制所有图片记录
+            source_images = db.query(models.CardImage).filter(
+                models.CardImage.card_id == source_card.id
+            ).order_by(models.CardImage.order).all()
+
+            copied_count = 0
+            for img in source_images:
+                # 判断图片路径类型
+                is_cdn_url = img.image_path.startswith(('http://', 'https://'))
+
+                if is_cdn_url:
+                    # CDN图片：直接复制记录，共享同一个URL
+                    new_image = models.CardImage(
+                        card_id=new_card.id,
+                        image_path=img.image_path,  # 直接使用同一个CDN URL
+                        order=img.order
+                    )
+                    db.add(new_image)
+                    copied_count += 1
+                else:
+                    # 本地图片：检查文件是否存在，物理复制
+                    if os.path.exists(img.image_path):
+                        file_ext = os.path.splitext(img.image_path)[1]
+                        new_filename = f"card_{new_card.id}_{uuid.uuid4().hex[:8]}{file_ext}"
+                        new_path = os.path.join("uploads", new_filename)
+
+                        try:
+                            shutil.copy2(img.image_path, new_path)
+                            new_image = models.CardImage(
+                                card_id=new_card.id,
+                                image_path=new_path,
+                                order=img.order
+                            )
+                            db.add(new_image)
+                            copied_count += 1
+                        except Exception as e:
+                            print(f"复制本地图片失败 {img.image_path}: {e}")
+
+            # ========== 复制 GeneratedImage 记录 ==========
+            source_generated_images = db.query(models.GeneratedImage).filter(
+                models.GeneratedImage.card_id == source_card.id
+            ).order_by(models.GeneratedImage.created_at).all()
+
+            for gen_img in source_generated_images:
+                new_generated_image = models.GeneratedImage(
+                    card_id=new_card.id,
+                    image_path=gen_img.image_path,  # CDN URL 直接复用
+                    model_name=gen_img.model_name,
+                    is_reference=gen_img.is_reference,
+                    task_id=gen_img.task_id,
+                    status=gen_img.status
+                )
+                db.add(new_generated_image)
+
+            source_audios = db.query(models.SubjectCardAudio).filter(
+                models.SubjectCardAudio.card_id == source_card.id
+            ).order_by(models.SubjectCardAudio.created_at).all()
+            for audio in source_audios:
+                new_audio = models.SubjectCardAudio(
+                    card_id=new_card.id,
+                    audio_path=audio.audio_path,
+                    file_name=audio.file_name,
+                    duration_seconds=_safe_audio_duration_seconds(audio.duration_seconds),
+                    is_reference=audio.is_reference
+                )
+                db.add(new_audio)
+
+            existing_names_to_ids[name] = new_card.id
+            print(f"[主体复用] 复用主体：{name}（{subject_type}），复制了 {copied_count} 张卡片图，{len(source_generated_images)} 张AI图，{len(source_audios)} 条声音素材")
+        else:
+            # 没有可复用的主体，创建空主体（原逻辑）
+            new_card = models.SubjectCard(
+                library_id=library.id,
+                name=name,
+                alias=subj.get('alias', '').strip(),
+                card_type=subject_type,
+                ai_prompt=subj.get('ai_prompt', '').strip(),
+                role_personality=(subj.get('role_personality') or subj.get('role_personality_en') or subj.get('personality_en') or '').strip()
+            )
+            db.add(new_card)
+            db.flush()
+            existing_names_to_ids[name] = new_card.id
+
+    db.commit()
+
+    # 重新获取所有卡片
+    all_cards = db.query(models.SubjectCard).filter(
+        models.SubjectCard.library_id == library.id
+    ).all()
+    all_cards = [card for card in all_cards if card.card_type in allowed_subject_types]
+    card_name_to_id = {card.name: card.id for card in all_cards}
+
+    # 删除旧镜头（替换模式）
+    delete_episode_storyboard_shots(episode_id, db)
+    db.commit()
+
+    # 创建新镜头
+    for shot_data in shots_data:
+        shot_number = int(shot_data.get('shot_number', 0))
+        if shot_number <= 0:
+            continue
+
+        # 解析主体ID
+        selected_card_ids = []
+        subjects = shot_data.get('subjects', [])
+        if isinstance(subjects, list):
+            for subj in subjects:
+                if isinstance(subj, dict):
+                    name = subj.get('name', '').strip()
+                    if name and name in card_name_to_id:
+                        selected_card_ids.append(card_name_to_id[name])
+
+        # 处理新格式的 dialogue 和 narration - 格式化为可读文本
+        def format_voice_content(shot_data: dict) -> str:
+            """将narration或dialogue格式化为可读文本"""
+            voice_type = shot_data.get('voice_type', 'none')
+
+            if voice_type == 'narration':
+                narration = shot_data.get('narration')
+                if narration and isinstance(narration, dict):
+                    speaker = narration.get('speaker', '')
+                    gender = narration.get('gender', '')
+                    emotion = narration.get('emotion', '')
+                    text = narration.get('text', '')
+                    return f"旁白（{speaker}/{gender}/{emotion}）：{text}"
+
+            elif voice_type == 'dialogue':
+                dialogue = shot_data.get('dialogue')
+                if dialogue and isinstance(dialogue, list):
+                    dialogue_lines = []
+                    for d in dialogue:
+                        speaker = d.get('speaker', '')
+                        gender = d.get('gender', '')
+                        target = d.get('target')
+                        emotion = d.get('emotion', '')
+                        text = d.get('text', '')
+
+                        if target:
+                            dialogue_lines.append(f"{speaker}（{gender}）对{target}说（{emotion}）：{text}")
+                        else:
+                            dialogue_lines.append(f"{speaker}（{gender}）说（{emotion}）：{text}")
+
+                    return '\n'.join(dialogue_lines)
+
+            return ""
+
+        # 格式化语音内容
+        formatted_voice = format_voice_content(shot_data)
+
+        # 使用原剧本段落作为基础文本
+        excerpt = shot_data.get('original_text', '')
+
+        # 构建sora_prompt: 原剧本段落 + 旁白/对白
+        if excerpt and formatted_voice:
+            sora_prompt_value = f"{excerpt}\n{formatted_voice}"
+        elif excerpt:
+            sora_prompt_value = excerpt
+        elif formatted_voice:
+            sora_prompt_value = formatted_voice
+        else:
+            sora_prompt_value = ""
+
+        # storyboard_dialogue保存格式化的语音内容
+        storyboard_dialogue_value = formatted_voice
+
+        for _ in [None]:
+            new_shot = models.StoryboardShot(
+                episode_id=episode_id,
+                shot_number=shot_number,
+                variant_index=0,
+                prompt_template='',
+                script_excerpt=shot_data.get('original_text', ''),
+                storyboard_dialogue=storyboard_dialogue_value,  # ✅ 格式化的旁白/对白
+                sora_prompt=sora_prompt_value,  # ✅ 原剧本段落 + 旁白/对白
+                selected_card_ids=json.dumps(selected_card_ids),
+                selected_sound_card_ids=None,
+                aspect_ratio='16:9',
+                duration=15,
+                storyboard_video_model="",
+                storyboard_video_model_override_enabled=False,
+                duration_override_enabled=False
+            )
+            db.add(new_shot)
+
+    db.commit()
 
 
 def sync_subjects_to_database(episode_id: int, storyboard_data: dict, db: Session):

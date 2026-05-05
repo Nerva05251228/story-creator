@@ -195,6 +195,136 @@ class StoryboardSyncServiceTests(unittest.TestCase):
         finally:
             db.close()
 
+    def test_create_shots_from_storyboard_data_reuses_subject_assets_and_formats_dialogue(self):
+        db, episode, library = self._seed_episode_with_library()
+        try:
+            script = db.query(models.Script).filter(models.Script.id == episode.script_id).first()
+            reusable_episode = models.Episode(script_id=script.id, name="Reusable Episode")
+            db.add(reusable_episode)
+            db.flush()
+            reusable_library = models.StoryLibrary(
+                user_id=script.user_id,
+                episode_id=reusable_episode.id,
+                name="Reusable Library",
+            )
+            db.add(reusable_library)
+            db.flush()
+            reusable_card = models.SubjectCard(
+                library_id=reusable_library.id,
+                name="Hero",
+                card_type=ROLE_TYPE,
+                alias="hero alias",
+                ai_prompt="hero prompt",
+                role_personality="brave",
+            )
+            old_card = models.SubjectCard(
+                library_id=library.id,
+                name="Old",
+                card_type=ROLE_TYPE,
+            )
+            db.add_all([reusable_card, old_card])
+            db.flush()
+            db.add_all([
+                models.CardImage(
+                    card_id=reusable_card.id,
+                    image_path="https://cdn.example/hero.png",
+                    order=3,
+                ),
+                models.GeneratedImage(
+                    card_id=reusable_card.id,
+                    image_path="https://cdn.example/generated.png",
+                    model_name="seedream",
+                    is_reference=True,
+                    task_id="task-1",
+                    status="completed",
+                ),
+                models.SubjectCardAudio(
+                    card_id=reusable_card.id,
+                    audio_path="https://cdn.example/hero.mp3",
+                    file_name="hero.mp3",
+                    duration_seconds=-5,
+                    is_reference=True,
+                ),
+                models.CardImage(
+                    card_id=old_card.id,
+                    image_path="https://cdn.example/old.png",
+                    order=0,
+                ),
+            ])
+            episode.storyboard_data = json.dumps(
+                {
+                    "subjects": [
+                        {"name": "Hero", "type": ROLE_TYPE},
+                        {"name": "Garden", "type": SCENE_TYPE, "ai_prompt": "quiet garden"},
+                        {"name": "Unsupported", "type": "\u58f0\u97f3"},
+                    ],
+                    "shots": [
+                        {
+                            "shot_number": 1,
+                            "subjects": [
+                                {"name": "Hero", "type": ROLE_TYPE},
+                                {"name": "Garden", "type": SCENE_TYPE},
+                            ],
+                            "original_text": "Scene text",
+                            "voice_type": "dialogue",
+                            "dialogue": [
+                                {
+                                    "speaker": "Hero",
+                                    "gender": "F",
+                                    "target": "Villain",
+                                    "emotion": "angry",
+                                    "text": "Stop",
+                                }
+                            ],
+                        }
+                    ],
+                },
+                ensure_ascii=False,
+            )
+            db.commit()
+
+            storyboard_sync.create_shots_from_storyboard_data(episode.id, db)
+
+            cards = db.query(models.SubjectCard).filter(
+                models.SubjectCard.library_id == library.id
+            ).order_by(models.SubjectCard.name.asc()).all()
+            cards_by_name = {card.name: card for card in cards}
+            self.assertEqual(set(cards_by_name), {"Garden", "Hero"})
+            self.assertEqual(cards_by_name["Hero"].alias, "hero alias")
+            self.assertEqual(cards_by_name["Hero"].ai_prompt, "hero prompt")
+            self.assertEqual(cards_by_name["Hero"].role_personality, "brave")
+            self.assertEqual(cards_by_name["Garden"].ai_prompt, "quiet garden")
+
+            copied_images = db.query(models.CardImage).filter(
+                models.CardImage.card_id == cards_by_name["Hero"].id
+            ).all()
+            self.assertEqual([(image.image_path, image.order) for image in copied_images], [
+                ("https://cdn.example/hero.png", 3),
+            ])
+            copied_generated = db.query(models.GeneratedImage).filter(
+                models.GeneratedImage.card_id == cards_by_name["Hero"].id
+            ).one()
+            self.assertEqual(copied_generated.image_path, "https://cdn.example/generated.png")
+            self.assertTrue(copied_generated.is_reference)
+            copied_audio = db.query(models.SubjectCardAudio).filter(
+                models.SubjectCardAudio.card_id == cards_by_name["Hero"].id
+            ).one()
+            self.assertEqual(copied_audio.audio_path, "https://cdn.example/hero.mp3")
+            self.assertEqual(copied_audio.duration_seconds, 0.0)
+
+            shot = db.query(models.StoryboardShot).filter(
+                models.StoryboardShot.episode_id == episode.id
+            ).one()
+            self.assertEqual(
+                json.loads(shot.selected_card_ids),
+                [cards_by_name["Hero"].id, cards_by_name["Garden"].id],
+            )
+            expected_dialogue = "Hero\uff08F\uff09\u5bf9Villain\u8bf4\uff08angry\uff09\uff1aStop"
+            self.assertEqual(shot.storyboard_dialogue, expected_dialogue)
+            self.assertEqual(shot.sora_prompt, f"Scene text\n{expected_dialogue}")
+        finally:
+            db.close()
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 This project uses a lightweight `Added`, `Changed`, `Fixed`, `Security`, and `Migration` structure.
 
+## 2026-05-05 - Storyboard Materialization Service Expansion
+
+### Added
+
+- Added focused service coverage for creating storyboard shot rows from `Episode.storyboard_data`, including subject asset reuse, audio duration normalization, selected-card assignment, and dialogue prompt formatting.
+
+### Changed
+
+- Moved `_create_shots_from_storyboard_data` out of `backend/main.py` and `backend/api/routers/episodes.py` into `backend/api/services/storyboard_sync.py` while keeping compatibility aliases for existing direct callers.
+
 ## 2026-05-05 - Storyboard Video Prompt Builder Service Extraction
 
 ### Added

@@ -350,6 +350,7 @@ class StartupImportContractTests(unittest.TestCase):
             "_infer_storyboard_role_name_from_shot",
             "_resolve_storyboard_subject_name",
             "_reconcile_storyboard_shot_subjects",
+            "_create_shots_from_storyboard_data",
             "_sync_subjects_to_database",
             "_sync_storyboard_to_shots",
         }
@@ -361,6 +362,7 @@ class StartupImportContractTests(unittest.TestCase):
             "_infer_storyboard_role_name_from_shot": "infer_storyboard_role_name_from_shot",
             "_resolve_storyboard_subject_name": "resolve_storyboard_subject_name",
             "_reconcile_storyboard_shot_subjects": "reconcile_storyboard_shot_subjects",
+            "_create_shots_from_storyboard_data": "create_shots_from_storyboard_data",
             "_sync_subjects_to_database": "sync_subjects_to_database",
             "_sync_storyboard_to_shots": "sync_storyboard_to_shots",
         }
