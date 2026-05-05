@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 import models
+from api.services import storyboard_video_prompt_builder
 from api.schemas.settings import (
     PromptConfigResponse,
     PromptConfigUpdate,
@@ -36,13 +37,9 @@ PROMPT_CONFIG_DISPLAY_OVERRIDES = {
 }
 
 
-def _default_storyboard_video_prompt_template() -> str:
-    return (
-        "视频风格:逐帧动画，2d手绘动漫风格，强调帧间的手绘/精细绘制属性，而非3D渲染/CG动画的光滑感。"
-        "画面整体呈现传统2D动画的逐帧绘制特征，包括但不限于：帧间微妙的线条变化、色彩的手工涂抹感、阴影的平面化处理。"
-        "角色动作流畅但保留手绘的自然波动，背景元素展现水彩或厚涂等传统绘画技法的质感。"
-        "整体视觉效果追求温暖、有机的手工艺术感，避免数字化的过度精确与机械感。"
-    )
+_default_storyboard_video_prompt_template = (
+    storyboard_video_prompt_builder.default_storyboard_video_prompt_template
+)
 
 
 def _default_narration_conversion_template() -> str:

@@ -46,6 +46,7 @@ from api.services import storyboard_sync
 from api.services import storyboard_video_generation_limits
 from api.services import storyboard_video_settings
 from api.services import storyboard_video_payload
+from api.services import storyboard_video_prompt_builder
 from api.services import voiceover_data
 from api.services.simple_storyboard_batches import (
     _get_simple_storyboard_batch_summary,
@@ -184,6 +185,7 @@ _is_storyboard_shot_model_override_enabled = storyboard_video_settings.is_storyb
 _get_episode_storyboard_video_settings = storyboard_video_settings.get_episode_storyboard_video_settings
 _get_effective_storyboard_video_settings_for_shot = storyboard_video_settings.get_effective_storyboard_video_settings_for_shot
 _build_unified_storyboard_video_task_payload = storyboard_video_payload._build_unified_storyboard_video_task_payload
+build_sora_prompt = storyboard_video_prompt_builder.build_sora_prompt
 _resolve_selected_cards = storyboard_reference_assets.resolve_selected_cards
 
 def _rollback_quietly(db: Session):

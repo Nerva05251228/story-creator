@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 This project uses a lightweight `Added`, `Changed`, `Fixed`, `Security`, and `Migration` structure.
 
+## 2026-05-05 - Storyboard Video Prompt Builder Service Extraction
+
+### Added
+
+- Added startup import-contract coverage for the storyboard video prompt builder service exports and compatibility aliases in `backend/main.py`, `backend/api/routers/episodes.py`, `backend/api/routers/settings.py`, and `backend/managed_generation_service.py`.
+
+### Changed
+
+- Recorded the extraction of storyboard video prompt assembly helpers into `backend/api/services/storyboard_video_prompt_builder.py` while preserving legacy alias expectations for existing callers.
+
 ## 2026-05-04 - Episode Cleanup Service Expansion
 
 ### Added

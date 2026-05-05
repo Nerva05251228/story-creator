@@ -84,6 +84,16 @@ def _top_level_definition_names(source: str) -> set[str]:
     }
 
 
+def _imported_names_from_module(source: str, module_name: str) -> set[str]:
+    tree = ast.parse(source)
+    names = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ImportFrom) or node.module != module_name:
+            continue
+        names.update(alias.name for alias in node.names)
+    return names
+
+
 def _router_decorator_paths(source: str) -> set[str]:
     paths = set()
     tree = ast.parse(source)
@@ -481,6 +491,46 @@ class StartupImportContractTests(unittest.TestCase):
             "_build_unified_storyboard_video_task_payload = storyboard_video_payload._build_unified_storyboard_video_task_payload",
             episodes_source,
         )
+
+    def test_storyboard_video_prompt_builder_helpers_live_in_service_module(self):
+        main_source = MAIN_PATH.read_text(encoding="utf-8-sig")
+        episodes_source = (BACKEND_DIR / "api" / "routers" / "episodes.py").read_text(encoding="utf-8-sig")
+        settings_source = (BACKEND_DIR / "api" / "routers" / "settings.py").read_text(encoding="utf-8-sig")
+        managed_source = (BACKEND_DIR / "managed_generation_service.py").read_text(encoding="utf-8-sig")
+        service_path = BACKEND_DIR / "api" / "services" / "storyboard_video_prompt_builder.py"
+
+        self.assertTrue(service_path.exists())
+        service_source = service_path.read_text(encoding="utf-8-sig")
+        service_exports = {
+            "extract_scene_description",
+            "default_storyboard_video_prompt_template",
+            "build_sora_prompt",
+        }
+        main_aliases = {
+            "extract_scene_description": "extract_scene_description",
+            "_default_storyboard_video_prompt_template": "default_storyboard_video_prompt_template",
+            "build_sora_prompt": "build_sora_prompt",
+        }
+
+        self.assertTrue(service_exports <= _top_level_definition_names(service_source))
+        self.assertIn("from api.services import storyboard_video_prompt_builder", main_source)
+        self.assertIn("from api.services import storyboard_video_prompt_builder", episodes_source)
+        self.assertIn("from api.services import storyboard_video_prompt_builder", settings_source)
+        self.assertEqual(_top_level_definition_names(main_source) & set(main_aliases), set())
+        self.assertNotIn("def _default_storyboard_video_prompt_template", main_source)
+        for name, service_name in main_aliases.items():
+            self.assertIn(f"{name} = storyboard_video_prompt_builder.{service_name}", main_source)
+        self.assertIn("build_sora_prompt = storyboard_video_prompt_builder.build_sora_prompt", episodes_source)
+        self.assertNotIn("def _default_storyboard_video_prompt_template", settings_source)
+        self.assertIn(
+            "storyboard_video_prompt_builder.default_storyboard_video_prompt_template",
+            settings_source,
+        )
+        self.assertIn(
+            "build_sora_prompt",
+            _imported_names_from_module(managed_source, "api.services.storyboard_video_prompt_builder"),
+        )
+        self.assertNotIn("build_sora_prompt", _imported_names_from_module(managed_source, "main"))
 
     def test_storyboard_sound_card_helpers_live_in_service_module(self):
         main_source = MAIN_PATH.read_text(encoding="utf-8-sig")

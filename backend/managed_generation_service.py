@@ -11,6 +11,7 @@ from sqlalchemy import func
 from database import SessionLocal
 from runtime_load import request_load_tracker
 import models
+from api.services.storyboard_video_prompt_builder import build_sora_prompt
 import billing_service
 from video_service import (
     check_video_status,
@@ -537,7 +538,6 @@ class ManagedGenerationPoller:
         try:
             # Import required functions
             from main import (
-                build_sora_prompt,
                 generate_collage_image,
                 _build_unified_storyboard_video_task_payload,
                 _get_episode_storyboard_video_settings,
@@ -1086,8 +1086,6 @@ class ManagedGenerationPoller:
 
     def _retry_if_needed(self, failed_task, db):
         """doc"""
-        from main import build_sora_prompt
-
         session = db.query(models.ManagedSession).filter(
             models.ManagedSession.id == failed_task.session_id
         ).first()
