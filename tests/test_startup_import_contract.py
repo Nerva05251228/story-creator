@@ -190,13 +190,25 @@ class StartupImportContractTests(unittest.TestCase):
             "_is_scene_subject_card_type": "is_scene_subject_card_type",
             "_collect_storyboard2_reference_images": "collect_storyboard2_reference_images",
         }
+        board_service_aliases = {
+            "_clean_scene_ai_prompt_text": "clean_scene_ai_prompt_text",
+            "_extract_scene_description_from_card_ids": "extract_scene_description_from_card_ids",
+            "_resolve_storyboard2_scene_override_text": "resolve_storyboard2_scene_override_text",
+            "_pick_storyboard2_source_shots": "pick_storyboard2_source_shots",
+            "_ensure_storyboard2_initialized": "ensure_storyboard2_initialized",
+            "_serialize_storyboard2_board": "serialize_storyboard2_board",
+            "_subject_type_sort_key": "subject_type_sort_key",
+        }
 
         self.assertEqual(top_level_defs & delegated_names, set())
         self.assertIn("from api.services import storyboard2_reference_images", source)
-        for name in delegated_names - set(service_aliases):
+        self.assertIn("from api.services import storyboard2_board", source)
+        for name in delegated_names - set(service_aliases) - set(board_service_aliases):
             self.assertIn(f"{name} = storyboard2.{name}", source)
         for name, service_name in service_aliases.items():
             self.assertIn(f"{name} = storyboard2_reference_images.{service_name}", source)
+        for name, service_name in board_service_aliases.items():
+            self.assertIn(f"{name} = storyboard2_board.{service_name}", source)
 
     def test_storyboard2_reference_image_helpers_live_in_service_module(self):
         main_source = MAIN_PATH.read_text(encoding="utf-8-sig")
@@ -219,6 +231,36 @@ class StartupImportContractTests(unittest.TestCase):
         for name, service_name in aliases.items():
             self.assertIn(f"{name} = storyboard2_reference_images.{service_name}", main_source)
             self.assertIn(f"{name} = storyboard2_reference_images.{service_name}", router_source)
+            self.assertIn(f"def {service_name}", service_source)
+
+    def test_storyboard2_board_helpers_live_in_service_module(self):
+        main_source = MAIN_PATH.read_text(encoding="utf-8-sig")
+        episodes_source = (BACKEND_DIR / "api" / "routers" / "episodes.py").read_text(encoding="utf-8-sig")
+        router_source = (BACKEND_DIR / "api" / "routers" / "storyboard2.py").read_text(encoding="utf-8-sig")
+        service_path = BACKEND_DIR / "api" / "services" / "storyboard2_board.py"
+
+        self.assertTrue(service_path.exists())
+        service_source = service_path.read_text(encoding="utf-8-sig")
+        aliases = {
+            "_clean_scene_ai_prompt_text": "clean_scene_ai_prompt_text",
+            "_extract_scene_description_from_card_ids": "extract_scene_description_from_card_ids",
+            "_resolve_storyboard2_scene_override_text": "resolve_storyboard2_scene_override_text",
+            "_pick_storyboard2_source_shots": "pick_storyboard2_source_shots",
+            "_ensure_storyboard2_initialized": "ensure_storyboard2_initialized",
+            "_serialize_storyboard2_board": "serialize_storyboard2_board",
+            "_subject_type_sort_key": "subject_type_sort_key",
+        }
+
+        self.assertIn("from api.services import storyboard2_board", main_source)
+        self.assertIn("from api.services import storyboard2_board", episodes_source)
+        self.assertIn("storyboard2_board,", router_source)
+        self.assertEqual(_top_level_definition_names(main_source) & set(aliases), set())
+        self.assertEqual(_top_level_definition_names(episodes_source) & set(aliases), set())
+        self.assertEqual(_top_level_definition_names(router_source) & set(aliases), set())
+        for name, service_name in aliases.items():
+            self.assertIn(f"{name} = storyboard2_board.{service_name}", main_source)
+            self.assertIn(f"{name} = storyboard2_board.{service_name}", episodes_source)
+            self.assertIn(f"{name} = storyboard2_board.{service_name}", router_source)
             self.assertIn(f"def {service_name}", service_source)
 
     def test_episode_cleanup_helpers_live_in_service_module(self):

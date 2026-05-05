@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 This project uses a lightweight `Added`, `Changed`, `Fixed`, `Security`, and `Migration` structure.
 
+## 2026-05-05 - Storyboard2 Board Service Extraction
+
+### Added
+
+- Added focused service and import-contract coverage for storyboard2 board initialization, scene override extraction, subject sorting, preview selection, image candidates, and video state serialization.
+
+### Changed
+
+- Moved storyboard2 board read-model and initialization helpers out of `backend/api/routers/storyboard2.py` into `backend/api/services/storyboard2_board.py`, with compatibility aliases kept in `backend/main.py`, `backend/api/routers/episodes.py`, and `backend/api/routers/storyboard2.py`.
+
 ## 2026-05-05 - Storyboard Materialization Service Expansion
 
 ### Added
