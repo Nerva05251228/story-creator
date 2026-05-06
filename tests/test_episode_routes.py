@@ -712,6 +712,7 @@ class EpisodeRouterTests(unittest.TestCase):
         self.assertEqual(payload["status"], "processing")
         self.assertEqual(payload["progress"], 12)
         self.assertEqual(len(started_pollers), 1)
+        self.assertEqual(started_pollers[0].kwargs["args"], (fixture["sub_shot_id"], "storyboard2-video-task", unittest.mock.ANY))
         record_video_charge.assert_called_once()
         charge_kwargs = record_video_charge.call_args.kwargs
         self.assertEqual(charge_kwargs["task_id"], "storyboard2-video-task")

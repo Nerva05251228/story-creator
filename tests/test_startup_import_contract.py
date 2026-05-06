@@ -182,6 +182,7 @@ class StartupImportContractTests(unittest.TestCase):
             "_is_storyboard2_video_processing",
             "_build_storyboard2_video_name_tag",
             "_process_storyboard2_video_cover_and_cdn",
+            "_recover_storyboard2_video_polling",
             "_sync_storyboard2_processing_videos",
         }
         service_aliases = {
@@ -218,6 +219,10 @@ class StartupImportContractTests(unittest.TestCase):
             "_build_storyboard2_video_name_tag": "build_storyboard2_video_name_tag",
             "_process_storyboard2_video_cover_and_cdn": "process_storyboard2_video_cover_and_cdn",
         }
+        video_polling_service_aliases = {
+            "_recover_storyboard2_video_polling": "recover_storyboard2_video_polling",
+            "_sync_storyboard2_processing_videos": "sync_storyboard2_processing_videos",
+        }
 
         self.assertEqual(top_level_defs & delegated_names, set())
         self.assertIn("from api.services import storyboard2_reference_images", source)
@@ -225,8 +230,9 @@ class StartupImportContractTests(unittest.TestCase):
         self.assertIn("from api.services import storyboard2_media", source)
         self.assertIn("from api.services import storyboard2_permissions", source)
         self.assertIn("from api.services import storyboard2_image_task_state", source)
+        self.assertIn("from api.services import storyboard2_video_polling", source)
         self.assertIn("from api.services import storyboard2_video_tasks", source)
-        for name in delegated_names - set(service_aliases) - set(board_service_aliases) - set(media_service_aliases) - set(permission_service_aliases) - set(image_task_state_service_aliases) - set(video_task_service_aliases):
+        for name in delegated_names - set(service_aliases) - set(board_service_aliases) - set(media_service_aliases) - set(permission_service_aliases) - set(image_task_state_service_aliases) - set(video_task_service_aliases) - set(video_polling_service_aliases):
             self.assertIn(f"{name} = storyboard2.{name}", source)
         for name, service_name in service_aliases.items():
             self.assertIn(f"{name} = storyboard2_reference_images.{service_name}", source)
@@ -240,6 +246,8 @@ class StartupImportContractTests(unittest.TestCase):
             self.assertIn(f"{name} = storyboard2_image_task_state.{service_name}", source)
         for name, service_name in video_task_service_aliases.items():
             self.assertIn(f"{name} = storyboard2_video_tasks.{service_name}", source)
+        for name, service_name in video_polling_service_aliases.items():
+            self.assertIn(f"{name} = storyboard2_video_polling.{service_name}", source)
 
     def test_storyboard2_reference_image_helpers_live_in_service_module(self):
         main_source = MAIN_PATH.read_text(encoding="utf-8-sig")
@@ -365,6 +373,32 @@ class StartupImportContractTests(unittest.TestCase):
             self.assertIn(f"{name} = storyboard2_video_tasks.{service_name}", main_source)
             self.assertIn(f"{name} = storyboard2_video_tasks.{service_name}", episodes_source)
             self.assertIn(f"{name} = storyboard2_video_tasks.{service_name}", router_source)
+
+    def test_storyboard2_video_polling_helpers_live_in_service_module(self):
+        main_source = MAIN_PATH.read_text(encoding="utf-8-sig")
+        episodes_source = (BACKEND_DIR / "api" / "routers" / "episodes.py").read_text(encoding="utf-8-sig")
+        router_source = (BACKEND_DIR / "api" / "routers" / "storyboard2.py").read_text(encoding="utf-8-sig")
+        service_path = BACKEND_DIR / "api" / "services" / "storyboard2_video_polling.py"
+
+        self.assertTrue(service_path.exists())
+        service_source = service_path.read_text(encoding="utf-8-sig")
+        aliases = {
+            "_recover_storyboard2_video_polling": "recover_storyboard2_video_polling",
+            "_sync_storyboard2_processing_videos": "sync_storyboard2_processing_videos",
+        }
+
+        self.assertIn("from api.services import storyboard2_video_polling", main_source)
+        self.assertIn("from api.services import storyboard2_video_polling", episodes_source)
+        self.assertIn("storyboard2_video_polling,", router_source)
+        self.assertIn("def poll_storyboard2_sub_shot_video_status", service_source)
+        self.assertNotIn("def _poll_storyboard2_sub_shot_video_status", router_source)
+        self.assertEqual(_top_level_definition_names(router_source) & (set(aliases) | {"_poll_storyboard2_sub_shot_video_status"}), set())
+        self.assertIn("storyboard2_video_polling.poll_storyboard2_sub_shot_video_status", router_source)
+        for name, service_name in aliases.items():
+            self.assertIn(f"def {service_name}", service_source)
+            self.assertIn(f"{name} = storyboard2_video_polling.{service_name}", main_source)
+            self.assertIn(f"{name} = storyboard2_video_polling.{service_name}", episodes_source)
+            self.assertIn(f"{name} = storyboard2_video_polling.{service_name}", router_source)
 
     def test_storyboard2_image_task_state_helpers_live_in_service_module(self):
         main_source = MAIN_PATH.read_text(encoding="utf-8-sig")

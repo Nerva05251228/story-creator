@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 This project uses a lightweight `Added`, `Changed`, `Fixed`, `Security`, and `Migration` structure.
 
+## 2026-05-06 - Storyboard2 Video Polling Service Extraction
+
+### Added
+
+- Added `backend/api/services/storyboard2_video_polling.py` for shared storyboard2 video polling, recovery, and processing-video sync helpers.
+- Added focused storyboard2 video polling service coverage, import-contract coverage, and a route-level thread-argument regression test for storyboard2 video submission.
+
+### Changed
+
+- Updated `backend/main.py`, `backend/api/routers/episodes.py`, and `backend/api/routers/storyboard2.py` to reuse the shared storyboard2 video polling service while preserving existing compatibility aliases for sync and recovery helpers.
+
+### Fixed
+
+- Fixed storyboard2 video submission polling thread startup to pass the current helper argument shape instead of a stale 4-argument call.
+
 ## 2026-05-06 - Storyboard2 Image Task State Service Extraction
 
 ### Added
