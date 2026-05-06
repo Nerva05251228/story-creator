@@ -81,6 +81,7 @@ from api.services import storyboard_video_prompt_builder
 from api.services import storyboard_video_settings
 from api.services import storyboard_video_payload
 from api.services import voiceover_data
+from api.services import voiceover_resources
 from api.schemas import episodes as episode_schemas
 from api.schemas import shots as shot_schemas
 from api.schemas.shots import GenerateStoryboardImageRequest, GenerateDetailImagesRequest, SetDetailImageCoverRequest
@@ -4157,7 +4158,7 @@ _parse_episode_voiceover_payload = voiceover_data.parse_episode_voiceover_payloa
 _voiceover_first_reference_id = voiceover_data.voiceover_first_reference_id
 _iter_voiceover_lines = voiceover_data.iter_voiceover_lines
 
-def _ensure_voiceover_permission(
+def _legacy_ensure_voiceover_permission(
     episode_id: int,
     user: models.User,
     db: Session
@@ -4172,7 +4173,7 @@ def _ensure_voiceover_permission(
 
     return episode, script
 
-def _replace_voice_reference_for_script_episodes(
+def _legacy_replace_voice_reference_for_script_episodes(
     db: Session,
     script_id: int,
     removed_ref_id: str,
@@ -4201,7 +4202,7 @@ def _replace_voice_reference_for_script_episodes(
             episode.voiceover_data = json.dumps(payload, ensure_ascii=False)
     return updated_lines
 
-def _clear_tts_field_for_script_episodes(
+def _legacy_clear_tts_field_for_script_episodes(
     db: Session,
     script_id: int,
     field_name: str,
@@ -4249,7 +4250,7 @@ def _save_voiceover_tts_debug(folder_name: str, file_name: str, payload: dict):
     except Exception as e:
         print(f"[voiceover_tts][debug] save failed: {str(e)}")
 
-def _resolve_voiceover_audio_source(reference_item: dict) -> str:
+def _legacy_resolve_voiceover_audio_source(reference_item: dict) -> str:
     if not isinstance(reference_item, dict):
         return ""
     url = str(reference_item.get("url") or "").strip()
@@ -4261,6 +4262,12 @@ def _resolve_voiceover_audio_source(reference_item: dict) -> str:
             return local_path
         return os.path.abspath(os.path.join(os.path.dirname(__file__), "..", local_path))
     return ""
+
+_ensure_voiceover_permission = voiceover_resources.ensure_voiceover_permission
+_replace_voice_reference_for_script_episodes = voiceover_resources.replace_voice_reference_for_script_episodes
+_clear_tts_field_for_script_episodes = voiceover_resources.clear_tts_field_for_script_episodes
+_resolve_voiceover_audio_source = voiceover_resources.resolve_voiceover_audio_source
+
 
 def _upload_local_or_remote_audio_to_cdn(audio_source: str) -> str:
     source = str(audio_source or "").strip()
@@ -6019,7 +6026,7 @@ async def get_voiceover_shared_data(
     return {"success": True, "shared": shared}
 
 
-async def create_voiceover_voice_reference(
+async def _legacy_create_voiceover_voice_reference(
     episode_id: int,
     name: str = Form(...),
     file: UploadFile = File(...),
@@ -6049,7 +6056,7 @@ async def create_voiceover_voice_reference(
     return {"success": True, "item": item, "shared": _load_script_voiceover_shared_data(script)}
 
 
-async def rename_voiceover_voice_reference(
+async def _legacy_rename_voiceover_voice_reference(
     episode_id: int,
     reference_id: str,
     request: dict,
@@ -6092,7 +6099,7 @@ async def rename_voiceover_voice_reference(
     }
 
 
-async def preview_voiceover_voice_reference(
+async def _legacy_preview_voiceover_voice_reference(
     episode_id: int,
     reference_id: str,
     user: models.User = Depends(get_current_user),
@@ -6130,7 +6137,7 @@ async def preview_voiceover_voice_reference(
     )
 
 
-async def delete_voiceover_voice_reference(
+async def _legacy_delete_voiceover_voice_reference(
     episode_id: int,
     reference_id: str,
     user: models.User = Depends(get_current_user),
@@ -6165,7 +6172,7 @@ async def delete_voiceover_voice_reference(
     }
 
 
-async def upsert_voiceover_vector_preset(
+async def _legacy_upsert_voiceover_vector_preset(
     episode_id: int,
     request: dict,
     user: models.User = Depends(get_current_user),
@@ -6206,7 +6213,7 @@ async def upsert_voiceover_vector_preset(
     return {"success": True, "preset_id": preset_id, "shared": _load_script_voiceover_shared_data(script)}
 
 
-async def delete_voiceover_vector_preset(
+async def _legacy_delete_voiceover_vector_preset(
     episode_id: int,
     preset_id: str,
     user: models.User = Depends(get_current_user),
@@ -6239,7 +6246,7 @@ async def delete_voiceover_vector_preset(
     }
 
 
-async def create_voiceover_emotion_audio_preset(
+async def _legacy_create_voiceover_emotion_audio_preset(
     episode_id: int,
     name: str = Form(...),
     description: str = Form(""),
@@ -6270,7 +6277,7 @@ async def create_voiceover_emotion_audio_preset(
     return {"success": True, "item": item, "shared": _load_script_voiceover_shared_data(script)}
 
 
-async def delete_voiceover_emotion_audio_preset(
+async def _legacy_delete_voiceover_emotion_audio_preset(
     episode_id: int,
     preset_id: str,
     user: models.User = Depends(get_current_user),
@@ -6303,7 +6310,7 @@ async def delete_voiceover_emotion_audio_preset(
     }
 
 
-async def upsert_voiceover_setting_template(
+async def _legacy_upsert_voiceover_setting_template(
     episode_id: int,
     request: dict,
     user: models.User = Depends(get_current_user),
@@ -6369,7 +6376,7 @@ async def upsert_voiceover_setting_template(
     }
 
 
-async def delete_voiceover_setting_template(
+async def _legacy_delete_voiceover_setting_template(
     episode_id: int,
     template_id: str,
     user: models.User = Depends(get_current_user),
@@ -6395,6 +6402,18 @@ async def delete_voiceover_setting_template(
         "success": True,
         "shared": _load_script_voiceover_shared_data(script)
     }
+
+
+create_voiceover_voice_reference = voiceover_resources.create_voiceover_voice_reference
+rename_voiceover_voice_reference = voiceover_resources.rename_voiceover_voice_reference
+preview_voiceover_voice_reference = voiceover_resources.preview_voiceover_voice_reference
+delete_voiceover_voice_reference = voiceover_resources.delete_voiceover_voice_reference
+upsert_voiceover_vector_preset = voiceover_resources.upsert_voiceover_vector_preset
+delete_voiceover_vector_preset = voiceover_resources.delete_voiceover_vector_preset
+create_voiceover_emotion_audio_preset = voiceover_resources.create_voiceover_emotion_audio_preset
+delete_voiceover_emotion_audio_preset = voiceover_resources.delete_voiceover_emotion_audio_preset
+upsert_voiceover_setting_template = voiceover_resources.upsert_voiceover_setting_template
+delete_voiceover_setting_template = voiceover_resources.delete_voiceover_setting_template
 
 
 async def enqueue_voiceover_line_generate(

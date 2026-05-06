@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 This project uses a lightweight `Added`, `Changed`, `Fixed`, `Security`, and `Migration` structure.
 
+## 2026-05-06 - Voiceover Shared Resources Service Extraction
+
+### Added
+
+- Added `backend/api/services/voiceover_resources.py` for shared voice reference, vector preset, emotion audio preset, and setting template CRUD logic.
+- Added focused voiceover shared-resources service coverage, route delegation coverage, and import-contract checks for the extraction.
+
+### Changed
+
+- Updated `backend/api/routers/voiceover.py` to delegate shared resource CRUD routes through the new voiceover resources service while keeping route ownership unchanged.
+- Updated `backend/main.py` to reuse shared voiceover resource helpers and CRUD callables through service aliases instead of keeping a second live implementation.
+
 ## 2026-05-06 - Episode Storyboard Prompt Submission Service Extraction
 
 ### Added

@@ -1334,6 +1334,54 @@ class StartupImportContractTests(unittest.TestCase):
                 source,
             )
 
+    def test_voiceover_shared_resource_helpers_live_in_service_module(self):
+        main_source = MAIN_PATH.read_text(encoding="utf-8-sig")
+        router_source = (BACKEND_DIR / "api" / "routers" / "voiceover.py").read_text(encoding="utf-8-sig")
+        service_path = BACKEND_DIR / "api" / "services" / "voiceover_resources.py"
+        helper_aliases = {
+            "_ensure_voiceover_permission": "ensure_voiceover_permission",
+            "_replace_voice_reference_for_script_episodes": "replace_voice_reference_for_script_episodes",
+            "_clear_tts_field_for_script_episodes": "clear_tts_field_for_script_episodes",
+            "_resolve_voiceover_audio_source": "resolve_voiceover_audio_source",
+        }
+        route_names = {
+            "create_voiceover_voice_reference",
+            "rename_voiceover_voice_reference",
+            "preview_voiceover_voice_reference",
+            "delete_voiceover_voice_reference",
+            "upsert_voiceover_vector_preset",
+            "delete_voiceover_vector_preset",
+            "create_voiceover_emotion_audio_preset",
+            "delete_voiceover_emotion_audio_preset",
+            "upsert_voiceover_setting_template",
+            "delete_voiceover_setting_template",
+        }
+        delegated_names = set(helper_aliases) | route_names
+
+        self.assertTrue(service_path.exists())
+        service_source = service_path.read_text(encoding="utf-8-sig")
+
+        self.assertIn("from api.services import voiceover_resources", main_source)
+        self.assertIn("from api.services import voiceover_resources", router_source)
+        self.assertEqual(_top_level_definition_names(main_source) & delegated_names, set())
+        for helper_name, service_name in helper_aliases.items():
+            self.assertIn(f"def {service_name}", service_source)
+            self.assertIn(
+                f"{helper_name} = voiceover_resources.{service_name}",
+                main_source,
+            )
+            self.assertIn(
+                f"{helper_name} = voiceover_resources.{service_name}",
+                router_source,
+            )
+        for route_name in route_names:
+            self.assertIn(f"def {route_name}", service_source)
+            self.assertIn(f"{route_name} = voiceover_resources.{route_name}", main_source)
+            self.assertIn(f"voiceover_resources.{route_name}", router_source)
+        for helper_name in helper_aliases:
+            self.assertNotIn(f"def {helper_name}", main_source)
+            self.assertNotIn(f"def {helper_name}", router_source)
+
     def test_voiceover_route_module_owns_voiceover_routes(self):
         main_source = MAIN_PATH.read_text(encoding="utf-8-sig")
         episodes_source = (BACKEND_DIR / "api" / "routers" / "episodes.py").read_text(encoding="utf-8-sig")

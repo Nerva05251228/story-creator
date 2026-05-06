@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 import models
 from api.services import voiceover_data
+from api.services import voiceover_resources
 from api.services.card_media import save_and_upload_to_cdn
 from auth import get_current_user
 from dashboard_service import sync_voiceover_tts_task_to_dashboard
@@ -55,7 +56,7 @@ _voiceover_first_reference_id = voiceover_data.voiceover_first_reference_id
 _iter_voiceover_lines = voiceover_data.iter_voiceover_lines
 
 
-def _ensure_voiceover_permission(
+def _legacy_ensure_voiceover_permission(
     episode_id: int,
     user: models.User,
     db: Session,
@@ -71,7 +72,7 @@ def _ensure_voiceover_permission(
     return episode, script
 
 
-def _replace_voice_reference_for_script_episodes(
+def _legacy_replace_voice_reference_for_script_episodes(
     db: Session,
     script_id: int,
     removed_ref_id: str,
@@ -100,7 +101,7 @@ def _replace_voice_reference_for_script_episodes(
     return updated_lines
 
 
-def _clear_tts_field_for_script_episodes(
+def _legacy_clear_tts_field_for_script_episodes(
     db: Session,
     script_id: int,
     field_name: str,
@@ -129,18 +130,10 @@ def _clear_tts_field_for_script_episodes(
     return updated_lines
 
 
-def _resolve_voiceover_audio_source(reference_item: dict) -> str:
-    if not isinstance(reference_item, dict):
-        return ""
-    url = str(reference_item.get("url") or "").strip()
-    if url:
-        return url
-    local_path = str(reference_item.get("local_path") or "").strip()
-    if local_path:
-        if os.path.isabs(local_path):
-            return local_path
-        return os.path.abspath(os.path.join(os.path.dirname(__file__), "..", local_path))
-    return ""
+_ensure_voiceover_permission = voiceover_resources.ensure_voiceover_permission
+_replace_voice_reference_for_script_episodes = voiceover_resources.replace_voice_reference_for_script_episodes
+_clear_tts_field_for_script_episodes = voiceover_resources.clear_tts_field_for_script_episodes
+_resolve_voiceover_audio_source = voiceover_resources.resolve_voiceover_audio_source
 
 
 @router.put("/api/episodes/{episode_id}/voiceover")
@@ -193,27 +186,13 @@ async def create_voiceover_voice_reference(
     user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    _, script = _ensure_voiceover_permission(episode_id, user, db)
-
-    ref_name = str(name or "").strip()
-    if not ref_name:
-        raise HTTPException(status_code=400, detail="音色参考音频名称不能为空")
-
-    cdn_url = save_and_upload_to_cdn(file)
-    shared = _load_script_voiceover_shared_data(script)
-    item = {
-        "id": f"voice_ref_{uuid.uuid4().hex}",
-        "name": ref_name,
-        "file_name": str(file.filename or "").strip(),
-        "url": cdn_url,
-        "local_path": "",
-        "created_at": datetime.utcnow().isoformat(),
-    }
-    shared["voice_references"].append(item)
-    _save_script_voiceover_shared_data(script, shared)
-    db.commit()
-
-    return {"success": True, "item": item, "shared": _load_script_voiceover_shared_data(script)}
+    return await voiceover_resources.create_voiceover_voice_reference(
+        episode_id,
+        name,
+        file,
+        user,
+        db,
+    )
 
 
 @router.put("/api/episodes/{episode_id}/voiceover/shared/voice-references/{reference_id}")
@@ -224,40 +203,13 @@ async def rename_voiceover_voice_reference(
     user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    _, script = _ensure_voiceover_permission(episode_id, user, db)
-
-    target_id = str(reference_id or "").strip()
-    if not target_id:
-        raise HTTPException(status_code=400, detail="reference_id不能为空")
-
-    new_name = str(request.get("name") or "").strip()
-    if not new_name:
-        raise HTTPException(status_code=400, detail="音色名称不能为空")
-
-    shared = _load_script_voiceover_shared_data(script)
-    refs = shared.get("voice_references", [])
-    if not isinstance(refs, list):
-        refs = []
-        shared["voice_references"] = refs
-
-    target_item = None
-    for item in refs:
-        if isinstance(item, dict) and str(item.get("id") or "").strip() == target_id:
-            target_item = item
-            break
-    if not isinstance(target_item, dict):
-        raise HTTPException(status_code=404, detail="音色参考音频不存在")
-
-    target_item["name"] = new_name
-    target_item["updated_at"] = datetime.utcnow().isoformat()
-
-    _save_script_voiceover_shared_data(script, shared)
-    db.commit()
-    return {
-        "success": True,
-        "item": target_item,
-        "shared": _load_script_voiceover_shared_data(script),
-    }
+    return await voiceover_resources.rename_voiceover_voice_reference(
+        episode_id,
+        reference_id,
+        request,
+        user,
+        db,
+    )
 
 
 @router.get("/api/episodes/{episode_id}/voiceover/shared/voice-references/{reference_id}/preview")
@@ -267,35 +219,11 @@ async def preview_voiceover_voice_reference(
     user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    _, script = _ensure_voiceover_permission(episode_id, user, db)
-    target_id = str(reference_id or "").strip()
-    if not target_id:
-        raise HTTPException(status_code=400, detail="reference_id不能为空")
-
-    shared = _load_script_voiceover_shared_data(script)
-    refs = shared.get("voice_references", [])
-    target = None
-    if isinstance(refs, list):
-        target = next((item for item in refs if str(item.get("id") or "").strip() == target_id), None)
-    if not isinstance(target, dict):
-        raise HTTPException(status_code=404, detail="音色参考音频不存在")
-
-    source = _resolve_voiceover_audio_source(target)
-    if not source:
-        raise HTTPException(status_code=404, detail="音色参考音频不可访问")
-
-    if source.startswith("http://") or source.startswith("https://"):
-        return RedirectResponse(url=source, status_code=307)
-
-    if not os.path.exists(source):
-        raise HTTPException(status_code=404, detail="音色参考音频文件不存在")
-
-    media_type = mimetypes.guess_type(source)[0] or "application/octet-stream"
-    inline_name = os.path.basename(source)
-    return FileResponse(
-        source,
-        media_type=media_type,
-        headers={"Content-Disposition": f'inline; filename="{inline_name}"'},
+    return await voiceover_resources.preview_voiceover_voice_reference(
+        episode_id,
+        reference_id,
+        user,
+        db,
     )
 
 
@@ -306,33 +234,12 @@ async def delete_voiceover_voice_reference(
     user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    _, script = _ensure_voiceover_permission(episode_id, user, db)
-    target_id = str(reference_id or "").strip()
-    if not target_id:
-        raise HTTPException(status_code=400, detail="reference_id不能为空")
-
-    shared = _load_script_voiceover_shared_data(script)
-    before = len(shared.get("voice_references", []))
-    shared["voice_references"] = [
-        item for item in shared.get("voice_references", [])
-        if str(item.get("id") or "").strip() != target_id
-    ]
-    if len(shared["voice_references"]) == before:
-        raise HTTPException(status_code=404, detail="音色参考音频不存在")
-
-    fallback_ref_id = _voiceover_first_reference_id(shared)
-    _save_script_voiceover_shared_data(script, shared)
-    updated_line_count = _replace_voice_reference_for_script_episodes(
-        db, script.id, target_id, fallback_ref_id
+    return await voiceover_resources.delete_voiceover_voice_reference(
+        episode_id,
+        reference_id,
+        user,
+        db,
     )
-    db.commit()
-
-    return {
-        "success": True,
-        "shared": _load_script_voiceover_shared_data(script),
-        "fallback_voice_reference_id": fallback_ref_id,
-        "updated_line_count": updated_line_count,
-    }
 
 
 @router.post("/api/episodes/{episode_id}/voiceover/shared/vector-presets")
@@ -342,39 +249,12 @@ async def upsert_voiceover_vector_preset(
     user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    _, script = _ensure_voiceover_permission(episode_id, user, db)
-    name = str(request.get("name") or "").strip()
-    if not name:
-        raise HTTPException(status_code=400, detail="预设名称不能为空")
-
-    preset_id = str(request.get("id") or "").strip() or f"vector_preset_{uuid.uuid4().hex}"
-    vector_config = _normalize_voiceover_vector_config(request.get("vector_config"))
-    description = str(request.get("description") or "").strip()
-
-    shared = _load_script_voiceover_shared_data(script)
-    presets = shared.get("vector_presets", [])
-    updated = False
-    now_iso = datetime.utcnow().isoformat()
-    for item in presets:
-        if str(item.get("id") or "").strip() == preset_id:
-            item["name"] = name
-            item["description"] = description
-            item["vector_config"] = vector_config
-            updated = True
-            break
-    if not updated:
-        presets.append({
-            "id": preset_id,
-            "name": name,
-            "description": description,
-            "vector_config": vector_config,
-            "created_at": now_iso,
-        })
-    shared["vector_presets"] = presets
-    _save_script_voiceover_shared_data(script, shared)
-    db.commit()
-
-    return {"success": True, "preset_id": preset_id, "shared": _load_script_voiceover_shared_data(script)}
+    return await voiceover_resources.upsert_voiceover_vector_preset(
+        episode_id,
+        request,
+        user,
+        db,
+    )
 
 
 @router.delete("/api/episodes/{episode_id}/voiceover/shared/vector-presets/{preset_id}")
@@ -384,31 +264,12 @@ async def delete_voiceover_vector_preset(
     user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    _, script = _ensure_voiceover_permission(episode_id, user, db)
-    target_id = str(preset_id or "").strip()
-    if not target_id:
-        raise HTTPException(status_code=400, detail="preset_id不能为空")
-
-    shared = _load_script_voiceover_shared_data(script)
-    before = len(shared.get("vector_presets", []))
-    shared["vector_presets"] = [
-        item for item in shared.get("vector_presets", [])
-        if str(item.get("id") or "").strip() != target_id
-    ]
-    if len(shared["vector_presets"]) == before:
-        raise HTTPException(status_code=404, detail="向量预设不存在")
-
-    _save_script_voiceover_shared_data(script, shared)
-    updated_line_count = _clear_tts_field_for_script_episodes(
-        db, script.id, "vector_preset_id", target_id
+    return await voiceover_resources.delete_voiceover_vector_preset(
+        episode_id,
+        preset_id,
+        user,
+        db,
     )
-    db.commit()
-
-    return {
-        "success": True,
-        "shared": _load_script_voiceover_shared_data(script),
-        "updated_line_count": updated_line_count,
-    }
 
 
 @router.post("/api/episodes/{episode_id}/voiceover/shared/emotion-audio-presets")
@@ -420,27 +281,14 @@ async def create_voiceover_emotion_audio_preset(
     user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    _, script = _ensure_voiceover_permission(episode_id, user, db)
-    preset_name = str(name or "").strip()
-    if not preset_name:
-        raise HTTPException(status_code=400, detail="情感参考音频名称不能为空")
-
-    cdn_url = save_and_upload_to_cdn(file)
-    shared = _load_script_voiceover_shared_data(script)
-    item = {
-        "id": f"emotion_audio_preset_{uuid.uuid4().hex}",
-        "name": preset_name,
-        "description": str(description or "").strip(),
-        "file_name": str(file.filename or "").strip(),
-        "url": cdn_url,
-        "local_path": "",
-        "created_at": datetime.utcnow().isoformat(),
-    }
-    shared["emotion_audio_presets"].append(item)
-    _save_script_voiceover_shared_data(script, shared)
-    db.commit()
-
-    return {"success": True, "item": item, "shared": _load_script_voiceover_shared_data(script)}
+    return await voiceover_resources.create_voiceover_emotion_audio_preset(
+        episode_id,
+        name,
+        description,
+        file,
+        user,
+        db,
+    )
 
 
 @router.delete("/api/episodes/{episode_id}/voiceover/shared/emotion-audio-presets/{preset_id}")
@@ -450,31 +298,12 @@ async def delete_voiceover_emotion_audio_preset(
     user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    _, script = _ensure_voiceover_permission(episode_id, user, db)
-    target_id = str(preset_id or "").strip()
-    if not target_id:
-        raise HTTPException(status_code=400, detail="preset_id不能为空")
-
-    shared = _load_script_voiceover_shared_data(script)
-    before = len(shared.get("emotion_audio_presets", []))
-    shared["emotion_audio_presets"] = [
-        item for item in shared.get("emotion_audio_presets", [])
-        if str(item.get("id") or "").strip() != target_id
-    ]
-    if len(shared["emotion_audio_presets"]) == before:
-        raise HTTPException(status_code=404, detail="情感音频预设不存在")
-
-    _save_script_voiceover_shared_data(script, shared)
-    updated_line_count = _clear_tts_field_for_script_episodes(
-        db, script.id, "emotion_audio_preset_id", target_id
+    return await voiceover_resources.delete_voiceover_emotion_audio_preset(
+        episode_id,
+        preset_id,
+        user,
+        db,
     )
-    db.commit()
-
-    return {
-        "success": True,
-        "shared": _load_script_voiceover_shared_data(script),
-        "updated_line_count": updated_line_count,
-    }
 
 
 @router.post("/api/episodes/{episode_id}/voiceover/shared/setting-templates")
@@ -484,64 +313,12 @@ async def upsert_voiceover_setting_template(
     user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    _, script = _ensure_voiceover_permission(episode_id, user, db)
-
-    name = str(request.get("name") or "").strip()
-    if not name:
-        raise HTTPException(status_code=400, detail="模板名称不能为空")
-
-    shared = _load_script_voiceover_shared_data(script)
-    default_voice_ref_id = _voiceover_first_reference_id(shared)
-    settings = _normalize_voiceover_setting_template_payload(
-        request.get("settings"),
-        default_voice_ref_id,
+    return await voiceover_resources.upsert_voiceover_setting_template(
+        episode_id,
+        request,
+        user,
+        db,
     )
-
-    templates = shared.get("setting_templates", [])
-    if not isinstance(templates, list):
-        templates = []
-
-    target_id = str(request.get("id") or "").strip()
-    target_item = None
-    if target_id:
-        target_item = next(
-            (item for item in templates if str(item.get("id") or "").strip() == target_id),
-            None,
-        )
-    if not target_item:
-        target_item = next(
-            (item for item in templates if str(item.get("name") or "").strip() == name),
-            None,
-        )
-
-    now_iso = datetime.utcnow().isoformat()
-    if target_item:
-        target_item["name"] = name
-        target_item["settings"] = settings
-        target_item["updated_at"] = now_iso
-        if not str(target_item.get("created_at") or "").strip():
-            target_item["created_at"] = now_iso
-        target_id = str(target_item.get("id") or "").strip() or f"setting_template_{uuid.uuid4().hex}"
-        target_item["id"] = target_id
-    else:
-        target_id = target_id or f"setting_template_{uuid.uuid4().hex}"
-        templates.append({
-            "id": target_id,
-            "name": name,
-            "settings": settings,
-            "created_at": now_iso,
-            "updated_at": now_iso,
-        })
-
-    shared["setting_templates"] = templates
-    _save_script_voiceover_shared_data(script, shared)
-    db.commit()
-
-    return {
-        "success": True,
-        "template_id": target_id,
-        "shared": _load_script_voiceover_shared_data(script),
-    }
 
 
 @router.delete("/api/episodes/{episode_id}/voiceover/shared/setting-templates/{template_id}")
@@ -551,26 +328,12 @@ async def delete_voiceover_setting_template(
     user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    _, script = _ensure_voiceover_permission(episode_id, user, db)
-    target_id = str(template_id or "").strip()
-    if not target_id:
-        raise HTTPException(status_code=400, detail="template_id不能为空")
-
-    shared = _load_script_voiceover_shared_data(script)
-    before = len(shared.get("setting_templates", []))
-    shared["setting_templates"] = [
-        item for item in shared.get("setting_templates", [])
-        if str(item.get("id") or "").strip() != target_id
-    ]
-    if len(shared["setting_templates"]) == before:
-        raise HTTPException(status_code=404, detail="参数模板不存在")
-
-    _save_script_voiceover_shared_data(script, shared)
-    db.commit()
-    return {
-        "success": True,
-        "shared": _load_script_voiceover_shared_data(script),
-    }
+    return await voiceover_resources.delete_voiceover_setting_template(
+        episode_id,
+        template_id,
+        user,
+        db,
+    )
 
 
 @router.post("/api/episodes/{episode_id}/voiceover/lines/{line_id}/generate")
