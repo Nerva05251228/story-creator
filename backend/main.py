@@ -62,6 +62,7 @@ from api.services import shot_reference_workflow
 from api.services import simple_storyboard_batches as simple_storyboard_batches_service
 from api.services import storyboard_defaults
 from api.services import storyboard2_board
+from api.services import storyboard2_image_task_state
 from api.services import storyboard2_media
 from api.services import storyboard2_permissions
 from api.services import storyboard2_reference_images
@@ -178,14 +179,14 @@ from storyboard_video_reference import (
     resolve_scene_reference_image_url,
     should_autofill_scene_override,
 )
-from threading import Thread, Lock
+from threading import Thread
 
 # 创建线程池（用于处理同步阻塞调用）
 executor = ThreadPoolExecutor(max_workers=10)
 
 # 故事板2镜头图运行中任务（进程内）
-storyboard2_active_image_tasks = set()
-storyboard2_active_image_tasks_lock = Lock()
+storyboard2_active_image_tasks = storyboard2_image_task_state.storyboard2_active_image_tasks
+storyboard2_active_image_tasks_lock = storyboard2_image_task_state.storyboard2_active_image_tasks_lock
 simple_storyboard_batch_update_lock = simple_storyboard_batches_service.simple_storyboard_batch_update_lock
 startup_bootstrap_lock_handle = None
 
@@ -11393,10 +11394,10 @@ _extract_scene_description_from_card_ids = storyboard2_board.extract_scene_descr
 _resolve_storyboard2_scene_override_text = storyboard2_board.resolve_storyboard2_scene_override_text
 _pick_storyboard2_source_shots = storyboard2_board.pick_storyboard2_source_shots
 _ensure_storyboard2_initialized = storyboard2_board.ensure_storyboard2_initialized
-_mark_storyboard2_image_task_active = storyboard2._mark_storyboard2_image_task_active
-_mark_storyboard2_image_task_inactive = storyboard2._mark_storyboard2_image_task_inactive
-_is_storyboard2_image_task_active = storyboard2._is_storyboard2_image_task_active
-_recover_orphan_storyboard2_image_tasks = storyboard2._recover_orphan_storyboard2_image_tasks
+_mark_storyboard2_image_task_active = storyboard2_image_task_state.mark_storyboard2_image_task_active
+_mark_storyboard2_image_task_inactive = storyboard2_image_task_state.mark_storyboard2_image_task_inactive
+_is_storyboard2_image_task_active = storyboard2_image_task_state.is_storyboard2_image_task_active
+_recover_orphan_storyboard2_image_tasks = storyboard2_image_task_state.recover_orphan_storyboard2_image_tasks
 _serialize_storyboard2_board = storyboard2_board.serialize_storyboard2_board
 _get_storyboard2_sub_shot_with_permission = storyboard2_permissions.get_storyboard2_sub_shot_with_permission
 _get_storyboard2_shot_with_permission = storyboard2_permissions.get_storyboard2_shot_with_permission

@@ -7,7 +7,7 @@ import traceback
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
-from threading import Lock, Thread
+from threading import Thread
 from typing import Any, Dict, List, Optional, Tuple
 
 import requests
@@ -43,6 +43,7 @@ from api.schemas.episodes import (
 from api.services import (
     billing_charges,
     storyboard2_board,
+    storyboard2_image_task_state,
     storyboard2_media,
     storyboard2_permissions,
     storyboard2_reference_images,
@@ -58,8 +59,8 @@ router = APIRouter()
 
 executor = ThreadPoolExecutor(max_workers=10)
 
-storyboard2_active_image_tasks = set()
-storyboard2_active_image_tasks_lock = Lock()
+storyboard2_active_image_tasks = storyboard2_image_task_state.storyboard2_active_image_tasks
+storyboard2_active_image_tasks_lock = storyboard2_image_task_state.storyboard2_active_image_tasks_lock
 
 STORYBOARD2_IMAGE_PROMPT_KEY = "storyboard2_image_prompt_prefix"
 STORYBOARD2_IMAGE_PROMPT_DEFAULT = "\u751f\u6210\u52a8\u6f2b\u98ce\u683c\u7684\u56fe\u7247"
@@ -252,66 +253,14 @@ _pick_storyboard2_source_shots = storyboard2_board.pick_storyboard2_source_shots
 _ensure_storyboard2_initialized = storyboard2_board.ensure_storyboard2_initialized
 
 
-def _recover_orphan_storyboard2_image_tasks(episode_id: int, db: Session) -> int:
-    """回收故事板2镜头图孤儿任务（服务重启后遗留processing）。"""
-    processing_rows = db.query(models.Storyboard2SubShot).join(
-        models.Storyboard2Shot,
-        models.Storyboard2SubShot.storyboard2_shot_id == models.Storyboard2Shot.id
-    ).filter(
-        models.Storyboard2Shot.episode_id == episode_id,
-        models.Storyboard2SubShot.image_generate_status == "processing"
-    ).all()
-
-    if not processing_rows:
-        return 0
-
-    with storyboard2_active_image_tasks_lock:
-        active_ids = set(storyboard2_active_image_tasks)
-
-    recovered_count = 0
-    for row in processing_rows:
-        if row.id in active_ids:
-            continue
-        row.image_generate_status = "failed"
-        row.image_generate_progress = ""
-        current_error = str(getattr(row, "image_generate_error", "") or "").strip()
-        if not current_error:
-            row.image_generate_error = "服务重启后任务中断，请重新生成"
-        recovered_count += 1
-
-    if recovered_count > 0:
-        db.commit()
-
-    return recovered_count
+_recover_orphan_storyboard2_image_tasks = storyboard2_image_task_state.recover_orphan_storyboard2_image_tasks
 
 _serialize_storyboard2_board = storyboard2_board.serialize_storyboard2_board
 
 
-def _mark_storyboard2_image_task_active(sub_shot_id: int):
-    try:
-        task_id = int(sub_shot_id)
-    except Exception:
-        return
-    with storyboard2_active_image_tasks_lock:
-        storyboard2_active_image_tasks.add(task_id)
-
-
-def _mark_storyboard2_image_task_inactive(sub_shot_id: int):
-    try:
-        task_id = int(sub_shot_id)
-    except Exception:
-        return
-    with storyboard2_active_image_tasks_lock:
-        storyboard2_active_image_tasks.discard(task_id)
-
-
-def _is_storyboard2_image_task_active(sub_shot_id: int) -> bool:
-    try:
-        task_id = int(sub_shot_id)
-    except Exception:
-        return False
-    with storyboard2_active_image_tasks_lock:
-        return task_id in storyboard2_active_image_tasks
+_mark_storyboard2_image_task_active = storyboard2_image_task_state.mark_storyboard2_image_task_active
+_mark_storyboard2_image_task_inactive = storyboard2_image_task_state.mark_storyboard2_image_task_inactive
+_is_storyboard2_image_task_active = storyboard2_image_task_state.is_storyboard2_image_task_active
 
 
 _subject_type_sort_key = storyboard2_board.subject_type_sort_key

@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 This project uses a lightweight `Added`, `Changed`, `Fixed`, `Security`, and `Migration` structure.
 
+## 2026-05-06 - Storyboard2 Image Task State Service Extraction
+
+### Added
+
+- Added `backend/api/services/storyboard2_image_task_state.py` for shared storyboard2 active image task tracking and orphan processing-row recovery.
+- Added focused storyboard2 image task state service tests and import-contract coverage for the extraction.
+
+### Changed
+
+- Updated `backend/main.py`, `backend/api/routers/episodes.py`, and `backend/api/routers/storyboard2.py` to reuse shared storyboard2 image task state helpers and a single shared in-process active-task set.
+
 ## 2026-05-05 - Refactor Progress Forward Plan
 
 ### Added

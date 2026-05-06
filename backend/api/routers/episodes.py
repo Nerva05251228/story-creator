@@ -11,7 +11,7 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from io import BytesIO
-from threading import Lock, Thread
+from threading import Thread
 from functools import partial
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
@@ -39,6 +39,7 @@ from managed_generation_service import ACTIVE_MANAGED_SESSION_STATUSES
 from api.services import billing_charges
 from api.services import episode_cleanup
 from api.services import db_commit_retry
+from api.services import storyboard2_image_task_state
 from api.services import storyboard_defaults
 from api.services import storyboard2_board
 from api.services import storyboard2_permissions
@@ -104,9 +105,9 @@ router = APIRouter()
 
 executor = ThreadPoolExecutor(max_workers=10)
 
-storyboard2_active_image_tasks = set()
+storyboard2_active_image_tasks = storyboard2_image_task_state.storyboard2_active_image_tasks
 
-storyboard2_active_image_tasks_lock = Lock()
+storyboard2_active_image_tasks_lock = storyboard2_image_task_state.storyboard2_active_image_tasks_lock
 
 STORYBOARD2_IMAGE_PROMPT_KEY = "storyboard2_image_prompt_prefix"
 STORYBOARD2_IMAGE_PROMPT_DEFAULT = "生成动漫风格的图片"
@@ -2549,10 +2550,10 @@ _extract_scene_description_from_card_ids = storyboard2_board.extract_scene_descr
 _resolve_storyboard2_scene_override_text = storyboard2_board.resolve_storyboard2_scene_override_text
 _pick_storyboard2_source_shots = storyboard2_board.pick_storyboard2_source_shots
 _ensure_storyboard2_initialized = storyboard2_board.ensure_storyboard2_initialized
-_mark_storyboard2_image_task_active = storyboard2._mark_storyboard2_image_task_active
-_mark_storyboard2_image_task_inactive = storyboard2._mark_storyboard2_image_task_inactive
-_is_storyboard2_image_task_active = storyboard2._is_storyboard2_image_task_active
-_recover_orphan_storyboard2_image_tasks = storyboard2._recover_orphan_storyboard2_image_tasks
+_mark_storyboard2_image_task_active = storyboard2_image_task_state.mark_storyboard2_image_task_active
+_mark_storyboard2_image_task_inactive = storyboard2_image_task_state.mark_storyboard2_image_task_inactive
+_is_storyboard2_image_task_active = storyboard2_image_task_state.is_storyboard2_image_task_active
+_recover_orphan_storyboard2_image_tasks = storyboard2_image_task_state.recover_orphan_storyboard2_image_tasks
 _serialize_storyboard2_board = storyboard2_board.serialize_storyboard2_board
 _get_storyboard2_sub_shot_with_permission = storyboard2_permissions.get_storyboard2_sub_shot_with_permission
 _get_storyboard2_shot_with_permission = storyboard2_permissions.get_storyboard2_shot_with_permission
