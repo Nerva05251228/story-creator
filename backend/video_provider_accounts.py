@@ -44,6 +44,28 @@ def _normalize_accounts_payload(provider: str, payload: Any) -> Dict[str, Any]:
     }
 
 
+def resolve_video_provider_account_robot_id(payload: Any, account_value: Any) -> str:
+    normalized_account_value = str(account_value or "").strip()
+    if not normalized_account_value:
+        return ""
+
+    records = []
+    if isinstance(payload, dict):
+        raw_records = payload.get("records")
+        if isinstance(raw_records, list):
+            records = [record for record in raw_records if isinstance(record, dict)]
+
+    for record in records:
+        record_account_id = str(record.get("account_id") or "").strip()
+        record_robot_id = str(record.get("robot_id") or "").strip()
+        if not record_robot_id:
+            continue
+        if normalized_account_value == record_account_id or normalized_account_value == record_robot_id:
+            return record_robot_id
+
+    return ""
+
+
 class VideoProviderAccountsCache:
     def __init__(self, fetcher=None, timeout: int = 30):
         self._fetcher = fetcher or requests

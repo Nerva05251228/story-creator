@@ -61,6 +61,37 @@ class StoryboardSceneReferenceTests(unittest.TestCase):
             ],
         )
 
+    def test_build_seedance_reference_images_keeps_multiple_scenes_in_order(self):
+        payload = reference_service.build_seedance_reference_images(
+            first_frame_image_url="https://cdn.example.com/first-frame.png",
+            scene_image_urls=[
+                "https://cdn.example.com/scene-a.png",
+                "https://cdn.example.com/scene-b.png",
+            ],
+            role_reference_items=[
+                ("RoleA", "https://cdn.example.com/role-a.png"),
+            ],
+        )
+
+        self.assertEqual(
+            payload["image_prefix_parts"],
+            [
+                "首帧[图片1]",
+                "场景[图片2]",
+                "场景[图片3]",
+                "RoleA[图片4]",
+            ],
+        )
+        self.assertEqual(
+            payload["image_urls"],
+            [
+                "https://cdn.example.com/first-frame.png",
+                "https://cdn.example.com/scene-a.png",
+                "https://cdn.example.com/scene-b.png",
+                "https://cdn.example.com/role-a.png",
+            ],
+        )
+
     def test_build_seedance_reference_images_uses_scene_as_first_image_when_no_first_frame(self):
         payload = reference_service.build_seedance_reference_images(
             scene_image_url="https://cdn.example.com/scene.png",
@@ -93,7 +124,7 @@ class StoryboardSceneReferenceTests(unittest.TestCase):
                 ("玉佩", "https://cdn.example.com/prop-2.png"),
             ],
             role_reference_items=[
-                ("陆云熙", "https://cdn.example.com/role-1.png"),
+                ("陆云深", "https://cdn.example.com/role-1.png"),
             ],
         )
 
@@ -104,7 +135,7 @@ class StoryboardSceneReferenceTests(unittest.TestCase):
                 "场景[图片2]",
                 "青铜匕首[图片3]",
                 "玉佩[图片4]",
-                "陆云熙[图片5]",
+                "陆云深[图片5]",
             ],
         )
         self.assertEqual(
@@ -146,6 +177,22 @@ class StoryboardSceneReferenceTests(unittest.TestCase):
                 use_uploaded_scene_image=False,
             ),
             "https://cdn.example.com/scene-card.png",
+        )
+
+    def test_resolve_scene_reference_image_urls_returns_all_selected_scenes(self):
+        self.assertEqual(
+            reference_service.resolve_scene_reference_image_urls(
+                selected_scene_card_image_urls=[
+                    "https://cdn.example.com/scene-card-a.png",
+                    "https://cdn.example.com/scene-card-b.png",
+                ],
+                uploaded_scene_image_url="https://cdn.example.com/uploaded-scene.png",
+                use_uploaded_scene_image=False,
+            ),
+            [
+                "https://cdn.example.com/scene-card-a.png",
+                "https://cdn.example.com/scene-card-b.png",
+            ],
         )
 
     def test_should_autofill_scene_override_only_when_unlocked_and_empty(self):

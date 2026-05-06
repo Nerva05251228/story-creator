@@ -40,6 +40,12 @@ class VideoProviderAccountsTests(unittest.TestCase):
             "https://ne.mocatter.cn/api/video/providers/moti/accounts",
         )
 
+    def test_provider_stats_url_targets_stats_endpoint(self):
+        self.assertEqual(
+            video_api_config.get_video_provider_stats_url(),
+            "https://ne.mocatter.cn/api/video/stats/providers",
+        )
+
     def test_cache_refresh_fetches_once_and_returns_records(self):
         fetcher = FakeFetcher(
             {
@@ -75,6 +81,27 @@ class VideoProviderAccountsTests(unittest.TestCase):
         self.assertEqual(refreshed["total"], 0)
         self.assertEqual(refreshed["records"], [])
         self.assertIn("error", refreshed)
+
+    def test_resolve_video_provider_account_robot_id_prefers_robot_id(self):
+        payload = {
+            "records": [
+                {"account_id": "罗西剧场", "robot_id": "2429291451132548"},
+                {"account_id": "cococo", "robot_id": "1852023378305080"},
+            ]
+        }
+
+        self.assertEqual(
+            video_provider_accounts.resolve_video_provider_account_robot_id(payload, "罗西剧场"),
+            "2429291451132548",
+        )
+        self.assertEqual(
+            video_provider_accounts.resolve_video_provider_account_robot_id(payload, "1852023378305080"),
+            "1852023378305080",
+        )
+        self.assertEqual(
+            video_provider_accounts.resolve_video_provider_account_robot_id(payload, "missing"),
+            "",
+        )
 
 
 if __name__ == "__main__":

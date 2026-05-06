@@ -22,6 +22,7 @@ def build_base_variant_payload(source_shot, *, next_variant: int) -> dict:
         "aspect_ratio": source_shot.aspect_ratio,
         "duration": source_shot.duration,
         "storyboard_video_model": getattr(source_shot, "storyboard_video_model", ""),
+        "storyboard_video_appoint_account": getattr(source_shot, "storyboard_video_appoint_account", ""),
         "storyboard_video_model_override_enabled": bool(getattr(source_shot, "storyboard_video_model_override_enabled", False)),
         "duration_override_enabled": bool(getattr(source_shot, "duration_override_enabled", False)),
         "provider": getattr(source_shot, "provider", ""),

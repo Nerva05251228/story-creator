@@ -68,6 +68,7 @@ def _append_seedance_reference_items(
 def build_seedance_reference_images(
     first_frame_image_url: str = "",
     scene_image_url: str = "",
+    scene_image_urls: Sequence[str] = (),
     prop_reference_items: Sequence[Tuple[str, str]] = (),
     role_reference_items: Sequence[Tuple[str, str]] = (),
 ) -> dict:
@@ -82,13 +83,29 @@ def build_seedance_reference_images(
         label="首帧",
         image_url=first_frame_image_url,
     )
-    image_index = _append_seedance_reference_items(
-        image_prefix_parts=image_prefix_parts,
-        image_urls=image_urls,
-        image_index=image_index,
-        label="场景",
-        image_url=scene_image_url,
-    )
+
+    normalized_scene_urls = []
+    seen_scene_urls = set()
+    for raw_scene_url in scene_image_urls or ():
+        normalized_scene_url = normalize_first_frame_candidate_url(raw_scene_url)
+        if not normalized_scene_url or normalized_scene_url in seen_scene_urls:
+            continue
+        seen_scene_urls.add(normalized_scene_url)
+        normalized_scene_urls.append(normalized_scene_url)
+
+    if not normalized_scene_urls:
+        normalized_scene_url = normalize_first_frame_candidate_url(scene_image_url)
+        if normalized_scene_url:
+            normalized_scene_urls.append(normalized_scene_url)
+
+    for normalized_scene_url in normalized_scene_urls:
+        image_index = _append_seedance_reference_items(
+            image_prefix_parts=image_prefix_parts,
+            image_urls=image_urls,
+            image_index=image_index,
+            label="场景",
+            image_url=normalized_scene_url,
+        )
 
     for raw_name, raw_url in prop_reference_items or ():
         image_index = _append_seedance_reference_items(
@@ -125,15 +142,45 @@ def build_seedance_content_text(
     return f"{prefix}{clean_prompt}" if prefix else clean_prompt
 
 
-def resolve_scene_reference_image_url(
+def resolve_scene_reference_image_urls(
+    selected_scene_card_image_urls: Sequence[str] = (),
     selected_scene_card_image_url: str = "",
     uploaded_scene_image_url: str = "",
     use_uploaded_scene_image: bool = False,
-) -> str:
+) -> List[str]:
     normalized_uploaded_url = normalize_first_frame_candidate_url(uploaded_scene_image_url)
     if use_uploaded_scene_image and normalized_uploaded_url:
-        return normalized_uploaded_url
-    return normalize_first_frame_candidate_url(selected_scene_card_image_url)
+        return [normalized_uploaded_url]
+
+    resolved = []
+    seen = set()
+    for raw_url in selected_scene_card_image_urls or ():
+        normalized_url = normalize_first_frame_candidate_url(raw_url)
+        if not normalized_url or normalized_url in seen:
+            continue
+        seen.add(normalized_url)
+        resolved.append(normalized_url)
+
+    if resolved:
+        return resolved
+
+    normalized_selected_url = normalize_first_frame_candidate_url(selected_scene_card_image_url)
+    return [normalized_selected_url] if normalized_selected_url else []
+
+
+def resolve_scene_reference_image_url(
+    selected_scene_card_image_url: str = "",
+    selected_scene_card_image_urls: Sequence[str] = (),
+    uploaded_scene_image_url: str = "",
+    use_uploaded_scene_image: bool = False,
+) -> str:
+    resolved_urls = resolve_scene_reference_image_urls(
+        selected_scene_card_image_urls=selected_scene_card_image_urls,
+        selected_scene_card_image_url=selected_scene_card_image_url,
+        uploaded_scene_image_url=uploaded_scene_image_url,
+        use_uploaded_scene_image=use_uploaded_scene_image,
+    )
+    return resolved_urls[0] if resolved_urls else ""
 
 
 def should_autofill_scene_override(

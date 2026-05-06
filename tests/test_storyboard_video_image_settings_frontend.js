@@ -26,6 +26,10 @@ assert(
   'storyboard video settings modal should render an image provider select'
 );
 assert(
+  !openSettingsSource.includes('storyboardVideoAppointAccountSelect'),
+  'storyboard video settings modal should not render the legacy global Moti account select'
+);
+assert(
   openSettingsSource.includes('updateDetailImagesProviderModels'),
   'storyboard video settings modal should wire provider changes to model options'
 );
@@ -44,6 +48,10 @@ assert(
 assert(
   saveSettingsSource.includes('detail_images_model'),
   'storyboard video settings save should send detail_images_model'
+);
+assert(
+  !saveSettingsSource.includes('storyboard_video_appoint_account'),
+  'storyboard video settings save should not send the legacy global Moti account field'
 );
 
 console.log('test_storyboard_video_image_settings_frontend.js passed');

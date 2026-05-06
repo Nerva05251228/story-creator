@@ -44,6 +44,7 @@ const shot = {
   duration: 15,
   duration_override_enabled: true,
   provider: 'moti',
+  storyboard_video_appoint_account: '罗西剧场',
   storyboard_image_path: 'https://img.example.com/storyboard.jpg',
   storyboard_image_status: 'completed',
   storyboard_image_model: 'banana-pro',
@@ -56,6 +57,7 @@ const payload = sandbox.buildShotCloneSyncPayload(shot);
 
 assert.deepStrictEqual(Array.from(payload.selected_card_ids), [11, 22, 33]);
 assert.deepStrictEqual(Array.from(payload.selected_sound_card_ids), [44, 55]);
+assert.strictEqual(payload.storyboard_video_appoint_account, '罗西剧场');
 assert.strictEqual(payload.storyboard_image_path, 'https://img.example.com/storyboard.jpg');
 assert.strictEqual(payload.storyboard_image_status, 'completed');
 assert.strictEqual(payload.storyboard_image_model, 'banana-pro');

@@ -67,3 +67,8 @@ def get_video_models_url() -> str:
 def get_video_provider_accounts_url(provider: str) -> str:
     normalized_provider = str(provider or "").strip().lower()
     return f"{VIDEO_API_BASE_URL}/providers/{normalized_provider}/accounts"
+
+
+def get_video_provider_stats_url() -> str:
+    parts = urlsplit(VIDEO_API_BASE_URL)
+    return urlunsplit((parts.scheme, parts.netloc, "/api/video/stats/providers", "", ""))

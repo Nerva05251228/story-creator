@@ -68,7 +68,7 @@ class StoryboardVideoReferenceTests(unittest.TestCase):
         payload = reference_service.build_seedance_reference_images(
             first_frame_image_url="https://cdn.example.com/storyboard.png",
             role_reference_items=[
-                ("陆振业", "https://cdn.example.com/role-1.png"),
+                ("陆振川", "https://cdn.example.com/role-1.png"),
                 ("苏晚", "https://cdn.example.com/role-2.png"),
             ],
         )
@@ -77,7 +77,7 @@ class StoryboardVideoReferenceTests(unittest.TestCase):
             payload["image_prefix_parts"],
             [
                 "首帧[图片1]",
-                "陆振业[图片2]",
+                "陆振川[图片2]",
                 "苏晚[图片3]",
             ],
         )

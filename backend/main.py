@@ -102,9 +102,11 @@ from video_api_config import (
     get_video_task_create_url,
     get_video_task_status_url,
     get_video_tasks_cancel_url,
+    get_video_provider_stats_url,
 )
 from video_provider_accounts import (
     get_cached_video_provider_accounts,
+    resolve_video_provider_account_robot_id,
 )
 from image_generation_service import (
     image_poller, MODEL_CONFIGS, submit_image_generation,
@@ -134,6 +136,7 @@ from storyboard_video_reference import (
     is_allowed_first_frame_candidate_url,
     normalize_first_frame_candidate_url,
     resolve_scene_reference_image_url,
+    resolve_scene_reference_image_urls,
     should_autofill_scene_override,
 )
 from threading import Thread, Lock
@@ -779,6 +782,12 @@ def ensure_storyboard_columns():
                 )
                 print("已添加 storyboard_shots.storyboard_video_model 字段")
                 columns.add("storyboard_video_model")
+            if "storyboard_video_appoint_account" not in columns:
+                conn.execute(
+                    text("ALTER TABLE storyboard_shots ADD COLUMN storyboard_video_appoint_account TEXT DEFAULT ''")
+                )
+                print("已添加 storyboard_shots.storyboard_video_appoint_account 字段")
+                columns.add("storyboard_video_appoint_account")
             if "storyboard_video_model_override_enabled" not in columns:
                 conn.execute(
                     text("ALTER TABLE storyboard_shots ADD COLUMN storyboard_video_model_override_enabled BOOLEAN DEFAULT FALSE")
@@ -819,6 +828,9 @@ def ensure_storyboard_columns():
             )
             conn.execute(
                 text("UPDATE storyboard_shots SET storyboard_video_model = '' WHERE storyboard_video_model IS NULL")
+            )
+            conn.execute(
+                text("UPDATE storyboard_shots SET storyboard_video_appoint_account = '' WHERE storyboard_video_appoint_account IS NULL")
             )
             conn.execute(
                 text("UPDATE storyboard_shots SET storyboard_video_model_override_enabled = FALSE WHERE storyboard_video_model_override_enabled IS NULL")
@@ -7118,17 +7130,16 @@ async def upload_image(
     )
     db.add(new_image)
 
-    if card.card_type != "场景":
-        db.query(models.GeneratedImage).filter(
-            models.GeneratedImage.card_id == card_id
-        ).update({"is_reference": False})
+    db.query(models.GeneratedImage).filter(
+        models.GeneratedImage.card_id == card_id
+    ).update({"is_reference": False})
 
-    # 同步为主体素材图（场景卡不自动勾选）
+    # 同步为主体素材图，并自动将最新上传图设为参考图
     new_generated = models.GeneratedImage(
         card_id=card_id,
         image_path=cdn_url,
         model_name="upload",
-        is_reference=(card.card_type != "场景"),
+        is_reference=True,
         status="completed",
         task_id=""
     )
@@ -7170,7 +7181,7 @@ async def delete_image(
     ).first()
 
     # ✅ 如果对应的素材图是参考图，需要特殊处理
-    if gen_img and gen_img.is_reference and card.card_type != "场景":
+    if gen_img and gen_img.is_reference:
         # 查找该卡片的所有其他完成的图片
         other_completed_images = db.query(models.GeneratedImage).filter(
             models.GeneratedImage.card_id == image.card_id,
@@ -7753,7 +7764,7 @@ async def delete_generated_image(
     verify_library_owner(card.library_id, user, db)
 
     # ✅ 如果删除的是参考图，需要特殊处理
-    if gen_img.is_reference and card.card_type != "场景":
+    if gen_img.is_reference:
         # 查找该卡片的所有其他完成的图片
         other_completed_images = db.query(models.GeneratedImage).filter(
             models.GeneratedImage.card_id == gen_img.card_id,
@@ -8908,6 +8919,34 @@ async def get_video_provider_accounts(
         raise HTTPException(status_code=404, detail="不支持该视频服务商账号列表")
     return get_cached_video_provider_accounts(normalized_provider)
 
+
+@app.get("/api/video/providers/stats")
+async def get_video_provider_stats(
+    user: models.User = Depends(get_current_user),
+):
+    _ = user
+    try:
+        response = requests.get(
+            get_video_provider_stats_url(),
+            headers={
+                "Authorization": get_video_api_headers()["Authorization"]
+            },
+            timeout=30,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"获取服务商统计失败: {str(exc)}")
+
+    if response.status_code != 200:
+        raise HTTPException(
+            status_code=response.status_code,
+            detail=f"获取服务商统计失败: HTTP {response.status_code}",
+        )
+
+    try:
+        return response.json()
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"服务商统计响应解析失败: {str(exc)}")
+
 # ==================== 兼容旧版本 Sora准则 API ====================
 
 @app.get("/api/sora-rule")
@@ -9729,6 +9768,7 @@ async def copy_script(
                         aspect_ratio=source_shot.aspect_ratio,
                         duration=source_shot.duration,
                         storyboard_video_model=getattr(source_shot, "storyboard_video_model", ""),
+                        storyboard_video_appoint_account=getattr(source_shot, "storyboard_video_appoint_account", ""),
                         storyboard_video_model_override_enabled=bool(getattr(source_shot, "storyboard_video_model_override_enabled", False)),
                         duration_override_enabled=bool(getattr(source_shot, "duration_override_enabled", False)),
                         detail_image_prompt_overrides=source_shot.detail_image_prompt_overrides
@@ -9876,6 +9916,23 @@ def _get_pydantic_fields_set(payload: Any) -> set:
 def _normalize_storyboard_video_appoint_account(value: Any, default_value: str = "") -> str:
     raw = str(value if value is not None else default_value or "").strip()
     return raw
+
+
+def _resolve_storyboard_video_appoint_account_robot_id(
+    appoint_account: Any,
+    provider: str = "moti",
+) -> str:
+    normalized_appoint_account = _normalize_storyboard_video_appoint_account(appoint_account)
+    normalized_provider = str(provider or "").strip().lower()
+    if not normalized_appoint_account or normalized_provider != "moti":
+        return normalized_appoint_account
+
+    cached_payload = get_cached_video_provider_accounts(normalized_provider)
+    resolved_robot_id = resolve_video_provider_account_robot_id(
+        cached_payload,
+        normalized_appoint_account,
+    )
+    return resolved_robot_id or normalized_appoint_account
 
 
 def _get_first_episode_for_storyboard_defaults(script_id: int, db: Session):
@@ -15084,6 +15141,7 @@ class ShotUpdate(BaseModel):
     aspect_ratio: Optional[str] = None
     duration: Optional[int] = None
     storyboard_video_model: Optional[str] = None
+    storyboard_video_appoint_account: Optional[str] = None
     storyboard_video_model_override_enabled: Optional[bool] = None
     duration_override_enabled: Optional[bool] = None
     provider: Optional[str] = None
@@ -15121,6 +15179,7 @@ class ShotResponse(BaseModel):
     aspect_ratio: str
     duration: int
     storyboard_video_model: str = ""
+    storyboard_video_appoint_account: str = ""
     storyboard_video_model_override_enabled: bool = False
     duration_override_enabled: bool = False
     provider: str
@@ -15638,6 +15697,7 @@ def get_episode_shots(
                 'aspect_ratio': shot.aspect_ratio,
                 'duration': shot.duration,
                 'storyboard_video_model': getattr(shot, 'storyboard_video_model', "") or "",
+                'storyboard_video_appoint_account': getattr(shot, 'storyboard_video_appoint_account', "") or "",
                 'storyboard_video_model_override_enabled': bool(getattr(shot, 'storyboard_video_model_override_enabled', False)),
                 'duration_override_enabled': bool(getattr(shot, 'duration_override_enabled', False)),
                 'provider': shot.provider,
@@ -15814,6 +15874,11 @@ async def update_shot(
             variant_shot.storyboard_video_model = _normalize_storyboard_video_model(
                 shot_data.storyboard_video_model,
                 default_model=getattr(episode, "storyboard_video_model", DEFAULT_STORYBOARD_VIDEO_MODEL)
+            )
+        if shot_data.storyboard_video_appoint_account is not None:
+            variant_shot.storyboard_video_appoint_account = _normalize_storyboard_video_appoint_account(
+                shot_data.storyboard_video_appoint_account,
+                default_value=""
             )
         if shot_data.storyboard_video_model_override_enabled is not None:
             variant_shot.storyboard_video_model_override_enabled = bool(
@@ -17593,6 +17658,7 @@ def _create_managed_reserved_shot(
         aspect_ratio=original_shot.aspect_ratio,
         duration=original_shot.duration,
         storyboard_video_model=getattr(original_shot, "storyboard_video_model", ""),
+        storyboard_video_appoint_account=getattr(original_shot, "storyboard_video_appoint_account", ""),
         storyboard_video_model_override_enabled=bool(getattr(original_shot, "storyboard_video_model_override_enabled", False)),
         duration_override_enabled=bool(getattr(original_shot, "duration_override_enabled", False)),
         provider=provider,
@@ -19950,6 +20016,7 @@ def _collect_moti_v2_reference_assets(shot, db, first_frame_image_url: str = "")
         return {
             "image_prefix_parts": ["首帧参考图"] if normalized_first_frame else [],
             "image_urls": [normalized_first_frame] if normalized_first_frame else [],
+            "selected_scene_image_urls": [],
             "selected_scene_image_url": "",
             "audio_prefix_parts": [],
             "audio_items": [],
@@ -20013,10 +20080,10 @@ def _collect_moti_v2_reference_assets(shot, db, first_frame_image_url: str = "")
             elif is_role_subject_card_type(card.card_type):
                 role_cards.append(card)
 
-    selected_scene_image_url = _resolve_selected_scene_reference_image_url(shot, db)
+    selected_scene_image_urls = _resolve_selected_scene_reference_image_urls(shot, db)
     image_meta = build_seedance_reference_images(
         first_frame_image_url=first_frame_image_url,
-        scene_image_url=selected_scene_image_url,
+        scene_image_urls=selected_scene_image_urls,
         prop_reference_items=collect_reference_items(prop_cards),
         role_reference_items=collect_reference_items(role_cards),
     )
@@ -20060,7 +20127,8 @@ def _collect_moti_v2_reference_assets(shot, db, first_frame_image_url: str = "")
     return {
         "image_prefix_parts": image_meta["image_prefix_parts"],
         "image_urls": image_meta["image_urls"],
-        "selected_scene_image_url": selected_scene_image_url,
+        "selected_scene_image_urls": selected_scene_image_urls,
+        "selected_scene_image_url": selected_scene_image_urls[0] if selected_scene_image_urls else "",
         "audio_prefix_parts": audio_prefix_parts,
         "audio_items": audio_items,
         "total_audio_duration_seconds": total_audio_duration_seconds,
@@ -20256,7 +20324,13 @@ def _build_unified_storyboard_video_task_payload(
             "typography": "全能参考",
             "watermark": False,
         })
-        normalized_appoint_account = _normalize_storyboard_video_appoint_account(appoint_account)
+        shot_override_appoint_account = _normalize_storyboard_video_appoint_account(
+            getattr(shot, "storyboard_video_appoint_account", "") if shot is not None else ""
+        )
+        normalized_appoint_account = _resolve_storyboard_video_appoint_account_robot_id(
+            shot_override_appoint_account or appoint_account,
+            provider=normalized_provider,
+        )
         if normalized_appoint_account:
             payload["extra"] = {
                 "appoint_accounts": [normalized_appoint_account]
@@ -20402,13 +20476,17 @@ def _get_effective_storyboard_video_settings_for_shot(shot, episode) -> Dict[str
             model=effective_model,
             default_duration=episode_settings["duration"]
         )
+    appoint_account = _normalize_storyboard_video_appoint_account(
+        getattr(shot, "storyboard_video_appoint_account", ""),
+        default_value=episode_settings.get("appoint_account", "")
+    )
     return {
         "model": effective_model,
         "aspect_ratio": aspect_ratio,
         "duration": effective_duration,
         "resolution_name": resolution_name,
         "provider": _resolve_storyboard_video_provider(effective_model),
-        "appoint_account": episode_settings.get("appoint_account", ""),
+        "appoint_account": appoint_account,
         "model_override_enabled": model_override_enabled,
         "duration_override_enabled": duration_override_enabled,
         "prompt_template_duration": _map_storyboard_prompt_template_duration(effective_duration),
@@ -21349,12 +21427,14 @@ def _resolve_storyboard_sora_image_ratio(
     return _normalize_jimeng_ratio(requested_size, default_ratio="9:16")
 
 
-def _get_selected_scene_card_image_url(
+def _get_selected_scene_card_image_urls(
     shot: models.StoryboardShot,
     db: Session,
-) -> str:
+) -> List[str]:
     selected_ids = _debug_parse_card_ids(getattr(shot, "selected_card_ids", "[]"))
     selected_cards = _resolve_selected_cards(db, selected_ids)
+    scene_image_urls: List[str] = []
+    seen_urls = set()
     for card in selected_cards:
         if not card or card.card_type != "场景":
             continue
@@ -21363,9 +21443,31 @@ def _get_selected_scene_card_image_url(
             db,
             allow_uploaded_fallback=False,
         )
-        if image_url:
-            return image_url
-    return ""
+        normalized_url = str(image_url or "").strip()
+        if not normalized_url or normalized_url in seen_urls:
+            continue
+        seen_urls.add(normalized_url)
+        scene_image_urls.append(normalized_url)
+    return scene_image_urls
+
+
+def _get_selected_scene_card_image_url(
+    shot: models.StoryboardShot,
+    db: Session,
+) -> str:
+    scene_image_urls = _get_selected_scene_card_image_urls(shot, db)
+    return scene_image_urls[0] if scene_image_urls else ""
+
+
+def _resolve_selected_scene_reference_image_urls(
+    shot: models.StoryboardShot,
+    db: Session,
+) -> List[str]:
+    return resolve_scene_reference_image_urls(
+        selected_scene_card_image_urls=_get_selected_scene_card_image_urls(shot, db),
+        uploaded_scene_image_url=getattr(shot, "uploaded_scene_image_url", ""),
+        use_uploaded_scene_image=bool(getattr(shot, "use_uploaded_scene_image", False)),
+    )
 
 
 def _resolve_selected_scene_reference_image_url(
@@ -21373,7 +21475,7 @@ def _resolve_selected_scene_reference_image_url(
     db: Session,
 ) -> str:
     return resolve_scene_reference_image_url(
-        selected_scene_card_image_url=_get_selected_scene_card_image_url(shot, db),
+        selected_scene_card_image_urls=_get_selected_scene_card_image_urls(shot, db),
         uploaded_scene_image_url=getattr(shot, "uploaded_scene_image_url", ""),
         use_uploaded_scene_image=bool(getattr(shot, "use_uploaded_scene_image", False)),
     )
@@ -22373,7 +22475,7 @@ def _serialize_storyboard2_board(episode_id: int, db: Session):
                 card = card_map.get(card_id)
                 if not card:
                     continue
-                preview_image = reference_image_map.get(card_id) or uploaded_image_map.get(card_id) or ""
+                preview_image = reference_image_map.get(card_id) or ""
                 sub_subjects_payload.append({
                     "id": card.id,
                     "name": card.name or "",
@@ -22409,7 +22511,7 @@ def _serialize_storyboard2_board(episode_id: int, db: Session):
             card = card_map.get(card_id)
             if not card:
                 continue
-            preview_image = reference_image_map.get(card_id) or uploaded_image_map.get(card_id) or ""
+            preview_image = reference_image_map.get(card_id) or ""
             subjects_payload.append({
                 "id": card.id,
                 "name": card.name or "",
@@ -22430,7 +22532,7 @@ def _serialize_storyboard2_board(episode_id: int, db: Session):
 
     available_subjects = []
     for card in all_library_cards:
-        preview_image = reference_image_map.get(card.id) or uploaded_image_map.get(card.id) or ""
+        preview_image = reference_image_map.get(card.id) or ""
         available_subjects.append({
             "id": card.id,
             "name": card.name or "",

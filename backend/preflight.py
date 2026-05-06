@@ -15,8 +15,8 @@ from startup_migration_state import (
 )
 
 
-STARTUP_BOOTSTRAP_VERSION = "202604300001_startup_bootstrap_baseline"
-STARTUP_BOOTSTRAP_CHECKSUM = "sha256:startup-bootstrap-baseline-20260430"
+STARTUP_BOOTSTRAP_VERSION = "202605060001_startup_bootstrap_storyboard_shot_video_appoint_account"
+STARTUP_BOOTSTRAP_CHECKSUM = "sha256:startup-bootstrap-storyboard-shot-video-appoint-account-20260506"
 STARTUP_BOOTSTRAP_DESCRIPTION = "Run legacy startup schema/data bootstrap once before workers start."
 LEGACY_BOOTSTRAP_FAILURE_MARKERS = (
     "失败",

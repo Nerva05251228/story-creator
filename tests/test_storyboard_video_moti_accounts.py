@@ -2,6 +2,7 @@ import os
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
@@ -17,6 +18,32 @@ import models  # noqa: E402
 
 
 class StoryboardVideoMotiAccountsTests(unittest.TestCase):
+    def test_moti_payload_maps_account_id_to_robot_id_when_cache_has_match(self):
+        with patch.object(
+            main,
+            "get_cached_video_provider_accounts",
+            return_value={
+                "records": [
+                    {"account_id": "罗西剧场", "robot_id": "2429291451132548"},
+                ]
+            },
+        ):
+            payload = main._build_unified_storyboard_video_task_payload(
+                shot=None,
+                db=None,
+                username="alex",
+                model_name="Seedance 2.0",
+                provider="moti",
+                full_prompt="prompt",
+                aspect_ratio="1:1",
+                duration=5,
+                first_frame_image_url="https://example.com/frame.png",
+                appoint_account="罗西剧场",
+            )
+
+        self.assertEqual(payload["provider"], "moti")
+        self.assertEqual(payload["extra"], {"appoint_accounts": ["2429291451132548"]})
+
     def test_moti_payload_includes_selected_appoint_account(self):
         payload = main._build_unified_storyboard_video_task_payload(
             shot=None,

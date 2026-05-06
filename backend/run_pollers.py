@@ -3,10 +3,15 @@ import time
 
 os.environ["ENABLE_BACKGROUND_POLLER"] = "1"
 
-from main import start_background_pollers, stop_background_pollers
-
 
 def main():
+    from preflight import run_startup_preflight
+
+    print("[poller-runner] running preflight migrate")
+    run_startup_preflight(mode="migrate")
+
+    from main import start_background_pollers, stop_background_pollers
+
     print("[poller-runner] starting background pollers")
     start_background_pollers(force=True)
     try:

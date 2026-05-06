@@ -197,6 +197,7 @@ class StoryboardShot(Base):
     aspect_ratio = Column(String, default="16:9")  # 瑙嗛姣斾緥锛?:16鎴?6:9
     duration = Column(Integer, default=15)  # 瑙嗛鏃堕暱锛?0鎴?5绉?
     storyboard_video_model = Column(String, default="")  # 镜头当前/覆盖的视频模型
+    storyboard_video_appoint_account = Column(String, default="")  # 镜头当前/覆盖的视频账号（空表示跟随全局）
     storyboard_video_model_override_enabled = Column(Boolean, default=False, nullable=False)  # 是否单独覆盖镜头模型
     duration_override_enabled = Column(Boolean, default=False, nullable=False)  # 是否单独覆盖镜头时长
     provider = Column(String, default="yijia")  # 瑙嗛鏈嶅姟鍟嗭細apimart/suchuang/yijia

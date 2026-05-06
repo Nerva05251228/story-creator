@@ -20,6 +20,7 @@ const helperSource = [
   extractFunction('getMotiVideoAccountRecords'),
   extractFunction('buildMotiVideoAccountOptionsHtml'),
   extractFunction('getEpisodeStoryboardVideoAppointAccount'),
+  extractFunction('getShotStoryboardVideoAppointAccount'),
   extractFunction('buildStoryboardVideoGenerationRequestBody'),
 ].join('\n\n');
 
@@ -65,7 +66,17 @@ const missingCachedAccountOptionsHtml = sandbox.buildMotiVideoAccountOptionsHtml
 assert.ok(missingCachedAccountOptionsHtml.includes('value="saved-account" selected'));
 assert.ok(missingCachedAccountOptionsHtml.includes('>saved-account</option>'));
 
+const followGlobalOptionsHtml = sandbox.buildMotiVideoAccountOptionsHtml('', {
+  blankLabel: '跟随全局账号（罗西剧场）',
+});
+assert.ok(followGlobalOptionsHtml.includes('>跟随全局账号（罗西剧场）</option>'));
+
 assert.strictEqual(sandbox.getEpisodeStoryboardVideoAppointAccount(), '罗西剧场');
+assert.strictEqual(
+  sandbox.getShotStoryboardVideoAppointAccount({ storyboard_video_appoint_account: 'cococo' }),
+  'cococo'
+);
+
 const requestBody = sandbox.buildStoryboardVideoGenerationRequestBody('罗西剧场');
 assert.strictEqual(requestBody.appoint_account, '罗西剧场');
 assert.deepStrictEqual(Object.keys(sandbox.buildStoryboardVideoGenerationRequestBody('  ')), []);

@@ -6689,19 +6689,9 @@ function getCardPreviewImage(card) {
 
     if (!card) return null;
 
-    const isSceneCard = card.card_type === '场景';
-
 
 
     if (card.generated_images && card.generated_images.length > 0) {
-
-        const completedImages = card.generated_images.filter(img => img?.status === 'completed' && img?.image_path);
-
-        if (isSceneCard && completedImages.length > 0) {
-
-            return completedImages[0].image_path;
-
-        }
 
         const referenceImages = card.generated_images.filter(img => img.is_reference && img.status === 'completed');
 
@@ -6710,30 +6700,6 @@ function getCardPreviewImage(card) {
             return referenceImages[0].image_path;
 
         }
-
-        if (completedImages.length > 0) {
-
-            return completedImages[0].image_path;
-
-        }
-
-    }
-
-
-
-    if (isSceneCard) {
-
-        return null;
-
-    }
-
-
-
-    if (card.images && card.images.length > 0) {
-
-        const sorted = [...card.images].sort((a, b) => (b.order || 0) - (a.order || 0));
-
-        return sorted[0].image_path;
 
     }
 
@@ -12812,11 +12778,13 @@ function getMotiVideoAccountRecords() {
 }
 
 
-function buildMotiVideoAccountOptionsHtml(selectedAccount = '') {
+function buildMotiVideoAccountOptionsHtml(selectedAccount = '', options = {}) {
 
     const selected = normalizeMotiVideoAccountName(selectedAccount);
 
-    const options = ['<option value="">不指定账号</option>'];
+    const optionItems = [];
+    const blankLabel = String(options.blankLabel || '不指定账号');
+    optionItems.push(`<option value="">${escapeHtml(blankLabel)}</option>`);
 
     let hasSelected = !selected;
 
@@ -12832,17 +12800,17 @@ function buildMotiVideoAccountOptionsHtml(selectedAccount = '') {
 
         }
 
-        options.push(`<option value="${escapeHtml(accountName)}"${selectedAttr}>${escapeHtml(accountName)}</option>`);
+        optionItems.push(`<option value="${escapeHtml(accountName)}"${selectedAttr}>${escapeHtml(accountName)}</option>`);
 
     });
 
     if (!hasSelected && selected) {
 
-        options.push(`<option value="${escapeHtml(selected)}" selected>${escapeHtml(selected)}</option>`);
+        optionItems.push(`<option value="${escapeHtml(selected)}" selected>${escapeHtml(selected)}</option>`);
 
     }
 
-    return options.join('');
+    return optionItems.join('');
 
 }
 
@@ -12850,6 +12818,13 @@ function buildMotiVideoAccountOptionsHtml(selectedAccount = '') {
 function getEpisodeStoryboardVideoAppointAccount() {
 
     return normalizeMotiVideoAccountName(APP_STATE.currentEpisodeInfo?.storyboard_video_appoint_account);
+
+}
+
+
+function getShotStoryboardVideoAppointAccount(shot = APP_STATE.currentShot) {
+
+    return normalizeMotiVideoAccountName(shot?.storyboard_video_appoint_account);
 
 }
 
@@ -13466,7 +13441,7 @@ function getEffectiveShotStoryboardVideoSettings(shot) {
 
             duration_override_enabled: false,
 
-            appoint_account: episodeSettings.appoint_account
+            appoint_account: getShotStoryboardVideoAppointAccount(shot) || episodeSettings.appoint_account
 
         };
 
@@ -13498,7 +13473,7 @@ function getEffectiveShotStoryboardVideoSettings(shot) {
 
         duration_override_enabled: true,
 
-        appoint_account: episodeSettings.appoint_account
+        appoint_account: getShotStoryboardVideoAppointAccount(shot) || episodeSettings.appoint_account
 
     };
 
@@ -13554,6 +13529,9 @@ function refreshShotDurationControls() {
     const effectiveVideoSettings = getEffectiveShotStoryboardVideoSettings(APP_STATE.currentShot);
     const isModelOverrideEnabled = Boolean(effectiveVideoSettings.model_override_enabled);
     const isDurationOverrideEnabled = Boolean(effectiveVideoSettings.duration_override_enabled);
+    const shotVideoAccount = getShotStoryboardVideoAppointAccount(APP_STATE.currentShot);
+    const isShotAccountSelectable = effectiveVideoSettings.provider === 'moti';
+    const globalVideoAccount = getEpisodeStoryboardVideoAppointAccount();
 
     const modelCheckbox = document.getElementById('shotModelOverrideCheckbox');
     if (modelCheckbox) {
@@ -13607,6 +13585,27 @@ function refreshShotDurationControls() {
         durationHint.textContent = isDurationOverrideEnabled
             ? `当前镜头单独使用 ${effectiveVideoSettings.duration}s`
             : `当前跟随图/视频设置默认 ${effectiveVideoSettings.duration}s`;
+
+    }
+
+    const appointAccountSelect = document.getElementById('shotVideoAppointAccountSelect');
+    if (appointAccountSelect) {
+
+        appointAccountSelect.innerHTML = buildMotiVideoAccountOptionsHtml(shotVideoAccount, {
+            blankLabel: `跟随全局账号（${globalVideoAccount || '不指定账号'}）`,
+        });
+        appointAccountSelect.disabled = !isShotAccountSelectable;
+
+    }
+
+    const appointAccountHint = document.getElementById('shotVideoAppointAccountHint');
+    if (appointAccountHint) {
+
+        appointAccountHint.textContent = isShotAccountSelectable
+            ? (shotVideoAccount
+                ? `当前镜头单独使用账号 ${shotVideoAccount}`
+                : `当前跟随全局账号 ${globalVideoAccount || '不指定账号'}`)
+            : '当前服务商无需指定账号';
 
     }
 
@@ -13838,19 +13837,13 @@ function openStoryboardVideoSettingModal() {
 
     closeStoryboardVideoSettingModal();
 
-    Promise.all([
+    ensureImageModelCatalogLoaded().catch(error => {
 
-        ensureImageModelCatalogLoaded().catch(error => {
+        console.error('Failed to load image model catalog for storyboard settings:', error);
 
-            console.error('Failed to load image model catalog for storyboard settings:', error);
+        showToast('作图模型列表加载失败，将使用当前缓存', 'warning');
 
-            showToast('作图模型列表加载失败，将使用当前缓存', 'warning');
-
-        }),
-
-        loadMotiVideoProviderAccounts()
-
-    ])
+    })
         .then(() => {
 
     const currentSettings = getEpisodeStoryboardVideoSettings();
@@ -13870,8 +13863,6 @@ function openStoryboardVideoSettingModal() {
     );
 
     const currentIncludeSceneRefs = getEpisodeStoryboard2IncludeSceneReferences();
-
-    const currentAppointAccount = getEpisodeStoryboardVideoAppointAccount();
 
     const modal = document.createElement('div');
 
@@ -13978,18 +13969,6 @@ function openStoryboardVideoSettingModal() {
                     <select id="storyboardVideoModelSelect" class="form-input shot-image-size-select" onchange="updateStoryboardVideoSettingModalFields(true)">
 
                         ${getStoryboardVideoModelOptionsHtml(currentSettings.model)}
-
-                    </select>
-
-                </div>
-
-                <div class="form-group shot-image-size-group">
-
-                    <label class="form-label">Moti账号</label>
-
-                    <select id="storyboardVideoAppointAccountSelect" class="form-input shot-image-size-select">
-
-                        ${buildMotiVideoAccountOptionsHtml(currentAppointAccount)}
 
                     </select>
 
@@ -14152,8 +14131,6 @@ async function saveStoryboardVideoSettings() {
 
     const resolutionSelect = document.getElementById('storyboardVideoResolutionSelect');
 
-    const appointAccountSelect = document.getElementById('storyboardVideoAppointAccountSelect');
-
     const saveBtn = document.getElementById('saveStoryboardVideoSettingBtn');
 
     if (!detailImagesProviderSelect || !detailImagesModelSelect || !detailImagesIncludeSceneRefsCheckbox || !modelSelect || !aspectRatioSelect || !durationSelect) {
@@ -14198,10 +14175,6 @@ async function saveStoryboardVideoSettings() {
 
     const videoStyleTemplateId = styleTemplateSelect ? parseInt(styleTemplateSelect.value) || 0 : 0;
 
-    const appointAccount = normalizeMotiVideoAccountName(appointAccountSelect ? appointAccountSelect.value : '');
-
-
-
     if (saveBtn) {
 
         saveBtn.disabled = true;
@@ -14235,8 +14208,6 @@ async function saveStoryboardVideoSettings() {
                 duration,
 
                 resolution_name: resolutionName,
-
-                storyboard_video_appoint_account: appointAccount,
 
                 video_style_template_id: videoStyleTemplateId
 
@@ -14322,10 +14293,6 @@ async function saveStoryboardVideoSettings() {
             result?.resolution_name || resolutionName,
             APP_STATE.currentEpisodeInfo.storyboard_video_model,
             resolutionName
-        );
-
-        APP_STATE.currentEpisodeInfo.storyboard_video_appoint_account = normalizeMotiVideoAccountName(
-            result?.storyboard_video_appoint_account ?? appointAccount
         );
 
         APP_STATE.currentEpisodeInfo.video_prompt_template = result?.video_prompt_template
@@ -19803,6 +19770,21 @@ function renderStoryboardSidebar() {
     const effectiveVideoSettings = getEffectiveShotStoryboardVideoSettings(APP_STATE.currentShot);
     const isModelOverrideEnabled = Boolean(effectiveVideoSettings.model_override_enabled);
     const isDurationOverrideEnabled = Boolean(effectiveVideoSettings.duration_override_enabled);
+    const shotIdForSidebarRefresh = APP_STATE.currentShot.id;
+    const globalVideoAccount = getEpisodeStoryboardVideoAppointAccount();
+    const shotVideoAccount = getShotStoryboardVideoAppointAccount(APP_STATE.currentShot);
+    const isShotAccountSelectable = effectiveVideoSettings.provider === 'moti';
+    const shotAccountBlankLabel = `跟随全局账号（${globalVideoAccount || '不指定账号'}）`;
+    const hasLoadedMotiVideoAccounts = Array.isArray(APP_STATE.motiVideoProviderAccounts?.records);
+    if (isShotAccountSelectable && !hasLoadedMotiVideoAccounts) {
+        loadMotiVideoProviderAccounts().then(() => {
+            if (APP_STATE.currentShot && APP_STATE.currentShot.id === shotIdForSidebarRefresh) {
+                renderStoryboardSidebar();
+            }
+        }).catch(error => {
+            console.error('Failed to load Moti video accounts for shot sidebar:', error);
+        });
+    }
     const durationOptionsHtml = getStoryboardVideoModelConfig(effectiveVideoSettings.model).durations.map(item => {
 
         const selected = item === effectiveVideoSettings.duration ? ' selected' : '';
@@ -19813,26 +19795,6 @@ function renderStoryboardSidebar() {
     const videoSettingsSectionHtml = `
 
         <div class="storyboard-prompt-section">
-
-            <label>全局默认视频设置</label>
-
-            <div style="font-size:12px; color:#aaa; border:1px solid #2a2a2a; border-radius:6px; padding:8px 10px; background:#111;">
-
-                ${escapeHtml(episodeVideoSettings.model)} / ${escapeHtml(episodeVideoSettings.aspect_ratio)} / ${escapeHtml(String(episodeVideoSettings.duration))}s
-
-                <span style="color:#666;">（服务商 ${escapeHtml(episodeVideoSettings.provider)}）</span>
-
-            </div>
-
-            <label style="margin-top:10px;">当前视频设置</label>
-
-            <div style="font-size:12px; color:#aaa; border:1px solid #2a2a2a; border-radius:6px; padding:8px 10px; background:#111;">
-
-                ${escapeHtml(effectiveVideoSettings.model)} / ${escapeHtml(effectiveVideoSettings.aspect_ratio)} / ${escapeHtml(String(effectiveVideoSettings.duration))}s
-
-                <span style="color:#666;">（服务商 ${escapeHtml(effectiveVideoSettings.provider)}${isModelOverrideEnabled || isDurationOverrideEnabled ? '，已应用镜头单独设置' : ''}）</span>
-
-            </div>
 
             <div class="storyboard-duration-toggle-row" style="margin-top:10px;">
 
@@ -19891,6 +19853,28 @@ function renderStoryboardSidebar() {
                 ${isDurationOverrideEnabled
                     ? `当前镜头单独使用 ${effectiveVideoSettings.duration}s`
                     : `当前跟随图/视频设置默认 ${episodeVideoSettings.duration}s`}
+
+            </div>
+
+            <label style="margin-top:10px;">单独设置账号</label>
+
+            <div style="display:flex; gap:8px; align-items:center; margin-top:8px;">
+
+                <select id="shotVideoAppointAccountSelect" class="form-input shot-image-size-select" style="flex:1;" onchange="handleShotVideoAppointAccountChange(this.value)" ${isShotAccountSelectable ? '' : 'disabled'}>
+
+                    ${buildMotiVideoAccountOptionsHtml(shotVideoAccount, { blankLabel: shotAccountBlankLabel })}
+
+                </select>
+
+            </div>
+
+            <div id="shotVideoAppointAccountHint" style="font-size:12px; color:#888; margin-top:6px;">
+
+                ${isShotAccountSelectable
+                    ? (shotVideoAccount
+                        ? `当前镜头单独使用账号 ${escapeHtml(shotVideoAccount)}`
+                        : `当前跟随全局账号 ${escapeHtml(globalVideoAccount || '不指定账号')}`)
+                    : '当前服务商无需指定账号'}
 
             </div>
 
@@ -20000,7 +19984,7 @@ function renderStoryboardSidebar() {
 
         || ['submitting', 'preparing', 'processing', 'completed', 'failed'].includes(videoStatus);
 
-    const selectedSceneCardId = getSelectedStoryboardSceneCardId(APP_STATE.currentShot);
+    const selectedSceneCardIds = getSelectedStoryboardSceneCardIds(APP_STATE.currentShot);
     const uploadedSceneImageUrl = String(APP_STATE.currentShot.uploaded_scene_image_url || '').trim();
     const useUploadedSceneImage = Boolean(APP_STATE.currentShot.use_uploaded_scene_image && uploadedSceneImageUrl);
     const sceneUploadControlsHtml = `
@@ -20009,7 +19993,7 @@ function renderStoryboardSidebar() {
 
             <button class="secondary-button storyboard-tool-button" onclick="uploadStoryboardShotSceneImage()">上传图片</button>
 
-            <span style="font-size: 12px; color: #888;">${uploadedSceneImageUrl ? '已上传镜头场景图，可在下方场景卡中单选替换' : '上传镜头专属场景图，不影响其他镜头和场景卡'}</span>
+            <span style="font-size: 12px; color: #888;">${uploadedSceneImageUrl ? '已上传镜头场景图，可在下方场景卡中多选切换' : '上传镜头专属场景图，不影响其他镜头和场景卡'}</span>
 
         </div>
 
@@ -20050,7 +20034,7 @@ function renderStoryboardSidebar() {
                 const previewHtml = previewImage
                     ? `<img class="storyboard-subject-image" src="${getImageUrl(previewImage)}" alt="${escapeHtml(card.name)}">`
                     : '<div class="storyboard-subject-placeholder">NO IMAGE</div>';
-                const isSelected = !useUploadedSceneImage && selectedSceneCardId === card.id;
+                const isSelected = !useUploadedSceneImage && selectedSceneCardIds.includes(card.id);
                 return `
 
                     <div class="storyboard-subject-card ${isSelected ? 'selected' : ''}"
@@ -20758,6 +20742,62 @@ async function saveShotStoryboardVideoModelOverride(model, modelOverrideEnabled)
 }
 
 
+async function saveShotStoryboardVideoAppointAccountOverride(appointAccount) {
+
+    if (!APP_STATE.currentShot) return;
+
+    const shotId = APP_STATE.currentShot.id;
+    const normalizedAccount = normalizeMotiVideoAccountName(appointAccount);
+
+    try {
+
+        const response = await apiRequest(`/api/shots/${shotId}`, {
+
+            method: 'PUT',
+
+            headers: { 'Content-Type': 'application/json' },
+
+            body: JSON.stringify({
+
+                storyboard_video_appoint_account: normalizedAccount
+
+            })
+
+        });
+
+        if (response && response.ok) {
+
+            const updatedShot = await response.json();
+
+            updateShotInState(shotId, updatedShot);
+            syncEpisodeStoryboardVideoSettingsToShotState();
+            refreshShotDurationControls();
+
+            showToast(
+                normalizedAccount
+                    ? `镜头账号已设置为 ${normalizedAccount}`
+                    : `镜头账号已恢复跟随全局设置`,
+                'success'
+            );
+
+        } else if (response) {
+
+            const error = await response.json();
+            throw new Error(error.detail || '镜头账号保存失败');
+
+        }
+
+    } catch (error) {
+
+        console.error('Failed to save shot storyboard video appoint account:', error);
+        showToast(error.message || '镜头账号保存失败', 'error');
+        refreshShotDurationControls();
+
+    }
+
+}
+
+
 async function handleShotModelOverrideChange(value) {
 
     if (!APP_STATE.currentShot) return;
@@ -20782,6 +20822,15 @@ async function handleShotModelModeToggle(enabled) {
 
     const episodeSettings = getEpisodeStoryboardVideoSettings();
     await saveShotStoryboardVideoModelOverride(episodeSettings.model, false);
+
+}
+
+
+async function handleShotVideoAppointAccountChange(value) {
+
+    if (!APP_STATE.currentShot) return;
+
+    await saveShotStoryboardVideoAppointAccountOverride(value);
 
 }
 
@@ -21275,9 +21324,9 @@ async function duplicateCurrentShotForVideo() {
 
 
 
-function getSelectedStoryboardSceneCardId(shot = APP_STATE.currentShot) {
+function getSelectedStoryboardSceneCardIds(shot = APP_STATE.currentShot) {
 
-    if (!shot) return null;
+    if (!shot) return [];
 
     const selectedIds = (() => {
         try {
@@ -21293,13 +21342,23 @@ function getSelectedStoryboardSceneCardId(shot = APP_STATE.currentShot) {
             .map(card => card.id)
     );
 
+    const selectedSceneIds = [];
     for (const cardId of selectedIds) {
         if (sceneIdSet.has(cardId)) {
-            return cardId;
+            selectedSceneIds.push(cardId);
         }
     }
 
-    return null;
+    return selectedSceneIds;
+
+}
+
+
+
+function getSelectedStoryboardSceneCardId(shot = APP_STATE.currentShot) {
+
+    const selectedSceneIds = getSelectedStoryboardSceneCardIds(shot);
+    return selectedSceneIds.length > 0 ? selectedSceneIds[0] : null;
 
 }
 
@@ -21569,6 +21628,7 @@ function buildShotCloneSyncPayload(shot, overrides = {}) {
         aspect_ratio: String(selectValue('aspect_ratio', '16:9') || '16:9').trim(),
         duration: Number(selectValue('duration', 15) || 15),
         storyboard_video_model: String(selectValue('storyboard_video_model', '') || '').trim(),
+        storyboard_video_appoint_account: String(selectValue('storyboard_video_appoint_account', '') || '').trim(),
         storyboard_video_model_override_enabled: hasOverride('storyboard_video_model_override_enabled')
             ? Boolean(overrides.storyboard_video_model_override_enabled)
             : Boolean(sourceShot?.storyboard_video_model_override_enabled),
@@ -21806,29 +21866,15 @@ async function toggleShotSubject(cardId) {
 
     if (card && card.card_type === '场景') {
 
-        const sceneIdSet = new Set(
+        const index = selectedIds.indexOf(cardId);
 
-            (Array.isArray(APP_STATE.cards) ? APP_STATE.cards : [])
+        if (index >= 0) {
 
-                .filter(item => item.card_type === '场景')
+            selectedIds.splice(index, 1);
 
-                .map(item => item.id)
+        } else {
 
-        );
-
-        const currentSelectedSceneCardId = getSelectedStoryboardSceneCardId(APP_STATE.currentShot);
-
-        const nextSceneCardId = currentSelectedSceneCardId === cardId && !Boolean(APP_STATE.currentShot.use_uploaded_scene_image)
-
-            ? null
-
-            : cardId;
-
-        selectedIds = selectedIds.filter(id => !sceneIdSet.has(id));
-
-        if (nextSceneCardId) {
-
-            selectedIds.push(nextSceneCardId);
+            selectedIds.push(cardId);
 
         }
 
@@ -23471,7 +23517,7 @@ function showBatchGenerateVideoModal() {
 
             当前视频设置：<span style="color:#fff;">${escapeHtml(settings.model)} / ${escapeHtml(settings.aspect_ratio)} / ${settings.duration}s</span>
 
-            <span style="color:#666;">（服务商 ${escapeHtml(settings.provider)}，账号 ${escapeHtml(settings.appoint_account || '不指定')}，单价 ¥${escapeHtml(formatStoryboardVideoPrice(price))}，可在“图/视频设置”中修改；镜头单独设置模型/时长会优先生效）</span>
+            <span style="color:#666;">（服务商 ${escapeHtml(settings.provider)}，默认账号 ${escapeHtml(settings.appoint_account || '不指定')}，单价 ¥${escapeHtml(formatStoryboardVideoPrice(price))}；镜头单独设置账号/模型/时长会优先生效）</span>
 
         `;
 
@@ -27600,13 +27646,6 @@ async function ensureSubjectReferenceImage(cardId, images) {
 
     }
 
-    const card = (Array.isArray(APP_STATE.cards) ? APP_STATE.cards : []).find(item => item.id === cardId);
-    if (card && card.card_type === '场景') {
-        return images;
-    }
-
-
-
     const hasReference = images.some(img => img?.status === 'completed' && img?.is_reference);
 
     if (hasReference) {
@@ -27779,15 +27818,7 @@ async function fetchProvidersStats() {
 
     try {
 
-        const response = await fetch('https://ne.mocatter.cn/api_sora/stats/providers', {
-
-            headers: {
-
-                'Authorization': 'Bearer sk-Zv2THcS1J7KDZkQ-griUI6UlRSNcgQhvTXu70tuvRBw'
-
-            }
-
-        });
+        const response = await apiRequest('/api/video/providers/stats');
 
 
 
