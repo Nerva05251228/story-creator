@@ -326,6 +326,28 @@ class StartupImportContractTests(unittest.TestCase):
             self.assertNotIn(f"{name} = episodes.{name}", main_source)
             self.assertIn(f"def {service_name}", service_source)
 
+    def test_episode_runtime_state_helpers_live_in_service_module(self):
+        main_source = MAIN_PATH.read_text(encoding="utf-8-sig")
+        episodes_source = (BACKEND_DIR / "api" / "routers" / "episodes.py").read_text(encoding="utf-8-sig")
+        service_path = BACKEND_DIR / "api" / "services" / "episode_runtime_state.py"
+
+        self.assertTrue(service_path.exists())
+        service_source = service_path.read_text(encoding="utf-8-sig")
+        aliases = {
+            "_refresh_episode_batch_sora_prompt_state": "refresh_episode_batch_sora_prompt_state",
+            "_repair_stale_storyboard_prompt_generation": "repair_stale_storyboard_prompt_generation",
+            "_reconcile_episode_runtime_flags": "reconcile_episode_runtime_flags",
+        }
+
+        self.assertIn("from api.services import episode_runtime_state", main_source)
+        self.assertIn("from api.services import episode_runtime_state", episodes_source)
+        self.assertEqual(_top_level_definition_names(main_source) & set(aliases), set())
+        self.assertEqual(_top_level_definition_names(episodes_source) & set(aliases), set())
+        for name, service_name in aliases.items():
+            self.assertIn(f"{name} = episode_runtime_state.{service_name}", main_source)
+            self.assertIn(f"{name} = episode_runtime_state.{service_name}", episodes_source)
+            self.assertIn(f"def {service_name}", service_source)
+
     def test_storyboard2_media_helpers_live_in_service_module(self):
         main_source = MAIN_PATH.read_text(encoding="utf-8-sig")
         router_source = (BACKEND_DIR / "api" / "routers" / "storyboard2.py").read_text(encoding="utf-8-sig")

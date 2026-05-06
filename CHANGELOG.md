@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 This project uses a lightweight `Added`, `Changed`, `Fixed`, `Security`, and `Migration` structure.
 
+## 2026-05-06 - Episode Runtime State Service Extraction
+
+### Added
+
+- Added `backend/api/services/episode_runtime_state.py` for shared sora prompt batch flag refresh, stale storyboard prompt repair, and episode runtime flag reconciliation.
+- Added focused runtime-state service coverage and import-contract checks for the extraction.
+
+### Changed
+
+- Updated `backend/api/routers/episodes.py` and `backend/main.py` to reuse the shared episode runtime state service while preserving existing call sites and compatibility aliases.
+- Removed the duplicated runtime state repair block from `backend/main.py` so stale sora prompt reconciliation now has a single live implementation.
+
 ## 2026-05-06 - Episode Text Submission Service Extraction
 
 ### Added
