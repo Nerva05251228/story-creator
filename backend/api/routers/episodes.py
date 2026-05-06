@@ -22,8 +22,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Up
 from fastapi.responses import FileResponse
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Alignment, Font, PatternFill
-from sqlalchemy import func
-from sqlalchemy.exc import OperationalError
+from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session
 
 import billing_service
@@ -39,6 +38,7 @@ from database import SessionLocal, get_db
 from managed_generation_service import ACTIVE_MANAGED_SESSION_STATUSES
 from api.services import billing_charges
 from api.services import episode_cleanup
+from api.services import db_commit_retry
 from api.services import storyboard_defaults
 from api.services import storyboard2_board
 from api.services import storyboard2_permissions
@@ -117,7 +117,7 @@ ALLOWED_CARD_TYPES = storyboard_sync.ALLOWED_CARD_TYPES
 
 SOUND_CARD_TYPE = "声音"
 
-SQLITE_LOCK_RETRY_DELAYS = (0.3, 0.8, 1.5, 3.0)
+SQLITE_LOCK_RETRY_DELAYS = db_commit_retry.SQLITE_LOCK_RETRY_DELAYS
 
 _SUBJECT_MATCH_STOP_FRAGMENTS = storyboard_sync.SUBJECT_MATCH_STOP_FRAGMENTS
 
@@ -191,40 +191,9 @@ _build_unified_storyboard_video_task_payload = storyboard_video_payload._build_u
 build_sora_prompt = storyboard_video_prompt_builder.build_sora_prompt
 _resolve_selected_cards = storyboard_reference_assets.resolve_selected_cards
 
-def _rollback_quietly(db: Session):
-    try:
-        db.rollback()
-    except Exception:
-        pass
-
-def _is_sqlite_lock_error(db: Session, exc: Exception) -> bool:
-    dialect = getattr(getattr(db, "bind", None), "dialect", None)
-    dialect_name = getattr(dialect, "name", "")
-    return dialect_name == "sqlite" and "database is locked" in str(exc).lower()
-
-def commit_with_retry(
-    db: Session,
-    prepare_fn=None,
-    context: str = "db commit"
-):
-    max_retries = len(SQLITE_LOCK_RETRY_DELAYS)
-
-    for attempt in range(max_retries + 1):
-        if prepare_fn:
-            prepare_fn()
-        try:
-            db.commit()
-            return
-        except OperationalError as e:
-            _rollback_quietly(db)
-            if not _is_sqlite_lock_error(db, e) or attempt >= max_retries:
-                raise
-            delay = SQLITE_LOCK_RETRY_DELAYS[attempt]
-            print(f"[db] {context} 遇到 SQLite 写锁，{delay:.1f}s 后重试 ({attempt + 1}/{max_retries})")
-            time.sleep(delay)
-        except Exception:
-            _rollback_quietly(db)
-            raise
+_rollback_quietly = db_commit_retry.rollback_quietly
+_is_sqlite_lock_error = db_commit_retry.is_sqlite_lock_error
+commit_with_retry = db_commit_retry.commit_with_retry
 
 _normalize_subject_detail_entry = storyboard_sync.normalize_subject_detail_entry
 

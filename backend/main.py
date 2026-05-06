@@ -5,7 +5,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi import Header
 from sqlalchemy.orm import Session
 from sqlalchemy import text, func, or_, and_, case
-from sqlalchemy.exc import OperationalError
 from typing import List, Optional, Dict, Any, Tuple
 from pydantic import BaseModel
 from datetime import datetime
@@ -57,6 +56,7 @@ from api.services.card_media import (
 from api.services import billing_charges
 from api.services import card_image_generation as card_image_generation_service
 from api.services import episode_cleanup
+from api.services import db_commit_retry
 from api.services import model_configs as model_configs_service
 from api.services import shot_reference_workflow
 from api.services import simple_storyboard_batches as simple_storyboard_batches_service
@@ -338,7 +338,7 @@ MASTER_PASSWORD = _get_private_password_env("MASTER_PASSWORD")
 ADMIN_PANEL_PASSWORD = _get_private_password_env("ADMIN_PANEL_PASSWORD")
 DEFAULT_STORYBOARD_VIDEO_MODEL = storyboard_video_settings.DEFAULT_STORYBOARD_VIDEO_MODEL
 MOTI_STORYBOARD_VIDEO_MODELS = storyboard_video_settings.MOTI_STORYBOARD_VIDEO_MODELS
-SQLITE_LOCK_RETRY_DELAYS = (0.3, 0.8, 1.5, 3.0)
+SQLITE_LOCK_RETRY_DELAYS = db_commit_retry.SQLITE_LOCK_RETRY_DELAYS
 STARTUP_BOOTSTRAP_LOCK_PATH = os.path.join(os.path.dirname(__file__), ".startup_bootstrap.lock")
 
 
@@ -473,42 +473,10 @@ def _hash_password(password: str) -> str:
     return hashlib.sha256(password.encode("utf-8")).hexdigest()
 
 
-def _rollback_quietly(db: Session):
-    try:
-        db.rollback()
-    except Exception:
-        pass
+_rollback_quietly = db_commit_retry.rollback_quietly
+_is_sqlite_lock_error = db_commit_retry.is_sqlite_lock_error
+commit_with_retry = db_commit_retry.commit_with_retry
 
-
-def _is_sqlite_lock_error(db: Session, exc: Exception) -> bool:
-    dialect = getattr(getattr(db, "bind", None), "dialect", None)
-    dialect_name = getattr(dialect, "name", "")
-    return dialect_name == "sqlite" and "database is locked" in str(exc).lower()
-
-
-def commit_with_retry(
-    db: Session,
-    prepare_fn=None,
-    context: str = "db commit"
-):
-    max_retries = len(SQLITE_LOCK_RETRY_DELAYS)
-
-    for attempt in range(max_retries + 1):
-        if prepare_fn:
-            prepare_fn()
-        try:
-            db.commit()
-            return
-        except OperationalError as e:
-            _rollback_quietly(db)
-            if not _is_sqlite_lock_error(db, e) or attempt >= max_retries:
-                raise
-            delay = SQLITE_LOCK_RETRY_DELAYS[attempt]
-            print(f"[db] {context} 遇到 SQLite 写锁，{delay:.1f}s 后重试 ({attempt + 1}/{max_retries})")
-            time.sleep(delay)
-        except Exception:
-            _rollback_quietly(db)
-            raise
 
 # 补充新增字段（兼容旧数据库）
 def ensure_storyboard_columns():

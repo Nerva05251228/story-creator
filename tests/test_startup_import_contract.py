@@ -457,6 +457,36 @@ class StartupImportContractTests(unittest.TestCase):
             set(),
         )
 
+    def test_db_commit_retry_helpers_live_in_service_module(self):
+        main_source = MAIN_PATH.read_text(encoding="utf-8-sig")
+        episodes_source = (BACKEND_DIR / "api" / "routers" / "episodes.py").read_text(encoding="utf-8-sig")
+        simple_storyboard_source = (
+            BACKEND_DIR / "api" / "routers" / "simple_storyboard.py"
+        ).read_text(encoding="utf-8-sig")
+        service_path = BACKEND_DIR / "api" / "services" / "db_commit_retry.py"
+        delegated_names = {
+            "_rollback_quietly",
+            "_is_sqlite_lock_error",
+            "commit_with_retry",
+        }
+
+        self.assertTrue(service_path.exists())
+        self.assertIn("from api.services import db_commit_retry", main_source)
+        self.assertIn("from api.services import db_commit_retry", episodes_source)
+        self.assertIn("from api.services import db_commit_retry", simple_storyboard_source)
+        for source in (main_source, episodes_source, simple_storyboard_source):
+            self.assertEqual(_top_level_definition_names(source) & delegated_names, set())
+            self.assertIn(
+                "SQLITE_LOCK_RETRY_DELAYS = db_commit_retry.SQLITE_LOCK_RETRY_DELAYS",
+                source,
+            )
+            self.assertIn("_rollback_quietly = db_commit_retry.rollback_quietly", source)
+            self.assertIn(
+                "_is_sqlite_lock_error = db_commit_retry.is_sqlite_lock_error",
+                source,
+            )
+            self.assertIn("commit_with_retry = db_commit_retry.commit_with_retry", source)
+
     def test_episode_metadata_helpers_are_not_redefined_in_main(self):
         source = MAIN_PATH.read_text(encoding="utf-8-sig")
         top_level_defs = _top_level_definition_names(source)

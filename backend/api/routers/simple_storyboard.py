@@ -1,14 +1,13 @@
 import json
-import time
 from datetime import datetime
 from typing import Dict, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
-from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 import models
 from api.schemas.episodes import SimpleStoryboardRequest
+from api.services import db_commit_retry
 from api.services.simple_storyboard_batches import (
     _get_simple_storyboard_batch_rows,
     _get_simple_storyboard_batch_summary,
@@ -27,47 +26,14 @@ from simple_storyboard_rules import (
 router = APIRouter()
 
 
-SQLITE_LOCK_RETRY_DELAYS = (0.3, 0.8, 1.5, 3.0)
+SQLITE_LOCK_RETRY_DELAYS = db_commit_retry.SQLITE_LOCK_RETRY_DELAYS
 SIMPLE_STORYBOARD_TIMEOUT_SECONDS = 3600
 SIMPLE_STORYBOARD_TIMEOUT_ERROR = "简单分镜生成超时（超过 1 小时），已自动标记为失败，请重新生成。"
 
 
-def _rollback_quietly(db: Session):
-    try:
-        db.rollback()
-    except Exception:
-        pass
-
-
-def _is_sqlite_lock_error(db: Session, exc: Exception) -> bool:
-    dialect = getattr(getattr(db, "bind", None), "dialect", None)
-    dialect_name = getattr(dialect, "name", "")
-    return dialect_name == "sqlite" and "database is locked" in str(exc).lower()
-
-
-def commit_with_retry(
-    db: Session,
-    prepare_fn=None,
-    context: str = "db commit",
-):
-    max_retries = len(SQLITE_LOCK_RETRY_DELAYS)
-
-    for attempt in range(max_retries + 1):
-        if prepare_fn:
-            prepare_fn()
-        try:
-            db.commit()
-            return
-        except OperationalError as exc:
-            _rollback_quietly(db)
-            if not _is_sqlite_lock_error(db, exc) or attempt >= max_retries:
-                raise
-            delay = SQLITE_LOCK_RETRY_DELAYS[attempt]
-            print(f"[db] {context} 遇到 SQLite 写锁，{delay:.1f}s 后重试 ({attempt + 1}/{max_retries})")
-            time.sleep(delay)
-        except Exception:
-            _rollback_quietly(db)
-            raise
+_rollback_quietly = db_commit_retry.rollback_quietly
+_is_sqlite_lock_error = db_commit_retry.is_sqlite_lock_error
+commit_with_retry = db_commit_retry.commit_with_retry
 
 
 def _count_storyboard_items(raw_data: Optional[str]) -> int:

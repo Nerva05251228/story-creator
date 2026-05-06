@@ -143,6 +143,17 @@ This project uses a lightweight `Added`, `Changed`, `Fixed`, `Security`, and `Mi
 
 - Registered the frontend-used `PATCH /api/shots/{shot_id}/first-frame-reference` and `PATCH /api/shots/{shot_id}/scene-image-selection` endpoints in the shots router.
 
+## 2026-05-06 - DB Commit Retry Service Extraction
+
+### Added
+
+- Added `backend/api/services/db_commit_retry.py` for shared SQLite lock commit retry handling.
+- Added focused retry behavior tests and import-contract coverage for the shared commit retry helper extraction.
+
+### Changed
+
+- Updated `backend/main.py`, `backend/api/routers/episodes.py`, and `backend/api/routers/simple_storyboard.py` to reuse the shared commit retry service while preserving existing compatibility aliases and retry behavior.
+
 ## 2026-05-04 - Managed Generation Router Extraction
 
 ### Added
