@@ -14,6 +14,7 @@ def build_base_variant_payload(source_shot, *, next_variant: int) -> dict:
         "sora_prompt": getattr(source_shot, "sora_prompt", ""),
         "sora_prompt_is_full": bool(getattr(source_shot, "sora_prompt_is_full", False)),
         "sora_prompt_status": getattr(source_shot, "sora_prompt_status", "idle"),
+        "reasoning_prompt_status": getattr(source_shot, "reasoning_prompt_status", "idle"),
         "selected_card_ids": source_shot.selected_card_ids,
         "selected_sound_card_ids": getattr(source_shot, "selected_sound_card_ids", None),
         "first_frame_reference_image_url": getattr(source_shot, "first_frame_reference_image_url", ""),

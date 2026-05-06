@@ -188,6 +188,7 @@ class StoryboardShot(Base):
     sora_prompt = Column(Text, default="")  # 鍚堝苟鍚庣殑Sora鎻愮ず璇嶏紙鍒嗛暅琛ㄦ牸閮ㄥ垎锛?
     sora_prompt_is_full = Column(Boolean, default=False, nullable=False)  # 是否为一次性完整提示词（不再二次拼接）
     sora_prompt_status = Column(String, default="idle")  # idle/generating/completed/failed
+    reasoning_prompt_status = Column(String, default="idle")  # idle/generating/completed/failed
     selected_card_ids = Column(String, default="[]")  # JSON鏁扮粍锛歔1,2,3]
     selected_sound_card_ids = Column(String, nullable=True)  # JSON数组；NULL 表示按默认规则自动选择声音卡片
     video_path = Column(String, default="")  # ????????URL

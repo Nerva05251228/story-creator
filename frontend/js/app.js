@@ -102,6 +102,8 @@ const APP_STATE = {
 
     storyboardPromptBatchSubmitting: false,
 
+    storyboardReasoningPromptBatchSubmitting: false,
+
     simpleStoryboardSubmissionPending: false,
 
     simpleStoryboardLoadVersion: 0,
@@ -9152,12 +9154,21 @@ async function loadStoryboardStep() {
 
 
         const isGenerating = isStoryboardPromptBatchGenerating();
+        const isGeneratingReasoning = isStoryboardReasoningPromptBatchGenerating();
 
         const generateBtnDisabled = isGenerating ? 'disabled' : '';
+        const generateReasoningBtnDisabled = isGeneratingReasoning ? 'disabled' : '';
 
-        const generateStatusHtml = isGenerating
+        const statusMessages = [];
+        if (isGenerating) {
+            statusMessages.push('正在批量生成Sora提示词...');
+        }
+        if (isGeneratingReasoning) {
+            statusMessages.push('正在批量生成推理提示词...');
+        }
+        const generateStatusHtml = statusMessages.length > 0
 
-            ? '<span class="batch-generate-status">正在批量生成中...</span>'
+            ? `<span class="batch-generate-status">${escapeHtml(statusMessages.join(' '))}</span>`
 
             : '';
 
@@ -9180,6 +9191,8 @@ async function loadStoryboardStep() {
             ${managedButtonHtml}
 
             <button class="secondary-button storyboard-tool-button" data-storyboard-video-setting-btn="1" onclick="openStoryboardVideoSettingModal()">图/视频设置</button>
+
+            <button class="secondary-button storyboard-tool-button" onclick="batchGenerateStoryboardReasoningPrompts()" ${generateReasoningBtnDisabled} id="batchGenerateReasoningBtn">批量生成推理提示词</button>
 
             <button class="secondary-button storyboard-tool-button" onclick="batchGenerateSoraPrompts()" ${generateBtnDisabled} id="batchGenerateBtn">批量生成Sora提示词</button>
 
@@ -9284,6 +9297,8 @@ async function loadStoryboardStep() {
 
             s.sora_prompt_status === 'generating' ||
 
+            s.reasoning_prompt_status === 'generating' ||
+
             s.storyboard_image_status === 'processing'
 
         );
@@ -9299,6 +9314,8 @@ async function loadStoryboardStep() {
             video_status: s.video_status,
 
             sora_status: s.sora_prompt_status,
+
+            reasoning_status: s.reasoning_prompt_status,
 
             storyboard_image_status: s.storyboard_image_status
 
@@ -19746,6 +19763,7 @@ function renderStoryboardSidebar() {
     const shotLabel = getShotLabel(APP_STATE.currentShot);
 
     const isGenerating = APP_STATE.currentShot?.sora_prompt_status === 'generating';
+    const isReasoningGenerating = APP_STATE.currentShot?.reasoning_prompt_status === 'generating';
 
     const cards = Array.isArray(APP_STATE.cards) ? APP_STATE.cards : [];
 
@@ -20239,6 +20257,7 @@ function renderStoryboardSidebar() {
                 </div>
                 <div class="storyboard-sora-actions-right">
                     <button class="primary-button storyboard-tool-button" onclick="copySoraPrompt()">复制提示词</button>
+                    <button class="primary-button storyboard-tool-button" id="generateReasoningPromptBtn" onclick="generateStoryboardReasoningPrompt()" ${isReasoningGenerating ? 'disabled' : ''}>${isReasoningGenerating ? '推理中...' : '生成推理提示词'}</button>
                     <button class="primary-button storyboard-tool-button" id="generateSoraPromptBtn" onclick="generateSoraPrompt()" ${isGenerating ? 'disabled' : ''}>生成Sora提示词</button>
                 </div>
             </div>
@@ -21606,6 +21625,8 @@ function buildShotCloneSyncPayload(shot, overrides = {}) {
     const storyboardVideoPrompt = String(selectValue('storyboard_video_prompt', '') || '').trim();
     const rawPromptStatus = String(selectValue('sora_prompt_status', sourceShot?.sora_prompt_status || '') || '').trim();
     const soraPromptStatus = rawPromptStatus || ((soraPrompt || storyboardVideoPrompt) ? 'completed' : 'idle');
+    const rawReasoningPromptStatus = String(selectValue('reasoning_prompt_status', sourceShot?.reasoning_prompt_status || '') || '').trim();
+    const reasoningPromptStatus = rawReasoningPromptStatus || 'idle';
 
     const storyboardImagePath = String(selectValue('storyboard_image_path', '') || '').trim();
     const rawStoryboardImageStatus = String(selectValue('storyboard_image_status', sourceShot?.storyboard_image_status || '') || '').trim();
@@ -21623,6 +21644,7 @@ function buildShotCloneSyncPayload(shot, overrides = {}) {
             : Boolean(sourceShot?.scene_override_locked),
         sora_prompt: soraPrompt,
         sora_prompt_status: soraPromptStatus,
+        reasoning_prompt_status: reasoningPromptStatus,
         selected_card_ids: selectedCardIds,
         selected_sound_card_ids: selectedSoundCardIds,
         aspect_ratio: String(selectValue('aspect_ratio', '16:9') || '16:9').trim(),
@@ -22835,6 +22857,102 @@ async function generateShotPrompt(promptMode = 'sora', options = {}) {
 }
 
 
+async function generateStoryboardReasoningPrompt() {
+
+    if (!APP_STATE.currentShot) return;
+
+    const shotId = APP_STATE.currentShot.id;
+    const scriptExcerptInput = document.getElementById('scriptExcerpt');
+    const excerpt = scriptExcerptInput ? scriptExcerptInput.value.trim() : String(APP_STATE.currentShot.script_excerpt || '').trim();
+
+    if (!excerpt) {
+
+        alert('请先填写原剧本段落');
+
+        return;
+
+    }
+
+    const button = document.getElementById('generateReasoningPromptBtn');
+    if (button) {
+        button.disabled = true;
+        button.textContent = '提交中...';
+    }
+
+    try {
+
+        const updateResponse = await apiRequest(`/api/shots/${shotId}`, {
+
+            method: 'PUT',
+
+            body: JSON.stringify({
+
+                script_excerpt: excerpt
+
+            })
+
+        });
+
+        if (!updateResponse || !updateResponse.ok) {
+
+            const error = updateResponse ? await updateResponse.json() : null;
+            showToast(error?.detail || '保存失败', 'error');
+            return;
+
+        }
+
+        const updatedShot = await updateResponse.json();
+        updateShotInState(shotId, updatedShot);
+
+        const response = await apiRequest(`/api/shots/${shotId}/generate-reasoning-prompt`, {
+
+            method: 'POST'
+
+        });
+
+        if (response && response.ok) {
+
+            APP_STATE.previousProcessingTasks.add(`${shotId}:reasoning_prompt`);
+            updateShotInState(shotId, {
+                script_excerpt: excerpt,
+                reasoning_prompt_status: 'generating',
+            });
+            renderStoryboardShotsGrid();
+            renderStoryboardSidebar();
+            startVideoStatusPolling();
+            const result = await response.json();
+            showToast(result.message || '推理提示词生成任务已提交', 'success');
+
+        } else if (response) {
+
+            const error = await response.json();
+            showToast(error.detail || '提交任务失败', 'error');
+            updateShotInState(shotId, { reasoning_prompt_status: 'failed' });
+            renderStoryboardSidebar();
+
+        }
+
+    } catch (error) {
+
+        console.error('Failed to generate storyboard reasoning prompt:', error);
+        showToast('提交任务失败', 'error');
+        updateShotInState(shotId, { reasoning_prompt_status: 'failed' });
+        renderStoryboardSidebar();
+
+    } finally {
+
+        const currentButton = document.getElementById('generateReasoningPromptBtn');
+        if (currentButton) {
+            const stillGenerating = APP_STATE.currentShot?.reasoning_prompt_status === 'generating';
+            currentButton.disabled = stillGenerating;
+            currentButton.textContent = stillGenerating ? '推理中...' : '生成推理提示词';
+        }
+
+    }
+
+}
+
+
 async function generateSoraPrompt() {
     const referenceShotId = await showSoraPromptReferenceModal();
     if (referenceShotId === undefined) {
@@ -23089,6 +23207,149 @@ async function batchGenerateSoraPrompts() {
     // 显示批量生成设置妯℃€佹
 
     showBatchGenerateModal();
+
+}
+
+
+async function batchGenerateStoryboardReasoningPrompts() {
+
+    if (!APP_STATE.currentEpisode || !APP_STATE.shots || APP_STATE.shots.length === 0) {
+
+        showToast('没有可生成的镜头', 'info');
+
+        return;
+
+    }
+
+    const selectedShotIds = APP_STATE.shots
+        .filter(shot => shot && shot.variant_index === 0 && String(shot.script_excerpt || '').trim())
+        .map(shot => shot.id);
+
+    if (selectedShotIds.length === 0) {
+
+        showToast('没有可生成的有效镜头', 'info');
+
+        return;
+
+    }
+
+    const confirmed = await showConfirmModal(
+        `确定为 ${selectedShotIds.length} 个镜头批量生成推理提示词吗？`,
+        '批量生成推理提示词'
+    );
+
+    if (!confirmed) return;
+
+    const previousStates = selectedShotIds.map(shotId => {
+        const shot = APP_STATE.shots.find(item => item.id === shotId);
+        return {
+            shotId,
+            reasoning_prompt_status: shot?.reasoning_prompt_status || 'idle'
+        };
+    });
+
+    APP_STATE.storyboardReasoningPromptBatchSubmitting = true;
+
+    try {
+
+        selectedShotIds.forEach(shotId => {
+            APP_STATE.previousProcessingTasks.add(`${shotId}:reasoning_prompt`);
+            updateShotInState(shotId, { reasoning_prompt_status: 'generating' });
+        });
+
+        renderStoryboardShotsGrid();
+
+        if (APP_STATE.currentShot && selectedShotIds.includes(APP_STATE.currentShot.id)) {
+            renderStoryboardSidebar();
+        }
+
+        startVideoStatusPolling();
+
+        const response = await apiRequest(`/api/episodes/${APP_STATE.currentEpisode}/batch-generate-storyboard-reasoning-prompts`, {
+
+            method: 'POST',
+
+            body: JSON.stringify({
+
+                shot_ids: selectedShotIds
+
+            })
+
+        });
+
+        if (response && response.ok) {
+
+            const result = await response.json();
+
+            const shotsResponse = await apiRequest(`/api/episodes/${APP_STATE.currentEpisode}/shots`);
+
+            if (shotsResponse && shotsResponse.ok) {
+
+                APP_STATE.shots = await shotsResponse.json();
+
+                if (APP_STATE.currentShot) {
+
+                    const updatedCurrentShot = APP_STATE.shots.find(shot => shot.id === APP_STATE.currentShot.id);
+
+                    if (updatedCurrentShot) {
+
+                        APP_STATE.currentShot = updatedCurrentShot;
+
+                    }
+
+                }
+
+                renderStoryboardShotsGrid();
+
+                if (APP_STATE.currentShot && selectedShotIds.includes(APP_STATE.currentShot.id)) {
+                    renderStoryboardSidebar();
+                }
+
+            }
+
+            showToast(result.message || '批量推理提示词生成任务已提交', 'success');
+
+        } else if (response) {
+
+            const error = await response.json();
+
+            previousStates.forEach(state => {
+                updateShotInState(state.shotId, { reasoning_prompt_status: state.reasoning_prompt_status });
+                APP_STATE.previousProcessingTasks.delete(`${state.shotId}:reasoning_prompt`);
+            });
+
+            renderStoryboardShotsGrid();
+
+            if (APP_STATE.currentShot && selectedShotIds.includes(APP_STATE.currentShot.id)) {
+                renderStoryboardSidebar();
+            }
+
+            showToast(error.detail || '批量生成失败', 'error');
+
+        }
+
+    } catch (error) {
+
+        console.error('Failed to batch generate storyboard reasoning prompts:', error);
+
+        previousStates.forEach(state => {
+            updateShotInState(state.shotId, { reasoning_prompt_status: state.reasoning_prompt_status });
+            APP_STATE.previousProcessingTasks.delete(`${state.shotId}:reasoning_prompt`);
+        });
+
+        renderStoryboardShotsGrid();
+
+        if (APP_STATE.currentShot && selectedShotIds.includes(APP_STATE.currentShot.id)) {
+            renderStoryboardSidebar();
+        }
+
+        showToast('批量生成失败', 'error');
+
+    } finally {
+
+        APP_STATE.storyboardReasoningPromptBatchSubmitting = false;
+
+    }
 
 }
 
@@ -25317,6 +25578,21 @@ function hasGeneratingStoryboardPromptShots(shots = APP_STATE.shots) {
 }
 
 
+function hasGeneratingStoryboardReasoningPromptShots(shots = APP_STATE.shots) {
+
+    if (!Array.isArray(shots) || shots.length === 0) {
+
+        return false;
+
+    }
+
+
+
+    return shots.some(shot => shot && shot.reasoning_prompt_status === 'generating');
+
+}
+
+
 
 function isStoryboardPromptBatchGenerating() {
 
@@ -25337,6 +25613,29 @@ function isStoryboardPromptBatchGenerating() {
 
 
     return Boolean(APP_STATE.currentEpisodeInfo?.batch_generating_prompts);
+
+}
+
+
+function isStoryboardReasoningPromptBatchGenerating() {
+
+    if (APP_STATE.storyboardReasoningPromptBatchSubmitting) {
+
+        return true;
+
+    }
+
+
+
+    if (Array.isArray(APP_STATE.shots) && APP_STATE.shots.length > 0) {
+
+        return hasGeneratingStoryboardReasoningPromptShots(APP_STATE.shots);
+
+    }
+
+
+
+    return false;
 
 }
 
@@ -27182,7 +27481,41 @@ async function checkAllVideoStatus() {
 
 
 
-            // 分镜图生成任务（废弃锛?
+            if (shot.reasoning_prompt_status === 'generating') {
+
+                currentProcessingTasks.add(`${shot.id}:reasoning_prompt`);
+
+            } else if (shot.reasoning_prompt_status === 'completed' || shot.reasoning_prompt_status === 'failed') {
+
+                const taskKey = `${shot.id}:reasoning_prompt`;
+
+                if (APP_STATE.previousProcessingTasks.has(taskKey)) {
+
+                    if (shot.reasoning_prompt_status === 'completed') {
+
+                        showToast(`镜头 #${shot.shot_number} 推理提示词生成完成`, 'success');
+
+                        if (APP_STATE.currentShot && shot.id === APP_STATE.currentShot.id) {
+
+                            soraPromptJustCompleted = true;
+
+                        }
+
+                    } else if (shot.reasoning_prompt_status === 'failed') {
+
+                        showToast(`镜头 #${shot.shot_number} 推理提示词生成失败`, 'error');
+
+                    }
+
+                    APP_STATE.previousProcessingTasks.delete(taskKey);
+
+                }
+
+            }
+
+
+
+            // 分镜图生成任务（废弃锛? 
 
             if (shot.storyboard_image_status === 'processing') {
 

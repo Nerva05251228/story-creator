@@ -9,6 +9,10 @@ This changelog records the legacy-branch-only fixes and feature work completed o
 - Enabled multi-select scene cards in the storyboard `sora` right sidebar.
 - Preserved scene selection order in `selected_card_ids`.
 - Updated storyboard video reference assembly so multiple scene images are included in request order.
+- Added per-shot `生成推理提示词` and toolbar `批量生成推理提示词` actions in storyboard `sora`.
+- Added backend reasoning prompt tasks that write plain-text results back into `script_excerpt`.
+- Added `storyboard_reasoning_prompt_prefix` prompt config so the reasoning prompt prefix can be edited from `/manage`.
+- Added `reasoning_prompt_status` tracking for single-shot and batch reasoning prompt generation.
 
 ## Moti Account Handling
 
@@ -36,4 +40,5 @@ This changelog records the legacy-branch-only fixes and feature work completed o
 ## Verification
 
 - Frontend JS regression tests updated and passing for multi-scene selection, Moti account handling, shot settings UI, provider stats polling, subject preview behavior, and clone payload sync.
-- Backend Python regression tests updated and passing for scene reference ordering, Moti account mapping, startup scripts, provider account helpers, managed generation, and storyboard image flow.
+- Frontend JS regression tests updated and passing for storyboard reasoning prompt buttons and batch-state handling.
+- Backend Python regression tests updated and passing for scene reference ordering, Moti account mapping, startup scripts, provider account helpers, managed generation, storyboard image flow, and reasoning prompt request/result handling.
