@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 This project uses a lightweight `Added`, `Changed`, `Fixed`, `Security`, and `Migration` structure.
 
+## 2026-05-05 - Refactor Progress Forward Plan
+
+### Added
+
+- Added `docs/refactor/2026-05-05-refactor-progress-forward-plan.md` as the consolidated refactor progress, forward plan, and new-thread handoff prompt.
+
 ## 2026-05-05 - Storyboard2 Video Task Service Extraction
 
 ### Added
