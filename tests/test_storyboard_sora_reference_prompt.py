@@ -94,8 +94,10 @@ class StoryboardSoraReferenceRequestDataTests(unittest.TestCase):
             db.refresh(shot)
             db.refresh(reference_shot)
 
+            helper_module = sys.modules[main._build_storyboard_prompt_request_data.__module__]
+
             with patch.object(
-                main,
+                helper_module,
                 "get_ai_config",
                 return_value={
                     "provider_key": "relay",

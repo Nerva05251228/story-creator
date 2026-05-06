@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 This project uses a lightweight `Added`, `Changed`, `Fixed`, `Security`, and `Migration` structure.
 
+## 2026-05-06 - Episode Storyboard Prompt Submission Service Extraction
+
+### Added
+
+- Added `backend/api/services/episode_storyboard_prompt_generation.py` for shared storyboard prompt request construction and `sora_prompt` text-task submission.
+- Added focused storyboard prompt generation service coverage and import-contract checks for the extraction.
+
+### Changed
+
+- Updated `backend/api/routers/episodes.py` and `backend/main.py` to reuse the shared storyboard prompt generation service while preserving existing batch prompt generation behavior and compatibility aliases.
+- Removed the duplicated storyboard prompt request-builder / submit helper ownership from the router-main pair so this prompt-submission layer now has a single live implementation.
+
 ## 2026-05-06 - Episode Runtime State Service Extraction
 
 ### Added

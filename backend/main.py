@@ -58,6 +58,7 @@ from api.services import card_image_generation as card_image_generation_service
 from api.services import episode_cleanup
 from api.services import db_commit_retry
 from api.services import episode_text_generation
+from api.services import episode_storyboard_prompt_generation
 from api.services import episode_runtime_state
 from api.services import model_configs as model_configs_service
 from api.services import shot_reference_workflow
@@ -8149,7 +8150,7 @@ _append_sora_reference_prompt = storyboard_prompt_context.append_sora_reference_
 _resolve_sora_reference_prompt = storyboard_prompt_context.resolve_sora_reference_prompt
 
 
-def _build_storyboard_prompt_request_data(
+def _legacy_build_storyboard_prompt_request_data(
     db: Session,
     *,
     shot: models.StoryboardShot,
@@ -8256,6 +8257,7 @@ def _build_storyboard_prompt_request_data(
     return request_data, task_payload
 
 
+_build_storyboard_prompt_request_data = episode_storyboard_prompt_generation.build_storyboard_prompt_request_data
 _refresh_episode_batch_sora_prompt_state = episode_runtime_state.refresh_episode_batch_sora_prompt_state
 _repair_stale_storyboard_prompt_generation = episode_runtime_state.repair_stale_storyboard_prompt_generation
 _reconcile_episode_runtime_flags = episode_runtime_state.reconcile_episode_runtime_flags
@@ -8278,7 +8280,7 @@ def _refresh_storyboard2_prompt_batch_state(episode_id: int, db: Session):
         episode.batch_generating_storyboard2_prompts = active
 
 
-def _submit_storyboard_prompt_task(
+def _legacy_submit_storyboard_prompt_task(
     db: Session,
     *,
     shot: models.StoryboardShot,
@@ -8309,6 +8311,9 @@ def _submit_storyboard_prompt_task(
         request_payload=request_data,
         task_payload=task_payload,
     )
+
+
+_submit_storyboard_prompt_task = episode_storyboard_prompt_generation.submit_storyboard_prompt_task
 
 
 def _submit_storyboard2_prompt_task(

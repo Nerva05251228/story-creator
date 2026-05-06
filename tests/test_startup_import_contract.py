@@ -348,6 +348,27 @@ class StartupImportContractTests(unittest.TestCase):
             self.assertIn(f"{name} = episode_runtime_state.{service_name}", episodes_source)
             self.assertIn(f"def {service_name}", service_source)
 
+    def test_episode_storyboard_prompt_helpers_live_in_service_module(self):
+        main_source = MAIN_PATH.read_text(encoding="utf-8-sig")
+        episodes_source = (BACKEND_DIR / "api" / "routers" / "episodes.py").read_text(encoding="utf-8-sig")
+        service_path = BACKEND_DIR / "api" / "services" / "episode_storyboard_prompt_generation.py"
+
+        self.assertTrue(service_path.exists())
+        service_source = service_path.read_text(encoding="utf-8-sig")
+        aliases = {
+            "_build_storyboard_prompt_request_data": "build_storyboard_prompt_request_data",
+            "_submit_storyboard_prompt_task": "submit_storyboard_prompt_task",
+        }
+
+        self.assertIn("from api.services import episode_storyboard_prompt_generation", main_source)
+        self.assertIn("from api.services import episode_storyboard_prompt_generation", episodes_source)
+        self.assertEqual(_top_level_definition_names(main_source) & set(aliases), set())
+        self.assertEqual(_top_level_definition_names(episodes_source) & set(aliases), set())
+        for name, service_name in aliases.items():
+            self.assertIn(f"{name} = episode_storyboard_prompt_generation.{service_name}", main_source)
+            self.assertIn(f"{name} = episode_storyboard_prompt_generation.{service_name}", episodes_source)
+            self.assertIn(f"def {service_name}", service_source)
+
     def test_storyboard2_media_helpers_live_in_service_module(self):
         main_source = MAIN_PATH.read_text(encoding="utf-8-sig")
         router_source = (BACKEND_DIR / "api" / "routers" / "storyboard2.py").read_text(encoding="utf-8-sig")
