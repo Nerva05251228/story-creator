@@ -2,7 +2,7 @@
 
 Branch: `codex/legacy-old-code`
 
-This changelog records the legacy-branch-only fixes and feature work completed on 2026-05-06 so the same behavior can be reviewed and ported into `main` manually during the refactor.
+This changelog records legacy-branch-only changes completed on 2026-05-06 so the same behavior can be reviewed and ported into `main` manually during the refactor.
 
 ## Storyboard Sora
 
@@ -13,6 +13,14 @@ This changelog records the legacy-branch-only fixes and feature work completed o
 - Added backend reasoning prompt tasks that write plain-text results back into `script_excerpt`.
 - Added `storyboard_reasoning_prompt_prefix` prompt config so the reasoning prompt prefix can be edited from `/manage`.
 - Added `reasoning_prompt_status` tracking for single-shot and batch reasoning prompt generation.
+
+## Simple Storyboard
+
+- Added a new `规则分段` mode for simple storyboard generation.
+- When `规则分段` is selected, the system strictly follows numbered user input blocks such as `1 / 正文 / 2 / 正文 / 3 / 正文`.
+- Blank lines are ignored in `规则分段` mode.
+- Updated the script tab duration selector so `规则分段` is the default frontend mode for new and unconfigured episodes.
+- Added a `规则分段` explanatory card in the `/manage` duration template section.
 
 ## Moti Account Handling
 
@@ -39,6 +47,5 @@ This changelog records the legacy-branch-only fixes and feature work completed o
 
 ## Verification
 
-- Frontend JS regression tests updated and passing for multi-scene selection, Moti account handling, shot settings UI, provider stats polling, subject preview behavior, and clone payload sync.
-- Frontend JS regression tests updated and passing for storyboard reasoning prompt buttons and batch-state handling.
-- Backend Python regression tests updated and passing for scene reference ordering, Moti account mapping, startup scripts, provider account helpers, managed generation, storyboard image flow, and reasoning prompt request/result handling.
+- Frontend JS regression tests updated and passing for multi-scene selection, reasoning prompt buttons, shot settings UI, provider stats polling, subject preview behavior, clone payload sync, and rule-segment duration mode.
+- Backend Python regression tests updated and passing for scene reference ordering, Moti account mapping, startup scripts, provider account helpers, managed generation, storyboard image flow, reasoning prompt request/result handling, and rule-segment simple storyboard parsing.

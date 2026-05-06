@@ -133,7 +133,7 @@ class Episode(Base):
     detail_images_provider = Column(String, default="")  # 镜头图服务商：由上游模型目录动态决定
     storyboard2_video_duration = Column(Integer, default=6)  # 鏁呬簨鏉?瑙嗛榛樿鏃堕暱锛?/10绉掞級
     storyboard2_image_cw = Column(Integer, default=50)  # 即梦生图参考强度（cw）
-    storyboard2_duration = Column(Integer, default=15)  # 简单分镜时长规格：6/10/15/25秒
+    storyboard2_duration = Column(Integer, default=15)  # 简单分镜时长规格：15/25/35(规则分段)
     storyboard2_include_scene_references = Column(Boolean, default=False)  # 鏁呬簨鏉?鏄惁鎼哄甫鍦烘櫙涓讳綋鍙傝€冨浘
     storyboard_video_model = Column(String, default="Seedance 2.0 Fast")  # 鏁呬簨鏉匡紙sora锛夋ā鍨?
     storyboard_video_aspect_ratio = Column(String, default="16:9")  # 鏁呬簨鏉匡紙sora锛夎棰戞瘮渚?

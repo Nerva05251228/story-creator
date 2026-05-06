@@ -2103,7 +2103,7 @@
                 }
 
                 const durationNameMap = { 15: '4~5短句', 25: '对话30字' };
-                grid.innerHTML = templates
+                const durationTemplateCards = templates
                     .filter(template => template.duration === 15 || template.duration === 25)
                     .map(template => `
                     <div class="template-card">
@@ -2123,6 +2123,22 @@
                         </div>
                     </div>
                 `).join('');
+                const ruleSegmentCard = `
+                    <div class="template-card">
+                        <div class="template-header">
+                            <div>
+                                <div class="template-name">规则分段</div>
+                                <div class="template-description" style="margin-top: 6px;">
+                                    严格按用户输入的编号分段：1 / 正文 / 2 / 正文 / 3 / 正文。空行会被忽略，不再按字数规则自动切分。
+                                </div>
+                            </div>
+                            <div class="card-actions">
+                                <button class="btn-small btn-toggle" disabled>固定规则</button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                grid.innerHTML = durationTemplateCards + ruleSegmentCard;
             } catch (error) {
                 console.error('Failed to load shot duration templates:', error);
                 showToast('加载时长配置模板失败', 'error');

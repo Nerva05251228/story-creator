@@ -127,6 +127,7 @@ from simple_storyboard_rules import (
     generate_simple_storyboard_shots,
     get_default_rule_config,
     normalize_rule_config,
+    parse_rule_segmented_shots,
 )
 from storyboard_video_reference import (
     build_seedance_content_text,
@@ -485,6 +486,7 @@ MANAGED_PROMPT_OPTIMIZE_DEFAULT = """你是一位视频生成提示词优化助�
 STORYBOARD_REASONING_PROMPT_KEY = "storyboard_reasoning_prompt_prefix"
 STORYBOARD_REASONING_PROMPT_DEFAULT = """根据这段话想个高级感电影剧本，旁白不要变，融入到画面中，不要片名，15s时间轴
 {script_excerpt}"""
+STORYBOARD2_DURATION_RULE_SEGMENT = 35
 
 ALLOWED_CARD_TYPES = ("角色", "场景", "道具")
 ALL_SUBJECT_CARD_TYPES = ("角色", "场景", "道具", "声音")
@@ -1723,7 +1725,7 @@ def ensure_episode_columns():
                     "UPDATE episodes "
                     "SET storyboard2_duration = 15 "
                     "WHERE storyboard2_duration IS NULL "
-                    "OR storyboard2_duration NOT IN (15, 25)"
+                    "OR storyboard2_duration NOT IN (15, 25, 35)"
                 )
             )
             conn.execute(
@@ -3410,6 +3412,21 @@ def ensure_generate_video_prompt_config_without_scene_description():
 
 def _build_default_simple_storyboard_config_payload(duration: int) -> Dict[str, Any]:
     return get_default_rule_config(duration).to_dict()
+
+
+def _is_rule_segment_storyboard_duration(value: Any) -> bool:
+    try:
+        return int(value or 0) == STORYBOARD2_DURATION_RULE_SEGMENT
+    except Exception:
+        return False
+
+
+def _normalize_storyboard2_simple_storyboard_duration(value: Any) -> int:
+    try:
+        parsed = int(value or 15)
+    except Exception:
+        parsed = 15
+    return 25 if parsed == 25 else 15
 
 
 def ensure_shot_duration_template_config_json():
@@ -9881,7 +9898,7 @@ class EpisodeCreate(BaseModel):
     shot_image_size: Optional[str] = "9:16"
     detail_images_model: Optional[str] = "seedream-4.0"
     detail_images_provider: Optional[str] = ""
-    storyboard2_duration: Optional[int] = 15  # 新增：时长规格（6/10/15/25秒）
+    storyboard2_duration: Optional[int] = 15  # 新增：时长规格（15/25/35=规则分段）
     storyboard2_video_duration: Optional[int] = 6
     storyboard2_image_cw: Optional[int] = 50
     storyboard2_include_scene_references: Optional[bool] = False
@@ -9900,6 +9917,7 @@ class EpisodeResponse(BaseModel):
     shot_image_size: str = "9:16"
     detail_images_model: str = "seedream-4.0"
     detail_images_provider: str = ""
+    storyboard2_duration: int = 15
     storyboard2_video_duration: int = 6
     storyboard2_image_cw: int = 50
     storyboard2_include_scene_references: bool = False
@@ -10153,6 +10171,7 @@ async def get_script_episodes(
                 default_model="seedream-4.0"
             ),
             "detail_images_provider": _resolve_episode_detail_images_provider(episode),
+            "storyboard2_duration": int(getattr(episode, "storyboard2_duration", 15) or 15),
             "storyboard2_video_duration": _normalize_storyboard2_video_duration(
                 getattr(episode, "storyboard2_video_duration", None),
                 default_value=6
@@ -11015,8 +11034,8 @@ async def update_episode_storyboard2_duration(
         raise HTTPException(status_code=403, detail="无权限")
 
     duration = request.get("duration")
-    if duration not in [6, 10, 15, 25]:
-        raise HTTPException(status_code=400, detail="不支持的时长规格，只能是6/10/15/25")
+    if duration not in [6, 10, 15, 25, STORYBOARD2_DURATION_RULE_SEGMENT]:
+        raise HTTPException(status_code=400, detail="不支持的时长规格，只能是6/10/15/25/35(规则分段)")
 
     episode.storyboard2_duration = duration
     db.commit()
@@ -11984,7 +12003,7 @@ def retry_failed_simple_storyboard_batches_background(episode_id: int):
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         task_folder = f"simple_storyboard_retry_episode_{episode_id}_{timestamp}"
-        duration = episode.storyboard2_duration or 15
+        duration = _normalize_storyboard2_simple_storyboard_duration(episode.storyboard2_duration)
         batch_size = episode.batch_size or 500
 
         from ai_service import generate_simple_storyboard
@@ -12453,7 +12472,8 @@ async def generate_simple_storyboard_api(
     else:
         batch_size = episode.batch_size or 500
 
-    duration = 25 if int(episode.storyboard2_duration or 15) == 25 else 15
+    selected_storyboard_duration = int(episode.storyboard2_duration or 15)
+    duration = _normalize_storyboard2_simple_storyboard_duration(selected_storyboard_duration)
 
     def mark_simple_storyboard_request_started():
         episode.batch_size = batch_size
@@ -12468,12 +12488,15 @@ async def generate_simple_storyboard_api(
     )
 
     try:
-        rule_config = _load_simple_storyboard_rule_config_for_duration(duration, db)
-        shots = generate_simple_storyboard_shots(
-            episode_content,
-            duration,
-            rule_override=rule_config,
-        )
+        if _is_rule_segment_storyboard_duration(selected_storyboard_duration):
+            shots = parse_rule_segmented_shots(episode_content)
+        else:
+            rule_config = _load_simple_storyboard_rule_config_for_duration(duration, db)
+            shots = generate_simple_storyboard_shots(
+                episode_content,
+                duration,
+                rule_override=rule_config,
+            )
         _persist_programmatic_simple_storyboard_batches(
             episode_id,
             shots,
@@ -12492,6 +12515,14 @@ async def generate_simple_storyboard_api(
             f"completed_batches={int(summary.get('completed_batches') or 0)} "
             f"failed_batches={int(summary.get('failed_batches') or 0)}"
         )
+    except ValueError as exc:
+        db.rollback()
+        episode = db.query(models.Episode).filter(models.Episode.id == episode_id).first()
+        if episode:
+            episode.simple_storyboard_generating = False
+            episode.simple_storyboard_error = str(exc)
+            db.commit()
+        raise HTTPException(status_code=400, detail=f"简单分镜生成失败: {str(exc)}")
     except Exception as exc:
         db.rollback()
         episode = db.query(models.Episode).filter(models.Episode.id == episode_id).first()

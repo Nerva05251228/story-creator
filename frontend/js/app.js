@@ -2197,9 +2197,11 @@ async function loadScriptStep() {
 
                     <select class="form-input" id="storyboard2Duration">
 
-                        <option value="15" selected>4~5短句</option>
+                        <option value="15">4~5短句</option>
 
                         <option value="25">对话30字</option>
+
+                        <option value="35" selected>规则分段</option>
 
                     </select>
 
@@ -2387,9 +2389,11 @@ async function loadScriptStep() {
 
                     <select class="form-input" id="storyboard2Duration">
 
-                        <option value="15" ${(episode.storyboard2_duration === 15 || !episode.storyboard2_duration || episode.storyboard2_duration < 25) ? 'selected' : ''}>4~5短句</option>
+                        <option value="15" ${episode.storyboard2_duration === 15 ? 'selected' : ''}>4~5短句</option>
 
                         <option value="25" ${episode.storyboard2_duration === 25 ? 'selected' : ''}>对话30字</option>
+
+                        <option value="35" ${(episode.storyboard2_duration === 35 || !episode.storyboard2_duration) ? 'selected' : ''}>规则分段</option>
 
                     </select>
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from typing import Any, Dict, List, Optional
+import re
 
 
 PAIR_OPEN_TO_CLOSE = {
@@ -326,3 +327,36 @@ def generate_simple_storyboard_shots(
         for index, shot_text in enumerate(shot_texts)
         if shot_text
     ]
+
+
+def parse_rule_segmented_shots(text: str) -> List[Dict[str, Any]]:
+    lines = [str(line or "").strip() for line in str(text or "").splitlines() if str(line or "").strip()]
+    if not lines:
+        return []
+
+    shots: List[Dict[str, Any]] = []
+    expected_number = 1
+    index = 0
+
+    while index < len(lines):
+        current_line = lines[index]
+        if current_line != str(expected_number):
+            raise ValueError(f"规则分段格式不正确：期望编号 {expected_number}，实际为 {current_line}")
+
+        index += 1
+        content_lines: List[str] = []
+        while index < len(lines) and not re.fullmatch(r"\d+", lines[index]):
+            content_lines.append(lines[index])
+            index += 1
+
+        shot_text = "\n".join(content_lines).strip()
+        if not shot_text:
+            raise ValueError(f"规则分段格式不正确：编号 {expected_number} 缺少正文")
+
+        shots.append({
+            "shot_number": expected_number,
+            "original_text": shot_text,
+        })
+        expected_number += 1
+
+    return shots
