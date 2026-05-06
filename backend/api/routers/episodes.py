@@ -39,6 +39,7 @@ from managed_generation_service import ACTIVE_MANAGED_SESSION_STATUSES
 from api.services import billing_charges
 from api.services import episode_cleanup
 from api.services import db_commit_retry
+from api.services import episode_text_generation
 from api.services import storyboard2_image_task_state
 from api.services import storyboard_defaults
 from api.services import storyboard2_board
@@ -502,72 +503,9 @@ async def get_script_episodes(
     return result
 
 
-def _resolve_narration_template(episode: models.Episode, db: Session, custom_template: Optional[str] = None) -> str:
-    template = str(custom_template or "").strip()
-    if template:
-        return template
-    if episode.script and episode.script.narration_template:
-        template = str(episode.script.narration_template or "").strip()
-        if template:
-            return template
-    template_setting = db.query(models.GlobalSettings).filter(
-        models.GlobalSettings.key == "narration_conversion_template"
-    ).first()
-    return str(getattr(template_setting, "value", "") or "").strip()
-
-
-def _resolve_opening_template(db: Session, custom_template: Optional[str] = None) -> str:
-    template = str(custom_template or "").strip()
-    if template:
-        return template
-    template_setting = db.query(models.GlobalSettings).filter(
-        models.GlobalSettings.key == "opening_generation_template"
-    ).first()
-    template = str(getattr(template_setting, "value", "") or "").strip()
-    if template:
-        return template
-    return "我想把这个片段做成一个短视频，需要一个精彩吸引人的开头，请你帮我写一个开头"
-
-
-def _submit_episode_text_relay_task(
-    db: Session,
-    *,
-    episode: models.Episode,
-    task_type: str,
-    function_key: str,
-    prompt: str,
-    response_format_json: bool = False,
-):
-    config = get_ai_config(function_key)
-    request_payload = {
-        "model": config["model"],
-        "messages": [
-            {
-                "role": "user",
-                "content": prompt,
-            }
-        ],
-        "stream": False,
-    }
-    if response_format_json:
-        request_payload["response_format"] = {"type": "json_object"}
-
-    task_payload = {
-        "episode_id": int(episode.id),
-        "task_type": task_type,
-        "function_key": function_key,
-    }
-
-    return submit_and_persist_text_task(
-        db,
-        task_type=task_type,
-        owner_type="episode",
-        owner_id=int(episode.id),
-        stage_key=task_type,
-        function_key=function_key,
-        request_payload=request_payload,
-        task_payload=task_payload,
-    )
+_resolve_narration_template = episode_text_generation.resolve_narration_template
+_resolve_opening_template = episode_text_generation.resolve_opening_template
+_submit_episode_text_relay_task = episode_text_generation.submit_episode_text_relay_task
 
 
 def _get_owned_script_episode(
@@ -868,41 +806,7 @@ _delete_episode_storyboard_shots = episode_cleanup.delete_episode_storyboard_sho
 
 _create_shots_from_storyboard_data = storyboard_sync.create_shots_from_storyboard_data
 
-def _submit_detailed_storyboard_stage1_task(db: Session, *, episode_id: int, simple_shots: List[Dict[str, Any]]):
-    shots_content = ""
-    for shot in simple_shots:
-        shot_num = shot.get("shot_number", "?")
-        original_text = shot.get("original_text", "")
-        shots_content += f"镜头{shot_num}:\n{original_text}\n\n"
-
-    prompt_template = get_prompt_by_key("detailed_storyboard_content_analysis")
-    prompt = prompt_template.format(shots_content=shots_content)
-    config = get_ai_config("detailed_storyboard_s1")
-    request_data = {
-        "model": config["model"],
-        "messages": [
-            {
-                "role": "user",
-                "content": prompt,
-            }
-        ],
-        "response_format": {"type": "json_object"},
-        "stream": False,
-    }
-    task_payload = {
-        "episode_id": int(episode_id),
-        "simple_shots": simple_shots,
-    }
-    return submit_and_persist_text_task(
-        db,
-        task_type="detailed_storyboard_stage1",
-        owner_type="episode",
-        owner_id=int(episode_id),
-        stage_key="detailed_storyboard_stage1",
-        function_key="detailed_storyboard_s1",
-        request_payload=request_data,
-        task_payload=task_payload,
-    )
+_submit_detailed_storyboard_stage1_task = episode_text_generation.submit_detailed_storyboard_stage1_task
 
 @router.post("/api/episodes/{episode_id}/generate-detailed-storyboard")
 

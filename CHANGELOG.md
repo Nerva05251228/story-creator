@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 This project uses a lightweight `Added`, `Changed`, `Fixed`, `Security`, and `Migration` structure.
 
+## 2026-05-06 - Episode Text Submission Service Extraction
+
+### Added
+
+- Added `backend/api/services/episode_text_generation.py` for shared narration/opening template resolution, episode text relay submission, and detailed storyboard stage1 task submission.
+- Added focused episode text generation service coverage plus route/import-contract tests for detailed storyboard stage1 submission and helper delegation.
+
+### Changed
+
+- Updated `backend/api/routers/episodes.py` and `backend/main.py` to reuse the shared episode text generation service while preserving existing route behavior and compatibility aliases.
+- Removed the duplicated detailed storyboard stage1 text-task submitter from `backend/main.py` so stage1 submission now has a single live implementation.
+
 ## 2026-05-06 - Storyboard2 Video Polling Service Extraction
 
 ### Added

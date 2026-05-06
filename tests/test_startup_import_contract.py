@@ -302,6 +302,30 @@ class StartupImportContractTests(unittest.TestCase):
             self.assertIn(f"{name} = storyboard2_board.{service_name}", router_source)
             self.assertIn(f"def {service_name}", service_source)
 
+    def test_episode_text_submission_helpers_live_in_service_module(self):
+        main_source = MAIN_PATH.read_text(encoding="utf-8-sig")
+        episodes_source = (BACKEND_DIR / "api" / "routers" / "episodes.py").read_text(encoding="utf-8-sig")
+        service_path = BACKEND_DIR / "api" / "services" / "episode_text_generation.py"
+
+        self.assertTrue(service_path.exists())
+        service_source = service_path.read_text(encoding="utf-8-sig")
+        aliases = {
+            "_resolve_narration_template": "resolve_narration_template",
+            "_resolve_opening_template": "resolve_opening_template",
+            "_submit_episode_text_relay_task": "submit_episode_text_relay_task",
+            "_submit_detailed_storyboard_stage1_task": "submit_detailed_storyboard_stage1_task",
+        }
+
+        self.assertIn("from api.services import episode_text_generation", main_source)
+        self.assertIn("from api.services import episode_text_generation", episodes_source)
+        self.assertEqual(_top_level_definition_names(main_source) & set(aliases), set())
+        self.assertEqual(_top_level_definition_names(episodes_source) & set(aliases), set())
+        for name, service_name in aliases.items():
+            self.assertIn(f"{name} = episode_text_generation.{service_name}", main_source)
+            self.assertIn(f"{name} = episode_text_generation.{service_name}", episodes_source)
+            self.assertNotIn(f"{name} = episodes.{name}", main_source)
+            self.assertIn(f"def {service_name}", service_source)
+
     def test_storyboard2_media_helpers_live_in_service_module(self):
         main_source = MAIN_PATH.read_text(encoding="utf-8-sig")
         router_source = (BACKEND_DIR / "api" / "routers" / "storyboard2.py").read_text(encoding="utf-8-sig")

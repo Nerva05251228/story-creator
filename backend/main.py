@@ -57,6 +57,7 @@ from api.services import billing_charges
 from api.services import card_image_generation as card_image_generation_service
 from api.services import episode_cleanup
 from api.services import db_commit_retry
+from api.services import episode_text_generation
 from api.services import model_configs as model_configs_service
 from api.services import shot_reference_workflow
 from api.services import simple_storyboard_batches as simple_storyboard_batches_service
@@ -4940,9 +4941,10 @@ _build_episode_storyboard_sora_create_values = episodes._build_episode_storyboar
 create_episode = episodes.create_episode
 get_script_episodes = episodes.get_script_episodes
 
-_resolve_narration_template = episodes._resolve_narration_template
-_resolve_opening_template = episodes._resolve_opening_template
-_submit_episode_text_relay_task = episodes._submit_episode_text_relay_task
+_resolve_narration_template = episode_text_generation.resolve_narration_template
+_resolve_opening_template = episode_text_generation.resolve_opening_template
+_submit_episode_text_relay_task = episode_text_generation.submit_episode_text_relay_task
+_submit_detailed_storyboard_stage1_task = episode_text_generation.submit_detailed_storyboard_stage1_task
 convert_to_narration = episodes.convert_to_narration
 generate_opening = episodes.generate_opening
 get_episode = episodes.get_episode
@@ -5219,43 +5221,6 @@ def _submit_simple_storyboard_batch_task(
     batch_row.last_attempt = 1
     batch_row.updated_at = datetime.utcnow()
     return relay_task
-
-
-def _submit_detailed_storyboard_stage1_task(db: Session, *, episode_id: int, simple_shots: List[Dict[str, Any]]):
-    shots_content = ""
-    for shot in simple_shots:
-        shot_num = shot.get("shot_number", "?")
-        original_text = shot.get("original_text", "")
-        shots_content += f"镜头{shot_num}:\n{original_text}\n\n"
-
-    prompt_template = get_prompt_by_key("detailed_storyboard_content_analysis")
-    prompt = prompt_template.format(shots_content=shots_content)
-    config = get_ai_config("detailed_storyboard_s1")
-    request_data = {
-        "model": config["model"],
-        "messages": [
-            {
-                "role": "user",
-                "content": prompt,
-            }
-        ],
-        "response_format": {"type": "json_object"},
-        "stream": False,
-    }
-    task_payload = {
-        "episode_id": int(episode_id),
-        "simple_shots": simple_shots,
-    }
-    return submit_and_persist_text_task(
-        db,
-        task_type="detailed_storyboard_stage1",
-        owner_type="episode",
-        owner_id=int(episode_id),
-        stage_key="detailed_storyboard_stage1",
-        function_key="detailed_storyboard_s1",
-        request_payload=request_data,
-        task_payload=task_payload,
-    )
 
 
 def _submit_detailed_storyboard_stage2_task(db: Session, *, episode_id: int, final_shots: List[Dict[str, Any]]):

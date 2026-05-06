@@ -1,6 +1,7 @@
 import os
 import sys
 import unittest
+import json
 from datetime import datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -808,17 +809,13 @@ class EpisodeRouterTests(unittest.TestCase):
         self.current_user = owner
         submitted = []
 
-        def fake_submit(_db, **kwargs):
+        def fake_submit(*args, **kwargs):
             submitted.append(kwargs)
             return SimpleNamespace(external_task_id=f"relay-{len(submitted)}")
 
         with patch.object(
             episodes,
-            "get_ai_config",
-            return_value={"model": "test-model"},
-        ), patch.object(
-            episodes,
-            "submit_and_persist_text_task",
+            "_submit_episode_text_relay_task",
             side_effect=fake_submit,
         ):
             narration_response = self.client.post(
@@ -838,11 +835,11 @@ class EpisodeRouterTests(unittest.TestCase):
         self.assertEqual([item["function_key"] for item in submitted], ["narration", "opening"])
         self.assertIn(
             "Narrate:",
-            submitted[0]["request_payload"]["messages"][0]["content"],
+            submitted[0]["prompt"],
         )
         self.assertIn(
             "Narration source",
-            submitted[1]["request_payload"]["messages"][0]["content"],
+            submitted[1]["prompt"],
         )
 
         db = self.Session()
@@ -853,6 +850,79 @@ class EpisodeRouterTests(unittest.TestCase):
             self.assertEqual(episode.narration_error, "")
             self.assertTrue(episode.opening_generating)
             self.assertEqual(episode.opening_error, "")
+        finally:
+            db.close()
+
+    def test_generate_detailed_storyboard_submits_stage1_text_task_and_resets_flags(self):
+        owner, _other, episode_id = self._seed_episode()
+        self.current_user = owner
+
+        db = self.Session()
+        try:
+            episode = db.query(models.Episode).filter_by(id=episode_id).one()
+            episode.simple_storyboard_data = json.dumps(
+                {
+                    "shots": [
+                        {
+                            "shot_number": "1",
+                            "original_text": "First storyboard beat",
+                        }
+                    ]
+                }
+            )
+            episode.storyboard_data = '{"shots":[{"shot_number":"legacy"}]}'
+            episode.storyboard_error = "old error"
+            db.commit()
+        finally:
+            db.close()
+
+        submitted = []
+        helper_module = sys.modules[episodes._submit_detailed_storyboard_stage1_task.__module__]
+
+        def fake_submit(_db, **kwargs):
+            submitted.append(kwargs)
+            return SimpleNamespace(external_task_id="relay-stage1")
+
+        with patch.object(
+            episodes,
+            "_get_simple_storyboard_batch_summary",
+            return_value={"has_failures": False},
+        ), patch.object(
+            helper_module,
+            "get_prompt_by_key",
+            return_value="{shots_content}",
+            create=True,
+        ), patch.object(
+            helper_module,
+            "get_ai_config",
+            return_value={"model": "test-model"},
+            create=True,
+        ), patch.object(
+            helper_module,
+            "submit_and_persist_text_task",
+            side_effect=fake_submit,
+            create=True,
+        ):
+            response = self.client.post(
+                f"/api/episodes/{episode_id}/generate-detailed-storyboard"
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            [item["task_type"] for item in submitted],
+            ["detailed_storyboard_stage1"],
+        )
+        self.assertEqual(
+            [item["function_key"] for item in submitted],
+            ["detailed_storyboard_s1"],
+        )
+
+        db = self.Session()
+        try:
+            episode = db.query(models.Episode).filter_by(id=episode_id).one()
+            self.assertTrue(episode.storyboard_generating)
+            self.assertEqual(episode.storyboard_error, "")
+            self.assertIsNone(episode.storyboard_data)
         finally:
             db.close()
 
