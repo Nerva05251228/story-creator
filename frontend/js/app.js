@@ -142,7 +142,13 @@ const APP_STATE = {
 
     largeShotTemplatesLoaded: false,
 
-    largeShotTemplatesLoading: false
+    largeShotTemplatesLoading: false,
+
+    storyboardSoraPromptTemplates: [],
+
+    storyboardSoraPromptTemplatesLoaded: false,
+
+    storyboardSoraPromptTemplatesLoading: false
 
 };
 
@@ -20306,7 +20312,12 @@ function renderStoryboardSidebar() {
                 <div class="storyboard-sora-actions-right">
                     <button class="primary-button storyboard-tool-button" onclick="copySoraPrompt()">复制提示词</button>
                     <button class="primary-button storyboard-tool-button" id="generateReasoningPromptBtn" onclick="generateStoryboardReasoningPrompt()" ${isReasoningGenerating ? 'disabled' : ''}>${isReasoningGenerating ? '推理中...' : '生成推理提示词'}</button>
-                    <button class="primary-button storyboard-tool-button" id="generateSoraPromptBtn" onclick="generateSoraPrompt()" ${isGenerating ? 'disabled' : ''}>生成Sora提示词</button>
+                    <div class="storyboard-large-shot-menu" id="storyboardSoraPromptMenu" onmouseenter="cancelHideSoraPromptTemplateMenu()" onmouseleave="scheduleHideSoraPromptTemplateMenu()">
+                        <button class="primary-button storyboard-tool-button" id="generateSoraPromptBtn" onclick="toggleSoraPromptTemplateMenu(event)" ${isGenerating ? 'disabled' : ''}>生成Sora提示词</button>
+                        <div class="storyboard-large-shot-dropdown" id="storyboardSoraPromptDropdown">
+                            ${renderStoryboardSoraPromptTemplateMenu(isGenerating)}
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -22299,6 +22310,219 @@ function getDefaultLargeShotTemplate() {
 }
 
 
+function getDefaultStoryboardSoraPromptTemplate() {
+    return APP_STATE.storyboardSoraPromptTemplates.find(template => template.is_default) || APP_STATE.storyboardSoraPromptTemplates[0] || null;
+}
+
+
+function renderStoryboardSoraPromptTemplateMenu(disabled = false) {
+    if (APP_STATE.storyboardSoraPromptTemplatesLoading && !APP_STATE.storyboardSoraPromptTemplates.length) {
+        return '<div class="storyboard-large-shot-empty">加载模板中...</div>';
+    }
+
+    if (!APP_STATE.storyboardSoraPromptTemplates.length) {
+        return '<div class="storyboard-large-shot-empty">暂无模板</div>';
+    }
+
+    return `
+        ${APP_STATE.storyboardSoraPromptTemplates.map(template => `
+            <button
+                class="secondary-button storyboard-tool-button storyboard-large-shot-template-button"
+                type="button"
+                onclick="event.stopPropagation(); generateSoraPrompt(${template.id})"
+                ${disabled ? 'disabled' : ''}
+            >
+                <span class="storyboard-large-shot-template-name">${escapeHtml(template.name || '')}</span>
+                ${template.is_default ? '<span class="storyboard-large-shot-template-badge">默认</span>' : ''}
+            </button>
+        `).join('')}
+    `;
+}
+
+
+async function ensureStoryboardSoraPromptTemplatesLoaded(force = false) {
+    if (APP_STATE.storyboardSoraPromptTemplatesLoading) {
+        return APP_STATE.storyboardSoraPromptTemplates;
+    }
+    if (!force && APP_STATE.storyboardSoraPromptTemplatesLoaded) {
+        return APP_STATE.storyboardSoraPromptTemplates;
+    }
+
+    APP_STATE.storyboardSoraPromptTemplatesLoading = true;
+    try {
+        const response = await apiRequest('/api/storyboard-sora-prompt-templates');
+        if (!response || !response.ok) {
+            throw new Error('加载 Sora 提示词模板失败');
+        }
+        APP_STATE.storyboardSoraPromptTemplates = await response.json();
+        APP_STATE.storyboardSoraPromptTemplatesLoaded = true;
+        return APP_STATE.storyboardSoraPromptTemplates;
+    } catch (error) {
+        console.error('Failed to load storyboard sora prompt templates:', error);
+        if (force) {
+            showToast('加载 Sora 提示词模板失败', 'error');
+        }
+        return APP_STATE.storyboardSoraPromptTemplates;
+    } finally {
+        APP_STATE.storyboardSoraPromptTemplatesLoading = false;
+    }
+}
+
+
+async function refreshStoryboardSoraPromptTemplateMenu() {
+    const dropdown = document.getElementById('storyboardSoraPromptDropdown');
+    if (!dropdown) return;
+
+    dropdown.innerHTML = renderStoryboardSoraPromptTemplateMenu(APP_STATE.currentShot?.sora_prompt_status === 'generating');
+    await ensureStoryboardSoraPromptTemplatesLoaded(false);
+    const latestDropdown = document.getElementById('storyboardSoraPromptDropdown');
+    if (!latestDropdown) return;
+    latestDropdown.innerHTML = renderStoryboardSoraPromptTemplateMenu(APP_STATE.currentShot?.sora_prompt_status === 'generating');
+}
+
+
+function toggleSoraPromptTemplateMenu(event) {
+    event?.stopPropagation?.();
+    const menu = document.getElementById('storyboardSoraPromptMenu');
+    const button = document.getElementById('generateSoraPromptBtn');
+    if (!menu || !button || button.disabled) return;
+
+    cancelHideSoraPromptTemplateMenu();
+    menu.classList.toggle('open');
+    if (menu.classList.contains('open')) {
+        refreshStoryboardSoraPromptTemplateMenu();
+    }
+}
+
+
+function closeSoraPromptTemplateMenu() {
+    const menu = document.getElementById('storyboardSoraPromptMenu');
+    if (!menu) return;
+    menu.classList.remove('open');
+}
+
+
+function scheduleHideSoraPromptTemplateMenu() {
+    cancelHideSoraPromptTemplateMenu();
+    window.__storyboardSoraPromptTemplateMenuHideTimer = window.setTimeout(() => {
+        closeSoraPromptTemplateMenu();
+    }, 160);
+}
+
+
+function cancelHideSoraPromptTemplateMenu() {
+    if (!window.__storyboardSoraPromptTemplateMenuHideTimer) return;
+    window.clearTimeout(window.__storyboardSoraPromptTemplateMenuHideTimer);
+    window.__storyboardSoraPromptTemplateMenuHideTimer = null;
+}
+
+
+if (!window.__storyboardSoraPromptTemplateMenuBound) {
+    document.addEventListener('click', (event) => {
+        const menu = document.getElementById('storyboardSoraPromptMenu');
+        if (!menu || menu.contains(event.target)) return;
+        closeSoraPromptTemplateMenu();
+    });
+    window.__storyboardSoraPromptTemplateMenuBound = true;
+}
+
+
+async function showSoraPromptTemplatePicker() {
+    await ensureStoryboardSoraPromptTemplatesLoaded(true);
+    const templates = Array.isArray(APP_STATE.storyboardSoraPromptTemplates)
+        ? APP_STATE.storyboardSoraPromptTemplates
+        : [];
+
+    if (!templates.length) {
+        showToast('暂无可用的 Sora 提示词模板', 'warning');
+        return undefined;
+    }
+
+    const defaultTemplate = getDefaultStoryboardSoraPromptTemplate();
+    return new Promise(resolve => {
+        const existing = document.getElementById('soraPromptTemplatePickerModal');
+        if (existing) {
+            existing.remove();
+        }
+
+        const optionsHtml = templates.map(template => (
+            `<option value="${template.id}" ${defaultTemplate && template.id === defaultTemplate.id ? 'selected' : ''}>${escapeHtml(template.name || '')}</option>`
+        )).join('');
+
+        const modal = document.createElement('div');
+        modal.className = 'modal active';
+        modal.id = 'soraPromptTemplatePickerModal';
+        modal.innerHTML = `
+            <div class="modal-backdrop"></div>
+            <div class="modal-content sora-reference-modal">
+                <div class="modal-header">
+                    <h3>选择 Sora 提示词模板</h3>
+                    <button class="modal-close" data-action="cancel">&times;</button>
+                </div>
+                <div class="modal-body sora-reference-modal-body">
+                    <div class="sora-reference-top">
+                        <div class="sora-reference-copy">
+                            <div class="sora-reference-title">模板选择</div>
+                            <div class="sora-reference-desc">普通 Sora 提示词会整套替换为所选模板内容。</div>
+                        </div>
+                        <div class="sora-reference-select-wrap">
+                            <label class="form-label" for="soraPromptTemplateSelect">提示词模板</label>
+                            <select class="form-input" id="soraPromptTemplateSelect">${optionsHtml}</select>
+                        </div>
+                    </div>
+                    <div class="sora-reference-preview-block">
+                        <label class="form-label" for="soraPromptTemplatePreview">模板预览</label>
+                        <textarea class="form-textarea" id="soraPromptTemplatePreview" readonly></textarea>
+                    </div>
+                    <div class="modal-form-actions sora-reference-actions">
+                        <button class="secondary-button" data-action="cancel">取消</button>
+                        <button class="primary-button" data-action="confirm">确定</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+
+        const select = modal.querySelector('#soraPromptTemplateSelect');
+        const preview = modal.querySelector('#soraPromptTemplatePreview');
+
+        const updatePreview = () => {
+            const selectedId = Number(select?.value || 0);
+            const selected = templates.find(item => Number(item.id) === selectedId);
+            if (preview) {
+                preview.value = selected ? String(selected.content || '').trim() : '';
+            }
+        };
+
+        const finish = value => {
+            modal.remove();
+            resolve(value);
+        };
+
+        if (select) {
+            select.addEventListener('change', updatePreview);
+        }
+        modal.querySelectorAll('[data-action="cancel"]').forEach(button => {
+            button.addEventListener('click', () => finish(undefined));
+        });
+        const confirmButton = modal.querySelector('[data-action="confirm"]');
+        if (confirmButton) {
+            confirmButton.addEventListener('click', () => {
+                const selectedId = Number(select?.value || 0);
+                finish(selectedId > 0 ? selectedId : null);
+            });
+        }
+        modal.addEventListener('click', event => {
+            if (event.target === modal || event.target.classList.contains('modal-backdrop')) {
+                finish(undefined);
+            }
+        });
+
+        updatePreview();
+    });
+}
+
+
 function renderLargeShotTemplateMenu(disabled = false) {
     if (APP_STATE.largeShotTemplatesLoading && !APP_STATE.largeShotTemplates.length) {
         return '<div class="storyboard-large-shot-empty">加载模板中...</div>';
@@ -22613,6 +22837,9 @@ async function generateShotPrompt(promptMode = 'sora', options = {}) {
     if (!APP_STATE.currentShot) return;
 
     const isLargeShot = promptMode === 'large-shot';
+    const storyboardSoraTemplateId = !isLargeShot
+        ? Number(options.storyboardSoraTemplateId || 0)
+        : 0;
     const selectedLargeShotTemplateId = isLargeShot
         ? (options.templateId || getDefaultLargeShotTemplate()?.id || null)
         : null;
@@ -22782,7 +23009,12 @@ async function generateShotPrompt(promptMode = 'sora', options = {}) {
             });
         } else if (referenceShotId > 0) {
             requestOptions.body = JSON.stringify({
-                reference_shot_id: referenceShotId
+                reference_shot_id: referenceShotId,
+                storyboard_sora_template_id: storyboardSoraTemplateId > 0 ? storyboardSoraTemplateId : null
+            });
+        } else if (storyboardSoraTemplateId > 0) {
+            requestOptions.body = JSON.stringify({
+                storyboard_sora_template_id: storyboardSoraTemplateId
             });
         }
 
@@ -23001,12 +23233,21 @@ async function generateStoryboardReasoningPrompt() {
 }
 
 
-async function generateSoraPrompt() {
+async function generateSoraPrompt(templateId = null) {
+    closeSoraPromptTemplateMenu();
+    const selectedTemplateId = templateId || getDefaultStoryboardSoraPromptTemplate()?.id || null;
+    if (!selectedTemplateId) {
+        showToast('暂无可用的 Sora 提示词模板', 'warning');
+        return;
+    }
     const referenceShotId = await showSoraPromptReferenceModal();
     if (referenceShotId === undefined) {
         return;
     }
-    return generateShotPrompt('sora', { referenceShotId });
+    return generateShotPrompt('sora', {
+        referenceShotId,
+        storyboardSoraTemplateId: selectedTemplateId
+    });
 }
 
 
@@ -23409,7 +23650,7 @@ function showBatchGenerateModal() {
 
     const modal = document.getElementById('batchGenerateModal');
 
-    const templateSelect = document.getElementById('batchTemplateSelect');
+    const batchSoraPromptTemplateSelect = document.getElementById('batchSoraPromptTemplateSelect');
 
     const confirmBtn = document.getElementById('batchGenerateConfirm');
 
@@ -23417,30 +23658,18 @@ function showBatchGenerateModal() {
 
 
 
-    if (templateSelect && Array.isArray(APP_STATE.templates) && APP_STATE.templates.length > 0) {
-
-        // 濉厖模板选项
-
-        templateSelect.innerHTML = APP_STATE.templates.map(t =>
-
-            `<option value="${escapeHtml(t.name)}">${escapeHtml(t.name)}</option>`
-
+    if (batchSoraPromptTemplateSelect) {
+        const promptTemplates = Array.isArray(APP_STATE.storyboardSoraPromptTemplates)
+            ? APP_STATE.storyboardSoraPromptTemplates
+            : [];
+        batchSoraPromptTemplateSelect.innerHTML = promptTemplates.map(template =>
+            `<option value="${template.id}" ${template.is_default ? 'selected' : ''}>${escapeHtml(template.name || '')}</option>`
         ).join('');
 
-
-
-        // 设置榛樿鍊?
-
-        const defaultTemplate = APP_STATE.templates.find(t => t.name.includes('2d漫画风格（细）'))
-
-            || APP_STATE.templates[0];
-
-        if (defaultTemplate) {
-
-            templateSelect.value = defaultTemplate.name;
-
+        const defaultPromptTemplate = getDefaultStoryboardSoraPromptTemplate();
+        if (defaultPromptTemplate) {
+            batchSoraPromptTemplateSelect.value = String(defaultPromptTemplate.id);
         }
-
     }
 
 
@@ -23484,8 +23713,9 @@ function showBatchGenerateModal() {
 
 
     newConfirmBtn.addEventListener('click', async () => {
-
-        const template = templateSelect ? templateSelect.value : '';
+        const storyboardSoraTemplateId = batchSoraPromptTemplateSelect
+            ? parseInt(batchSoraPromptTemplateSelect.value, 10) || 0
+            : 0;
 
 
 
@@ -23549,10 +23779,8 @@ function showBatchGenerateModal() {
 
             };
 
-            if (template) {
-
-                requestBody.default_template = template;
-
+            if (storyboardSoraTemplateId > 0) {
+                requestBody.storyboard_sora_template_id = storyboardSoraTemplateId;
             }
 
 

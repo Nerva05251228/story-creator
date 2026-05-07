@@ -352,6 +352,16 @@ class LargeShotTemplate(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class StoryboardSoraPromptTemplate(Base):
+    __tablename__ = "storyboard_sora_prompt_templates"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    content = Column(Text, nullable=False)
+    is_default = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 class DashboardTaskLog(Base):
     __tablename__ = "dashboard_task_logs"
 

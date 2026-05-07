@@ -646,6 +646,7 @@ def run_startup_bootstrap():
         ensure_shot_duration_template_large_shot_rule()
         ensure_generate_large_shot_prompt_config()
         ensure_large_shot_templates()
+        ensure_storyboard_sora_prompt_templates()
         ensure_shot_duration_template_subject_personality()
         ensure_remove_legacy_duration_templates()
         ensure_video_prompt_subject_personality_configs()
@@ -3619,6 +3620,95 @@ def ensure_large_shot_templates():
     except Exception as e:
         db.rollback()
         print(f"初始化大镜头模板库失败: {str(e)}")
+    finally:
+        db.close()
+
+
+def _load_storyboard_sora_prompt_template_seed_specs() -> List[Dict[str, str]]:
+    repo_root = os.path.dirname(os.path.dirname(__file__))
+    seed_specs = [
+        {"name": "四镜平稳镜头", "filename": "模板1.txt"},
+        {"name": "二镜大镜头", "filename": "模板2.txt"},
+    ]
+    results: List[Dict[str, str]] = []
+    for item in seed_specs:
+        file_path = os.path.join(repo_root, item["filename"])
+        try:
+            with open(file_path, "r", encoding="utf-8") as handle:
+                content = handle.read().strip()
+        except Exception as exc:
+            print(f"读取 Sora 提示词模板文件失败 {file_path}: {exc}")
+            content = ""
+        if not content:
+            continue
+        results.append({
+            "name": item["name"],
+            "content": content,
+        })
+    return results
+
+
+def ensure_storyboard_sora_prompt_templates():
+    """Seed dedicated storyboard Sora prompt templates without overwriting user edits."""
+    try:
+        if not table_exists(engine, "storyboard_sora_prompt_templates"):
+            models.StoryboardSoraPromptTemplate.__table__.create(bind=engine, checkfirst=True)
+    except Exception:
+        return
+
+    db = SessionLocal()
+    try:
+        seeded_templates = _load_storyboard_sora_prompt_template_seed_specs()
+        existing_templates = db.query(models.StoryboardSoraPromptTemplate).order_by(
+            models.StoryboardSoraPromptTemplate.created_at.asc(),
+            models.StoryboardSoraPromptTemplate.id.asc()
+        ).all()
+
+        existing_by_name = {
+            (template.name or "").strip(): template
+            for template in existing_templates
+            if (template.name or "").strip()
+        }
+
+        inserted_count = 0
+        for template_data in seeded_templates:
+            template_name = (template_data.get("name") or "").strip()
+            if not template_name or template_name in existing_by_name:
+                continue
+            db.add(models.StoryboardSoraPromptTemplate(
+                name=template_name,
+                content=template_data.get("content") or "",
+                is_default=False,
+            ))
+            inserted_count += 1
+
+        if inserted_count > 0:
+            db.commit()
+            existing_templates = db.query(models.StoryboardSoraPromptTemplate).order_by(
+                models.StoryboardSoraPromptTemplate.created_at.asc(),
+                models.StoryboardSoraPromptTemplate.id.asc()
+            ).all()
+
+        default_template = next((template for template in existing_templates if template.is_default), None)
+        if not default_template and existing_templates:
+            preferred_name = ((seeded_templates[0] or {}).get("name") or "").strip() if seeded_templates else ""
+            preferred = next(
+                (
+                    template
+                    for template in existing_templates
+                    if preferred_name and (template.name or "").strip() == preferred_name
+                ),
+                existing_templates[0]
+            )
+            db.query(models.StoryboardSoraPromptTemplate).update({"is_default": False})
+            preferred.is_default = True
+            db.commit()
+            print("已设置默认 Sora 提示词模板")
+        elif inserted_count > 0:
+            print(f"已同步 Sora 提示词模板库: 新增 {inserted_count} 条")
+    except Exception as e:
+        db.rollback()
+        print(f"初始化 Sora 提示词模板库失败: {str(e)}")
     finally:
         db.close()
 
@@ -15217,6 +15307,115 @@ async def set_default_large_shot_template(template_id: int, db: Session = Depend
     db.commit()
     return {"message": "已设置为默认模板", "template_id": template_id}
 
+
+class StoryboardSoraPromptTemplateCreate(BaseModel):
+    name: str
+    content: str
+
+
+class StoryboardSoraPromptTemplateResponse(BaseModel):
+    id: int
+    name: str
+    content: str
+    is_default: bool = False
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+@app.get("/api/storyboard-sora-prompt-templates", response_model=List[StoryboardSoraPromptTemplateResponse])
+async def get_storyboard_sora_prompt_templates(db: Session = Depends(get_db)):
+    templates = db.query(models.StoryboardSoraPromptTemplate).order_by(
+        models.StoryboardSoraPromptTemplate.is_default.desc(),
+        models.StoryboardSoraPromptTemplate.created_at.asc(),
+        models.StoryboardSoraPromptTemplate.id.asc(),
+    ).all()
+    return templates
+
+
+@app.post("/api/storyboard-sora-prompt-templates", response_model=StoryboardSoraPromptTemplateResponse)
+async def create_storyboard_sora_prompt_template(
+    template: StoryboardSoraPromptTemplateCreate,
+    db: Session = Depends(get_db)
+):
+    name = (template.name or "").strip()
+    content = (template.content or "").strip()
+    if not name or not content:
+        raise HTTPException(status_code=400, detail="模板名称和内容不能为空")
+
+    new_template = models.StoryboardSoraPromptTemplate(
+        name=name,
+        content=content,
+        is_default=False,
+    )
+    db.add(new_template)
+    db.commit()
+    db.refresh(new_template)
+    return new_template
+
+
+@app.put("/api/storyboard-sora-prompt-templates/{template_id}", response_model=StoryboardSoraPromptTemplateResponse)
+async def update_storyboard_sora_prompt_template(
+    template_id: int,
+    template: StoryboardSoraPromptTemplateCreate,
+    db: Session = Depends(get_db)
+):
+    db_template = db.query(models.StoryboardSoraPromptTemplate).filter(
+        models.StoryboardSoraPromptTemplate.id == template_id
+    ).first()
+    if not db_template:
+        raise HTTPException(status_code=404, detail="模板不存在")
+
+    name = (template.name or "").strip()
+    content = (template.content or "").strip()
+    if not name or not content:
+        raise HTTPException(status_code=400, detail="模板名称和内容不能为空")
+
+    db_template.name = name
+    db_template.content = content
+    db.commit()
+    db.refresh(db_template)
+    return db_template
+
+
+@app.delete("/api/storyboard-sora-prompt-templates/{template_id}")
+async def delete_storyboard_sora_prompt_template(template_id: int, db: Session = Depends(get_db)):
+    db_template = db.query(models.StoryboardSoraPromptTemplate).filter(
+        models.StoryboardSoraPromptTemplate.id == template_id
+    ).first()
+    if not db_template:
+        raise HTTPException(status_code=404, detail="模板不存在")
+
+    was_default = bool(db_template.is_default)
+    db.delete(db_template)
+    db.commit()
+
+    if was_default:
+        replacement = db.query(models.StoryboardSoraPromptTemplate).order_by(
+            models.StoryboardSoraPromptTemplate.created_at.asc(),
+            models.StoryboardSoraPromptTemplate.id.asc()
+        ).first()
+        if replacement:
+            replacement.is_default = True
+            db.commit()
+
+    return {"message": "模板已删除"}
+
+
+@app.post("/api/storyboard-sora-prompt-templates/{template_id}/set-default")
+async def set_default_storyboard_sora_prompt_template(template_id: int, db: Session = Depends(get_db)):
+    db_template = db.query(models.StoryboardSoraPromptTemplate).filter(
+        models.StoryboardSoraPromptTemplate.id == template_id
+    ).first()
+    if not db_template:
+        raise HTTPException(status_code=404, detail="模板不存在")
+
+    db.query(models.StoryboardSoraPromptTemplate).update({"is_default": False})
+    db_template.is_default = True
+    db.commit()
+    return {"message": "已设置为默认模板", "template_id": template_id}
+
 # ==================== 分镜图模板API ====================
 
 class StoryboardRequirementTemplateCreate(BaseModel):
@@ -15526,6 +15725,7 @@ class BatchGenerateSoraPromptsRequest(BaseModel):
     default_template: str = "2d漫画风格（细）"
     shot_ids: Optional[List[int]] = None  # 可选：指定要生成的镜头ID列表
     duration: Optional[int] = None  # 可选：视频时长（秒），用于选择对应的时长模板
+    storyboard_sora_template_id: Optional[int] = None
 
 class BatchGenerateSoraPromptsResponse(BaseModel):
     success_count: int
@@ -16704,6 +16904,26 @@ def _resolve_large_shot_template(
     ).first()
 
 
+def _resolve_storyboard_sora_prompt_template(
+    db: Session,
+    template_id: Optional[int] = None
+) -> Optional[models.StoryboardSoraPromptTemplate]:
+    query = db.query(models.StoryboardSoraPromptTemplate)
+    if template_id:
+        return query.filter(models.StoryboardSoraPromptTemplate.id == template_id).first()
+
+    default_template = query.filter(models.StoryboardSoraPromptTemplate.is_default == True).order_by(
+        models.StoryboardSoraPromptTemplate.id.asc()
+    ).first()
+    if default_template:
+        return default_template
+
+    return query.order_by(
+        models.StoryboardSoraPromptTemplate.created_at.asc(),
+        models.StoryboardSoraPromptTemplate.id.asc()
+    ).first()
+
+
 SORA_REFERENCE_PROMPT_INSTRUCTION = "请你参考这段提示词中的人物站位进行编写新的提示词："
 
 
@@ -16747,6 +16967,7 @@ def _build_storyboard_prompt_request_data(
     script: models.Script,
     prompt_key: str = "generate_video_prompts",
     duration_template_field: str = "video_prompt_rule",
+    storyboard_sora_template_id: Optional[int] = None,
     large_shot_template_id: Optional[int] = None,
     reference_shot_id: Optional[int] = None,
 ):
@@ -16773,6 +16994,11 @@ def _build_storyboard_prompt_request_data(
 
     large_shot_template_content = ""
     large_shot_template_name = ""
+    storyboard_sora_template = None
+    if prompt_key == "generate_video_prompts":
+        storyboard_sora_template = _resolve_storyboard_sora_prompt_template(db, storyboard_sora_template_id)
+        if storyboard_sora_template_id and not storyboard_sora_template:
+            raise ValueError("Sora提示词模板不存在")
     if prompt_key == "generate_large_shot_prompts":
         large_shot_template = _resolve_large_shot_template(db, large_shot_template_id)
         if not large_shot_template:
@@ -16781,7 +17007,17 @@ def _build_storyboard_prompt_request_data(
         large_shot_template_name = (large_shot_template.name or "").strip()
         large_shot_template_content = (large_shot_template.content or "").strip()
 
-    if custom_style:
+    if prompt_key == "generate_video_prompts" and storyboard_sora_template and storyboard_sora_template_id:
+        template_for_format = (storyboard_sora_template.content or "").strip()
+        prompt = template_for_format.format(
+            script_excerpt=excerpt,
+            scene_description=scene_text,
+            subject_text=subject_text,
+            safe_duration=safe_duration,
+            extra_style="",
+            large_shot_template_content="",
+        )
+    elif custom_style:
         template_for_format = custom_style
         if prompt_key == "generate_large_shot_prompts":
             template_for_format = inject_large_shot_template_content(template_for_format, large_shot_template_content)
@@ -16799,11 +17035,14 @@ def _build_storyboard_prompt_request_data(
     else:
         use_duration_template = prompt_key != storyboard2_prompt_key
         if use_duration_template:
-            template = db.query(models.ShotDurationTemplate).filter(
-                models.ShotDurationTemplate.duration == template_duration
-            ).first()
-            template_rule = str(getattr(template, template_field, "") or "").strip() if template else ""
-            prompt_template = template_rule or get_prompt_by_key(prompt_key)
+            if prompt_key == "generate_video_prompts" and storyboard_sora_template:
+                prompt_template = str(storyboard_sora_template.content or "").strip()
+            else:
+                template = db.query(models.ShotDurationTemplate).filter(
+                    models.ShotDurationTemplate.duration == template_duration
+                ).first()
+                template_rule = str(getattr(template, template_field, "") or "").strip() if template else ""
+                prompt_template = template_rule or get_prompt_by_key(prompt_key)
         else:
             prompt_template = get_prompt_by_key(prompt_key)
         template_for_format = prompt_template
@@ -16838,6 +17077,8 @@ def _build_storyboard_prompt_request_data(
         "episode_id": int(episode.id),
         "prompt_key": str(prompt_key or "generate_video_prompts"),
         "duration_template_field": template_field,
+        "storyboard_sora_template_id": int(storyboard_sora_template.id) if storyboard_sora_template else None,
+        "storyboard_sora_template_name": (storyboard_sora_template.name or "").strip() if storyboard_sora_template else "",
         "large_shot_template_id": int(large_shot_template_id or 0) if large_shot_template_id else None,
         "large_shot_template_name": large_shot_template_name,
         "large_shot_template_content": large_shot_template_content,
@@ -17031,6 +17272,7 @@ def _submit_storyboard_prompt_task(
     script: models.Script,
     prompt_key: str = "generate_video_prompts",
     duration_template_field: str = "video_prompt_rule",
+    storyboard_sora_template_id: Optional[int] = None,
     large_shot_template_id: Optional[int] = None,
     reference_shot_id: Optional[int] = None,
 ):
@@ -17041,6 +17283,7 @@ def _submit_storyboard_prompt_task(
         script=script,
         prompt_key=prompt_key,
         duration_template_field=duration_template_field,
+        storyboard_sora_template_id=storyboard_sora_template_id,
         large_shot_template_id=large_shot_template_id,
         reference_shot_id=reference_shot_id,
     )
@@ -17164,6 +17407,7 @@ def _queue_single_storyboard_prompt_generation(
     prompt_key: str = "generate_video_prompts",
     duration_template_field: str = "video_prompt_rule",
     started_message: str = "Sora提示词生成任务已开始，请稍后刷新页面查看结果。",
+    storyboard_sora_template_id: Optional[int] = None,
     large_shot_template_id: Optional[int] = None,
     reference_shot_id: Optional[int] = None,
 ):
@@ -17194,6 +17438,7 @@ def _queue_single_storyboard_prompt_generation(
         f"raw_selected_card_ids={shot.selected_card_ids!r} "
         f"parsed_selected_ids={debug_selected_ids} "
         f"resolved_subject_names={debug_subject_names} "
+        f"storyboard_sora_template_id={storyboard_sora_template_id} "
         f"large_shot_template_id={large_shot_template_id} "
         f"prompt_key={prompt_key} duration_template_field={duration_template_field} "
         f"reference_shot_id={reference_shot_id}"
@@ -17208,6 +17453,7 @@ def _queue_single_storyboard_prompt_generation(
             script=script,
             prompt_key=prompt_key,
             duration_template_field=duration_template_field,
+            storyboard_sora_template_id=storyboard_sora_template_id,
             large_shot_template_id=large_shot_template_id,
             reference_shot_id=reference_shot_id,
         )
@@ -17269,6 +17515,7 @@ def _queue_single_storyboard_reasoning_generation(
 
 class GenerateSoraPromptRequest(BaseModel):
     reference_shot_id: Optional[int] = None
+    storyboard_sora_template_id: Optional[int] = None
 
 
 @app.post("/api/shots/{shot_id}/generate-sora-prompt")
@@ -17288,6 +17535,7 @@ async def generate_sora_prompt(
         prompt_key="generate_video_prompts",
         duration_template_field="video_prompt_rule",
         started_message="Sora提示词生成任务已开始，请稍后刷新页面查看结果。",
+        storyboard_sora_template_id=(request.storyboard_sora_template_id if request else None),
         reference_shot_id=(request.reference_shot_id if request else None),
     )
 
@@ -17813,6 +18061,7 @@ async def batch_generate_sora_prompts(
                 script=script,
                 prompt_key="generate_video_prompts",
                 duration_template_field="video_prompt_rule",
+                storyboard_sora_template_id=request.storyboard_sora_template_id,
                 large_shot_template_id=None,
             )
             submitted_count += 1

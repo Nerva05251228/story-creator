@@ -534,7 +534,7 @@
                 <div style="margin-bottom: 20px;">
                     <h3 style="font-size: 16px; margin-bottom: 8px;">时长配置模板</h3>
                     <div style="font-size: 13px; color: #666;">
-                        管理时长配置模板（4~5短句 / 对话30字），包含简单分镜规则和视频提示词规则
+                        管理时长配置模板（4~5短句 / 对话30字 / 规则分段），用于简单分镜规则与模式说明
                     </div>
                 </div>
                 <div id="shotDurationTemplatesGrid">
@@ -544,7 +544,18 @@
             <div style="margin-top: 40px; padding-top: 30px; border-top: 1px solid #2a2a2a;">
                 <div class="templates-header" style="margin-bottom: 20px;">
                     <div style="font-size: 13px; color: #666;">
-                        绠＄悊鍏ㄥ眬澶ч暅澶存ā鏉匡紝鐢ㄤ簬鏁呬簨鏉縎ora涓?鐢熸垚澶ч暅澶存彁绀鸿瘝"鏃堕€夋嫨绗竴闀滃ご杩愰暅绛栫暐
+                        管理故事板 Sora 提示词模板，用于故事板 Sora 中生成 Sora 提示词时整套替换模板内容
+                    </div>
+                    <button class="btn btn-primary" onclick="openCreateStoryboardSoraPromptTemplateModal()">新建模板</button>
+                </div>
+                <div id="storyboardSoraPromptTemplatesGrid">
+                    <div class="loading">加载中...</div>
+                </div>
+            </div>
+            <div style="margin-top: 40px; padding-top: 30px; border-top: 1px solid #2a2a2a;">
+                <div class="templates-header" style="margin-bottom: 20px;">
+                    <div style="font-size: 13px; color: #666;">
+                        管理全局大镜头模板，用于故事板 Sora 中生成大镜头提示词时选择第一个镜头的运镜策略
                     </div>
                     <button class="btn btn-primary" onclick="openCreateLargeShotTemplateModal()">鏂板缓妯℃澘</button>
                 </div>
@@ -829,6 +840,7 @@
         let prompts = [];
         let templates = [];
         let largeShotTemplates = [];
+        let storyboardSoraPromptTemplates = [];
         let storyboardRequirements = [];
         let storyboardStyles = [];
         let videoStyleTemplates = [];
@@ -839,7 +851,8 @@
         ];
         let currentTab = 'prompts';
         let editingTemplateId = null;
-        let editingTemplateType = null; // 'style' | 'storyboard-requirement' | 'storyboard-style' | 'large-shot'
+        let editingTemplateType = null; // 'style' | 'storyboard-requirement' | 'storyboard-style' | 'large-shot' | 'storyboard-sora-prompt'
+        const templateSectionExpandedState = {};
 
         function persistAdminAuth(password) {
             localStorage.setItem(ADMIN_AUTH_STORAGE_KEY, '1');
@@ -890,6 +903,7 @@
                 hideAdminAuthModal();
                 loadPrompts();
                 loadShotDurationTemplates();
+                loadStoryboardSoraPromptTemplates();
                 loadLargeShotTemplates();
                 return;
             }
@@ -909,6 +923,7 @@
                 hideAdminAuthModal();
                 loadPrompts();
                 loadShotDurationTemplates();
+                loadStoryboardSoraPromptTemplates();
                 loadLargeShotTemplates();
                 return;
             }
@@ -941,6 +956,7 @@
             if (tab === 'prompts') {
                 loadPrompts();
                 loadShotDurationTemplates();
+                loadStoryboardSoraPromptTemplates();
                 loadLargeShotTemplates();
             } else if (tab === 'storyboard2-settings') {
                 loadStoryboard2Settings();
@@ -966,6 +982,7 @@
             if (currentTab === 'prompts') {
                 loadPrompts();
                 loadShotDurationTemplates();
+                loadStoryboardSoraPromptTemplates();
                 loadLargeShotTemplates();
             } else if (currentTab === 'storyboard2-settings') {
                 loadStoryboard2Settings();
@@ -1321,6 +1338,11 @@
                         ? `/api/storyboard-templates/styles/${editingTemplateId}`
                         : '/api/storyboard-templates/styles';
                     method = editingTemplateId ? 'PUT' : 'POST';
+                } else if (editingTemplateType === 'storyboard-sora-prompt') {
+                    url = editingTemplateId
+                        ? `/api/storyboard-sora-prompt-templates/${editingTemplateId}`
+                        : '/api/storyboard-sora-prompt-templates';
+                    method = editingTemplateId ? 'PUT' : 'POST';
                 } else if (editingTemplateType === 'large-shot') {
                     url = editingTemplateId
                         ? `/api/large-shot-templates/${editingTemplateId}`
@@ -1355,6 +1377,8 @@
                         await loadStoryboardRequirements();
                     } else if (editingTemplateType === 'storyboard-style') {
                         await loadStoryboardStyles();
+                    } else if (editingTemplateType === 'storyboard-sora-prompt') {
+                        await loadStoryboardSoraPromptTemplates();
                     } else if (editingTemplateType === 'large-shot') {
                         await loadLargeShotTemplates();
                     } else {
@@ -2133,7 +2157,7 @@
                                 </div>
                             </div>
                             <div class="card-actions">
-                                <button class="btn-small btn-toggle" disabled>固定规则</button>
+                                <button class="btn-small btn-save" onclick="openEditShotDurationModal(35)">编辑</button>
                             </div>
                         </div>
                     </div>
@@ -2163,6 +2187,36 @@
 
         // 打开编辑时长配置模板弹窗
         async function openEditShotDurationModal(duration) {
+            if (Number(duration) === 35) {
+                const modal = document.createElement('div');
+                modal.className = 'modal form-modal active';
+                modal.id = 'editShotDurationModal';
+                modal.innerHTML = `
+                    <div class="modal-content" style="max-width: 680px; max-height: 90vh; overflow-y: auto;">
+                        <div class="modal-header">
+                            <h3>规则分段说明</h3>
+                            <button class="modal-close" onclick="closeShotDurationModal()">&times;</button>
+                        </div>
+                        <div class="modal-body" style="padding: 30px;">
+                            <div class="template-content-display" style="white-space: pre-wrap;">用户需要按严格编号格式输入：
+
+1
+正文内容
+2
+正文内容
+3
+正文内容
+
+空行会被忽略，系统不会再按字数规则自动切分。</div>
+                            <div class="modal-actions">
+                                <button class="btn btn-secondary" onclick="closeShotDurationModal()">关闭</button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                document.body.appendChild(modal);
+                return;
+            }
             try {
                 const response = await fetch(`/api/shot-duration-templates/${duration}`);
                 if (!response.ok) {
@@ -2207,10 +2261,6 @@
                                     <label><input type="checkbox" id="respectQuoteBoundary" ${config.respect_quote_boundary ? 'checked' : ''}> 尊重引号边界</label>
                                     <label><input type="checkbox" id="respectParagraphBoundary" ${config.respect_paragraph_boundary ? 'checked' : ''}> 尊重段落边界</label>
                                 </div>
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">视频提示词规则</label>
-                                <textarea class="form-input" id="videoPromptRule" style="min-height: 300px;">${escapeHtml(template.video_prompt_rule)}</textarea>
                             </div>
                             <div class="form-group">
                                 <label class="form-label">大镜头提示词规则</label>
@@ -2258,10 +2308,9 @@
                 max_units_per_shot: parseInt(document.getElementById('maxUnitsPerShot')?.value || '0', 10),
                 merge_short_fragment_threshold: parseInt(document.getElementById('mergeShortFragmentThreshold')?.value || '0', 10),
             };
-            const videoPromptRule = document.getElementById('videoPromptRule').value.trim();
             const largeShotPromptRule = document.getElementById('largeShotPromptRule').value.trim();
 
-            if (!videoPromptRule || !largeShotPromptRule) {
+            if (!largeShotPromptRule) {
                 showToast('请填写完整信息', 'error');
                 return;
             }
@@ -2274,7 +2323,6 @@
                     },
                     body: JSON.stringify({
                         simple_storyboard_config: simpleStoryboardConfig,
-                        video_prompt_rule: videoPromptRule,
                         large_shot_prompt_rule: largeShotPromptRule
                     })
                 });
@@ -2614,6 +2662,272 @@
             document.getElementById('templateModalTitle').textContent = '编辑大镜头模板';
             document.getElementById('templateName').value = template.name || '';
             document.getElementById('templateContent').value = template.content || '';
+            document.getElementById('templateModal').classList.add('active');
+        }
+
+        function confirmDeleteLargeShotTemplate(templateId, name) {
+            const modal = document.getElementById('deleteTemplateModal');
+            const message = document.getElementById('deleteTemplateMessage');
+            const button = document.getElementById('deleteTemplateButton');
+
+            message.textContent = `确定要删除大镜头模板“${String(name || '').trim()}”吗？此操作不可撤销。`;
+            modal.classList.add('active');
+            button.onclick = () => deleteLargeShotTemplate(templateId);
+        }
+
+        async function deleteLargeShotTemplate(templateId) {
+            try {
+                const response = await fetch(`/api/large-shot-templates/${templateId}`, {
+                    method: 'DELETE'
+                });
+
+                if (response.ok) {
+                    showToast('删除成功', 'success');
+                    closeDeleteTemplateModal();
+                    await loadLargeShotTemplates();
+                } else {
+                    const errorDetail = await getErrorDetail(response, '删除失败');
+                    showToast(errorDetail || '删除失败', 'error');
+                }
+            } catch (error) {
+                console.error('Failed to delete large shot template:', error);
+                showToast('删除失败', 'error');
+            }
+        }
+
+        async function setDefaultLargeShotTemplate(templateId) {
+            try {
+                const response = await fetch(`/api/large-shot-templates/${templateId}/set-default`, {
+                    method: 'POST'
+                });
+
+                if (response.ok) {
+                    showToast('已设为默认模板', 'success');
+                    await loadLargeShotTemplates();
+                } else {
+                    const error = await response.json();
+                    showToast(error.detail || '设置失败', 'error');
+                }
+            } catch (error) {
+                console.error('Failed to set large shot default template:', error);
+                showToast('设置失败', 'error');
+            }
+        }
+
+        function getTemplateSectionExpandStateKey(sectionKey, templateId) {
+            return `${sectionKey}:${templateId}`;
+        }
+
+        function isTemplateExpanded(sectionKey, templateId) {
+            return Boolean(templateSectionExpandedState[getTemplateSectionExpandStateKey(sectionKey, templateId)]);
+        }
+
+        function toggleTemplateContentCollapsed(sectionKey, templateId) {
+            const stateKey = getTemplateSectionExpandStateKey(sectionKey, templateId);
+            templateSectionExpandedState[stateKey] = !templateSectionExpandedState[stateKey];
+            if (sectionKey === 'storyboard-sora-prompt') {
+                renderStoryboardSoraPromptTemplates();
+                return;
+            }
+            if (sectionKey === 'large-shot') {
+                renderLargeShotTemplates();
+            }
+        }
+
+        function renderCollapsibleTextTemplateCards({ gridId, templates, sectionKey, emptyMessage, editHandlerName, deleteHandlerName, setDefaultHandlerName }) {
+            const grid = document.getElementById(gridId);
+            if (!grid) return;
+
+            if (!Array.isArray(templates) || templates.length === 0) {
+                grid.innerHTML = `<div class="empty-state">${escapeHtml(emptyMessage)}</div>`;
+                return;
+            }
+
+            grid.innerHTML = templates.map(template => {
+                const expanded = isTemplateExpanded(sectionKey, template.id);
+                const toggleLabel = expanded ? '收起' : '展开';
+                return `
+                    <div class="template-card">
+                        <div class="template-header">
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <div class="template-name">${escapeHtml(template.name || '')}</div>
+                                ${template.is_default ? '<span class="default-badge">默认</span>' : ''}
+                            </div>
+                            <div class="card-actions">
+                                <button class="btn-small btn-toggle" onclick="toggleTemplateContentCollapsed('${sectionKey}', ${template.id})">${toggleLabel}</button>
+                                ${!template.is_default ? `<button class="btn-small btn-toggle" onclick="${setDefaultHandlerName}(${template.id})">设为默认</button>` : ''}
+                                <button class="btn-small btn-save" onclick="${editHandlerName}(${template.id})">编辑</button>
+                                <button class="btn-small btn-delete" onclick="${deleteHandlerName}(${template.id}, ${JSON.stringify(String(template.name || ''))})">删除</button>
+                            </div>
+                        </div>
+                        ${expanded ? `
+                            <div class="template-content-display">${escapeHtml(template.content || '')}</div>
+                            <div class="template-meta">
+                                <span>创建时间: ${new Date(template.created_at).toLocaleString()}</span>
+                            </div>
+                        ` : ''}
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function renderStoryboardSoraPromptTemplates() {
+            renderCollapsibleTextTemplateCards({
+                gridId: 'storyboardSoraPromptTemplatesGrid',
+                templates: storyboardSoraPromptTemplates,
+                sectionKey: 'storyboard-sora-prompt',
+                emptyMessage: '暂无 Sora 提示词模板，点击“新建模板”开始创建',
+                editHandlerName: 'openEditStoryboardSoraPromptTemplateModal',
+                deleteHandlerName: 'confirmDeleteStoryboardSoraPromptTemplate',
+                setDefaultHandlerName: 'setDefaultStoryboardSoraPromptTemplate'
+            });
+        }
+
+        async function loadStoryboardSoraPromptTemplates() {
+            try {
+                const response = await fetch('/api/storyboard-sora-prompt-templates');
+                if (!response.ok) {
+                    throw new Error('加载失败');
+                }
+                storyboardSoraPromptTemplates = await response.json();
+                renderStoryboardSoraPromptTemplates();
+            } catch (error) {
+                console.error('Failed to load storyboard sora prompt templates:', error);
+                const grid = document.getElementById('storyboardSoraPromptTemplatesGrid');
+                if (grid) {
+                    grid.innerHTML = '<div class="loading">加载失败</div>';
+                }
+                showToast('加载 Sora 提示词模板失败', 'error');
+            }
+        }
+
+        function openCreateStoryboardSoraPromptTemplateModal() {
+            editingTemplateId = null;
+            editingTemplateType = 'storyboard-sora-prompt';
+            document.getElementById('templateModalTitle').textContent = '新建 Sora 提示词模板';
+            document.getElementById('templateName').value = '';
+            document.getElementById('templateContent').value = '';
+            configureTemplateModalForType('');
+            document.getElementById('templateModal').classList.add('active');
+        }
+
+        function openEditStoryboardSoraPromptTemplateModal(templateId) {
+            const template = storyboardSoraPromptTemplates.find(t => t.id === templateId);
+            if (!template) return;
+
+            editingTemplateId = templateId;
+            editingTemplateType = 'storyboard-sora-prompt';
+            document.getElementById('templateModalTitle').textContent = '编辑 Sora 提示词模板';
+            document.getElementById('templateName').value = template.name || '';
+            document.getElementById('templateContent').value = template.content || '';
+            configureTemplateModalForType('');
+            document.getElementById('templateModal').classList.add('active');
+        }
+
+        function confirmDeleteStoryboardSoraPromptTemplate(templateId, name) {
+            const modal = document.getElementById('deleteTemplateModal');
+            const message = document.getElementById('deleteTemplateMessage');
+            const button = document.getElementById('deleteTemplateButton');
+
+            message.textContent = `确定要删除 Sora 提示词模板“${String(name || '').trim()}”吗？此操作不可撤销。`;
+            modal.classList.add('active');
+            button.onclick = () => deleteStoryboardSoraPromptTemplate(templateId);
+        }
+
+        async function deleteStoryboardSoraPromptTemplate(templateId) {
+            try {
+                const response = await fetch(`/api/storyboard-sora-prompt-templates/${templateId}`, {
+                    method: 'DELETE'
+                });
+
+                if (response.ok) {
+                    showToast('删除成功', 'success');
+                    closeDeleteTemplateModal();
+                    await loadStoryboardSoraPromptTemplates();
+                } else {
+                    const errorDetail = await getErrorDetail(response, '删除失败');
+                    showToast(errorDetail || '删除失败', 'error');
+                }
+            } catch (error) {
+                console.error('Failed to delete storyboard sora prompt template:', error);
+                showToast('删除失败', 'error');
+            }
+        }
+
+        async function setDefaultStoryboardSoraPromptTemplate(templateId) {
+            try {
+                const response = await fetch(`/api/storyboard-sora-prompt-templates/${templateId}/set-default`, {
+                    method: 'POST'
+                });
+
+                if (response.ok) {
+                    showToast('已设置为默认模板', 'success');
+                    await loadStoryboardSoraPromptTemplates();
+                } else {
+                    const error = await response.json();
+                    showToast(error.detail || '设置失败', 'error');
+                }
+            } catch (error) {
+                console.error('Failed to set storyboard sora prompt default template:', error);
+                showToast('设置失败', 'error');
+            }
+        }
+
+        function normalizeLargeShotTemplatesSection() {
+            // 保留空函数用于兼容现有初始化流程
+        }
+
+        function renderLargeShotTemplates() {
+            renderCollapsibleTextTemplateCards({
+                gridId: 'largeShotTemplatesGrid',
+                templates: largeShotTemplates,
+                sectionKey: 'large-shot',
+                emptyMessage: '暂无大镜头模板，点击“新建模板”开始创建',
+                editHandlerName: 'openEditLargeShotTemplateModal',
+                deleteHandlerName: 'confirmDeleteLargeShotTemplate',
+                setDefaultHandlerName: 'setDefaultLargeShotTemplate'
+            });
+        }
+
+        async function loadLargeShotTemplates() {
+            try {
+                const response = await fetch('/api/large-shot-templates');
+                if (!response.ok) {
+                    throw new Error('加载失败');
+                }
+
+                largeShotTemplates = await response.json();
+                renderLargeShotTemplates();
+            } catch (error) {
+                console.error('Failed to load large shot templates:', error);
+                const grid = document.getElementById('largeShotTemplatesGrid');
+                if (grid) {
+                    grid.innerHTML = '<div class="loading">加载失败</div>';
+                }
+                showToast('加载大镜头模板失败', 'error');
+            }
+        }
+
+        function openCreateLargeShotTemplateModal() {
+            editingTemplateId = null;
+            editingTemplateType = 'large-shot';
+            document.getElementById('templateModalTitle').textContent = '新建大镜头模板';
+            document.getElementById('templateName').value = '';
+            document.getElementById('templateContent').value = '';
+            configureTemplateModalForType('');
+            document.getElementById('templateModal').classList.add('active');
+        }
+
+        function openEditLargeShotTemplateModal(templateId) {
+            const template = largeShotTemplates.find(t => t.id === templateId);
+            if (!template) return;
+
+            editingTemplateId = templateId;
+            editingTemplateType = 'large-shot';
+            document.getElementById('templateModalTitle').textContent = '编辑大镜头模板';
+            document.getElementById('templateName').value = template.name || '';
+            document.getElementById('templateContent').value = template.content || '';
+            configureTemplateModalForType('');
             document.getElementById('templateModal').classList.add('active');
         }
 

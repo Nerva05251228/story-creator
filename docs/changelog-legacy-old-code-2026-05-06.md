@@ -13,6 +13,11 @@ This changelog records legacy-branch-only changes completed on 2026-05-06 so the
 - Added backend reasoning prompt tasks that write plain-text results back into `script_excerpt`.
 - Added `storyboard_reasoning_prompt_prefix` prompt config so the reasoning prompt prefix can be edited from `/manage`.
 - Added `reasoning_prompt_status` tracking for single-shot and batch reasoning prompt generation.
+- Added a dedicated storyboard Sora prompt template library seeded from `模板1.txt` and `模板2.txt`.
+- Added `/manage` CRUD support for storyboard Sora prompt templates with collapsed cards by default.
+- Changed storyboard Sora prompt generation so selecting a storyboard Sora prompt template replaces the full prompt template rather than injecting `extra_style`.
+- Changed the storyboard sidebar `生成Sora提示词` button into a dropdown-style template picker and kept it on the far right of the action row.
+- Added batch storyboard Sora prompt generation support for choosing a storyboard Sora prompt template.
 
 ## Simple Storyboard
 
@@ -21,6 +26,7 @@ This changelog records legacy-branch-only changes completed on 2026-05-06 so the
 - Blank lines are ignored in `规则分段` mode.
 - Updated the script tab duration selector so `规则分段` is the default frontend mode for new and unconfigured episodes.
 - Added a `规则分段` explanatory card in the `/manage` duration template section.
+- Removed the legacy `视频提示词规则` editor from the duration-template edit modal and left duration editing focused on simple storyboard rules plus large-shot prompt rules.
 
 ## Moti Account Handling
 
