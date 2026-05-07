@@ -5,17 +5,169 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>模型分配</title>
   <style>
-    :root{--bg:#0a0f16;--panel:#121a25;--panel2:#182334;--border:#273449;--text:#eef4fb;--muted:#8ea0b7;--accent:#2f7cf6;--ok:#33c18a}
-    *{box-sizing:border-box;margin:0;padding:0}body{font-family:"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;background:linear-gradient(180deg,#0b1119 0%,#080c13 100%);color:var(--text);padding:28px}
-    .wrap{max-width:1180px;margin:0 auto}.head,.section-head{display:flex;justify-content:space-between;gap:14px;align-items:flex-start}.head{margin-bottom:24px;padding-bottom:18px;border-bottom:1px solid var(--border)}
-    .title{font-size:28px;font-weight:650}.sub{margin-top:8px;color:var(--muted);font-size:14px}.panel{background:var(--panel);border:1px solid var(--border);border-radius:18px;padding:22px;margin-bottom:22px}.section-title{font-size:18px;font-weight:600}.section-meta{margin-top:6px;color:var(--muted);font-size:12px}
-    .toolbar{display:flex;justify-content:space-between;gap:14px;align-items:center;flex-wrap:wrap;margin:16px 0}.muted{color:var(--muted)}.btn{padding:10px 16px;border:1px solid var(--border);border-radius:12px;background:var(--panel2);color:var(--text);cursor:pointer}.btn.primary{background:rgba(47,124,246,.14);border-color:rgba(47,124,246,.35);color:#b7d5ff}.btn.save{background:rgba(51,193,138,.12);border-color:rgba(51,193,138,.35);color:#9be1bf}
-    .select{width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:12px;background:var(--panel2);color:var(--text);outline:none}
-    .table{border:1px solid var(--border);border-radius:14px;overflow:auto}table{width:100%;border-collapse:collapse;min-width:820px}th,td{padding:13px 14px;border-bottom:1px solid rgba(39,52,73,.8);text-align:left;vertical-align:top;font-size:13px}thead th{background:#141d29;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.05em}tbody tr:last-child td{border-bottom:none}.empty{text-align:center;padding:34px 18px;color:var(--muted)}
-    .mono{font-family:Consolas,monospace;color:#b8d9ff;word-break:break-all}.function-name{font-size:14px;font-weight:600}.function-key{margin-top:4px;font-size:11px;color:var(--muted);font-family:Consolas,monospace}.resolved{margin-top:8px;color:var(--muted);font-size:12px;line-height:1.5}
-    .toast{position:fixed;right:22px;bottom:22px;min-width:180px;max-width:360px;padding:13px 15px;border-radius:12px;background:#162030;border:1px solid var(--border);opacity:0;transform:translateY(10px);transition:.18s}.toast.show{opacity:1;transform:translateY(0)}.toast.success{border-color:rgba(51,193,138,.35);color:#9be1bf}.toast.error{border-color:rgba(239,115,115,.35);color:#ffb9b9}
-    .spinner{display:inline-block;width:14px;height:14px;border-radius:50%;border:2px solid rgba(255,255,255,.28);border-top-color:#fff;animation:spin .7s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
-    @media (max-width:900px){body{padding:16px}.head,.section-head,.toolbar{flex-direction:column;align-items:flex-start}.panel{padding:18px}}
+    :root {
+      --bg: #0a0f16;
+      --panel: #121a25;
+      --panel2: #182334;
+      --border: #273449;
+      --text: #eef4fb;
+      --muted: #8ea0b7;
+      --accent: #2f7cf6;
+      --ok: #33c18a;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: linear-gradient(180deg, #0b1119 0%, #080c13 100%);
+      color: var(--text);
+      padding: 28px;
+    }
+    .wrap { max-width: 1180px; margin: 0 auto; }
+    .head, .section-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 14px;
+      align-items: flex-start;
+      flex-wrap: wrap;
+    }
+    .head {
+      margin-bottom: 24px;
+      padding-bottom: 18px;
+      border-bottom: 1px solid var(--border);
+    }
+    .title { font-size: 28px; font-weight: 650; }
+    .sub { margin-top: 8px; color: var(--muted); font-size: 14px; }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 22px;
+      margin-bottom: 22px;
+    }
+    .section-title { font-size: 18px; font-weight: 600; }
+    .section-meta { margin-top: 6px; color: var(--muted); font-size: 12px; }
+    .btn {
+      padding: 10px 16px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: var(--panel2);
+      color: var(--text);
+      cursor: pointer;
+    }
+    .btn.primary {
+      background: rgba(47, 124, 246, 0.14);
+      border-color: rgba(47, 124, 246, 0.35);
+      color: #b7d5ff;
+    }
+    .btn.save {
+      background: rgba(51, 193, 138, 0.12);
+      border-color: rgba(51, 193, 138, 0.35);
+      color: #9be1bf;
+    }
+    .btn:disabled {
+      opacity: 0.65;
+      cursor: not-allowed;
+    }
+    .table {
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow: auto;
+      margin-top: 16px;
+    }
+    table { width: 100%; border-collapse: collapse; min-width: 820px; }
+    th, td {
+      padding: 13px 14px;
+      border-bottom: 1px solid rgba(39, 52, 73, 0.8);
+      text-align: left;
+      vertical-align: top;
+      font-size: 13px;
+    }
+    thead th {
+      background: #141d29;
+      color: var(--muted);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+    }
+    tbody tr:last-child td { border-bottom: none; }
+    .empty { text-align: center; padding: 34px 18px; color: var(--muted); }
+    .function-name { font-size: 14px; font-weight: 600; }
+    .function-key {
+      margin-top: 4px;
+      font-size: 11px;
+      color: var(--muted);
+      font-family: Consolas, monospace;
+    }
+    .resolved {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+    .select {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: var(--panel2);
+      color: var(--text);
+      outline: none;
+    }
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 16px;
+      margin-top: 18px;
+    }
+    .field label {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+    .field .hint {
+      margin-top: 8px;
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+    .actions {
+      display: flex;
+      justify-content: flex-end;
+      margin-top: 18px;
+    }
+    .toast {
+      position: fixed;
+      right: 22px;
+      bottom: 22px;
+      min-width: 180px;
+      max-width: 360px;
+      padding: 13px 15px;
+      border-radius: 12px;
+      background: #162030;
+      border: 1px solid var(--border);
+      opacity: 0;
+      transform: translateY(10px);
+      transition: .18s;
+    }
+    .toast.show { opacity: 1; transform: translateY(0); }
+    .toast.success { border-color: rgba(51, 193, 138, .35); color: #9be1bf; }
+    .toast.error { border-color: rgba(239, 115, 115, .35); color: #ffb9b9; }
+    .spinner {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      border: 2px solid rgba(255,255,255,.28);
+      border-top-color: #fff;
+      animation: spin .7s linear infinite;
+      vertical-align: middle;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @media (max-width: 900px) {
+      body { padding: 16px; }
+      .form-grid { grid-template-columns: 1fr; }
+    }
   </style>
 </head>
 <body>
@@ -23,9 +175,9 @@
     <div class="head">
       <div>
         <div class="title">模型分配</div>
-        <div class="sub">页面默认只读取本地缓存。点击“同步模型”时才会从 LLM Relay 拉取最新模型列表。</div>
+        <div class="sub">文本模型继续走 Relay 缓存；故事板默认模型用于新建片段和镜头图/视频默认值。</div>
       </div>
-      <button class="btn" onclick="window.location.href=`${window.location.origin}/`">返回主页</button>
+      <button class="btn" onclick="window.location.href=`${window.location.origin}/`">返回首页</button>
     </div>
 
     <section class="panel">
@@ -38,26 +190,459 @@
       </div>
       <div class="table">
         <table>
-          <thead><tr><th style="width:38%">功能</th><th style="width:44%">模型</th><th style="width:18%">操作</th></tr></thead>
-          <tbody id="configTbody"><tr><td colspan="3" class="empty">正在加载...</td></tr></tbody>
+          <thead>
+            <tr>
+              <th style="width:38%">功能</th>
+              <th style="width:44%">模型</th>
+              <th style="width:18%">操作</th>
+            </tr>
+          </thead>
+          <tbody id="configTbody">
+            <tr><td colspan="3" class="empty">正在加载...</td></tr>
+          </tbody>
         </table>
       </div>
     </section>
+
+    <section class="panel" id="storyboardDefaultsPanel">
+      <div class="section-head">
+        <div>
+          <div class="section-title">故事板默认模型</div>
+          <div class="section-meta">这里控制默认镜头图服务商/模型，以及默认视频模型。</div>
+        </div>
+      </div>
+      <div class="form-grid">
+        <div class="field">
+          <label for="defaultStoryboardImageProviderSelect">默认镜头图服务商</label>
+          <select id="defaultStoryboardImageProviderSelect" class="select" onchange="updateStoryboardDefaultImageModels()"></select>
+        </div>
+        <div class="field">
+          <label for="defaultStoryboardImageModelSelect">默认镜头图模型</label>
+          <select id="defaultStoryboardImageModelSelect" class="select"></select>
+          <div class="hint">服务商和模型是一组，保存时会一起校准。</div>
+        </div>
+        <div class="field">
+          <label for="defaultStoryboardVideoModelSelect">默认视频模型</label>
+          <select id="defaultStoryboardVideoModelSelect" class="select"></select>
+        </div>
+      </div>
+      <div class="actions">
+        <button class="btn save" id="saveStoryboardDefaultsBtn" onclick="saveStoryboardDefaults()">保存默认值</button>
+      </div>
+    </section>
   </div>
+
   <div id="toast" class="toast"></div>
+
   <script>
-    let models=[];let configs=[];let drafts={};let toastTimer=null;let lastSyncedAt=null;
-    function escHtml(value){return String(value||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
-    function showToast(message,type=''){const toast=document.getElementById('toast');toast.textContent=message;toast.className='toast show'+(type?` ${type}`:'');if(toastTimer)clearTimeout(toastTimer);toastTimer=setTimeout(()=>toast.className='toast',2600)}
-    function ensureDrafts(){drafts={};for(const cfg of configs){drafts[cfg.function_key]={model_id:cfg.model_id||cfg.resolved_model_id||''}}}
-    function updateSyncMeta(){const meta=document.getElementById('syncMeta');const count=models.length;const synced=lastSyncedAt?`最近同步：${lastSyncedAt}`:'尚未同步，当前仅显示本地缓存';meta.textContent=`缓存模型数：${count}。${synced}`}
-    function buildModelOptions(currentModelId,resolvedModelId){let html='';const seen=new Set();for(const item of models){const raw=item.raw_metadata||{};const label=item.model_id||raw.id||'';if(!label||seen.has(label))continue;seen.add(label);html+=`<option value="${escHtml(label)}" ${label===currentModelId?'selected':''}>${escHtml(label)}</option>`}const fallback=currentModelId||resolvedModelId||'';if(fallback&&!seen.has(fallback)){html+=`<option value="${escHtml(fallback)}" selected>${escHtml(fallback)}</option>`}return html||`<option value="${escHtml(currentModelId||resolvedModelId||'gemini-3.1-pro')}">${escHtml(currentModelId||resolvedModelId||'gemini-3.1-pro')}</option>`}
-    function renderConfigs(){const tbody=document.getElementById('configTbody');if(!configs.length){tbody.innerHTML='<tr><td colspan="3" class="empty">暂无功能配置。</td></tr>';return}tbody.innerHTML=configs.map(cfg=>{const draft=drafts[cfg.function_key]||{model_id:cfg.model_id||cfg.resolved_model_id||''};return `<tr id="cfg-${escHtml(cfg.function_key)}"><td><div class="function-name">${escHtml(cfg.function_name)}</div><div class="function-key">${escHtml(cfg.function_key)}</div><div class="resolved">当前生效：${escHtml(cfg.resolved_model_label||cfg.resolved_model_id||cfg.model_id||'')}</div></td><td><select class="select" id="model-${escHtml(cfg.function_key)}" onchange="handleModelChange('${escHtml(cfg.function_key)}',this.value)">${buildModelOptions(draft.model_id,cfg.resolved_model_id)}</select></td><td><button class="btn save" onclick="saveConfig('${escHtml(cfg.function_key)}')">保存</button></td></tr>`}).join('')}
-    function handleModelChange(functionKey,modelId){if(!drafts[functionKey])drafts[functionKey]={model_id:''};drafts[functionKey].model_id=modelId||''}
-    async function saveConfig(functionKey){const row=document.getElementById(`cfg-${functionKey}`);const select=document.getElementById(`model-${functionKey}`);if(!row||!select)return;const btn=row.querySelector('button');btn.disabled=true;btn.innerHTML='<span class="spinner"></span>';try{const response=await fetch(`/api/admin/model-config/${encodeURIComponent(functionKey)}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({model_id:select.value})});const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.detail||'保存失败');const index=configs.findIndex(item=>item.function_key===functionKey);if(index!==-1)configs[index]=data;ensureDrafts();renderConfigs();showToast('模型配置已保存','success')}catch(error){showToast(`保存失败：${error.message}`,'error')}finally{btn.disabled=false;btn.textContent='保存'}}
-    async function loadPageData(){const response=await fetch('/api/admin/model-configs');const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.detail||'加载模型配置失败');models=data.models||[];configs=data.configs||[];lastSyncedAt=data.last_synced_at||null;ensureDrafts();updateSyncMeta();renderConfigs()}
-    async function syncModels(){const btn=document.getElementById('syncBtn');btn.disabled=true;btn.innerHTML='<span class="spinner"></span>';try{const response=await fetch('/api/admin/model-configs/sync-models',{method:'POST'});const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.detail||'同步失败');models=data.models||[];lastSyncedAt=data.last_synced_at||null;updateSyncMeta();renderConfigs();showToast(`已同步 ${models.length} 个模型`,'success')}catch(error){showToast(`同步失败：${error.message}`,'error')}finally{btn.disabled=false;btn.textContent='同步模型'}}
-    loadPageData().catch(error=>{showToast(`加载失败：${error.message}`,'error');document.getElementById('configTbody').innerHTML='<tr><td colspan="3" class="empty">加载失败。</td></tr>';document.getElementById('syncMeta').textContent='加载失败'})
+    const STORYBOARD_VIDEO_MODEL_OPTIONS = [
+      { value: 'grok', label: 'grok' },
+      { value: 'Seedance 2.0 Fast VIP', label: 'Seedance 2.0 Fast VIP' },
+      { value: 'Seedance 2.0 Fast', label: 'Seedance 2.0 Fast' },
+      { value: 'Seedance 2.0 VIP', label: 'Seedance 2.0 VIP' },
+      { value: 'Seedance 2.0', label: 'Seedance 2.0' }
+    ];
+
+    let models = [];
+    let configs = [];
+    let drafts = {};
+    let toastTimer = null;
+    let lastSyncedAt = null;
+    let imageModelCatalog = { providers: [] };
+    let storyboardDefaults = {
+      detail_images_provider: 'jimeng',
+      detail_images_model: 'seedream-4.0',
+      storyboard_video_model: 'Seedance 2.0 VIP'
+    };
+
+    function escHtml(value) {
+      return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    function showToast(message, type = '') {
+      const toast = document.getElementById('toast');
+      toast.textContent = message;
+      toast.className = 'toast show' + (type ? ` ${type}` : '');
+      if (toastTimer) clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => { toast.className = 'toast'; }, 2600);
+    }
+
+    function ensureDrafts() {
+      drafts = {};
+      for (const cfg of configs) {
+        drafts[cfg.function_key] = { model_id: cfg.model_id || cfg.resolved_model_id || '' };
+      }
+    }
+
+    function updateSyncMeta() {
+      const meta = document.getElementById('syncMeta');
+      const count = models.length;
+      const synced = lastSyncedAt ? `最近同步：${lastSyncedAt}` : '尚未同步，当前仅显示本地缓存';
+      meta.textContent = `缓存模型数：${count}。${synced}`;
+    }
+
+    function buildModelOptions(currentModelId, resolvedModelId) {
+      let html = '';
+      const seen = new Set();
+      for (const item of models) {
+        const raw = item.raw_metadata || {};
+        const label = item.model_id || raw.id || '';
+        if (!label || seen.has(label)) continue;
+        seen.add(label);
+        html += `<option value="${escHtml(label)}" ${label === currentModelId ? 'selected' : ''}>${escHtml(label)}</option>`;
+      }
+      const fallback = currentModelId || resolvedModelId || '';
+      if (fallback && !seen.has(fallback)) {
+        html += `<option value="${escHtml(fallback)}" selected>${escHtml(fallback)}</option>`;
+      }
+      return html || '<option value="gemini-3.1-pro">gemini-3.1-pro</option>';
+    }
+
+    function renderConfigs() {
+      const tbody = document.getElementById('configTbody');
+      if (!configs.length) {
+        tbody.innerHTML = '<tr><td colspan="3" class="empty">暂无功能配置。</td></tr>';
+        return;
+      }
+      tbody.innerHTML = configs.map(cfg => {
+        const draft = drafts[cfg.function_key] || { model_id: cfg.model_id || cfg.resolved_model_id || '' };
+        return `
+          <tr id="cfg-${escHtml(cfg.function_key)}">
+            <td>
+              <div class="function-name">${escHtml(cfg.function_name)}</div>
+              <div class="function-key">${escHtml(cfg.function_key)}</div>
+              <div class="resolved">当前生效：${escHtml(cfg.resolved_model_label || cfg.resolved_model_id || cfg.model_id || '')}</div>
+            </td>
+            <td>
+              <select class="select" id="model-${escHtml(cfg.function_key)}" onchange="handleModelChange('${escHtml(cfg.function_key)}', this.value)">
+                ${buildModelOptions(draft.model_id, cfg.resolved_model_id)}
+              </select>
+            </td>
+            <td>
+              <button class="btn save" onclick="saveConfig('${escHtml(cfg.function_key)}')">保存</button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    function handleModelChange(functionKey, modelId) {
+      if (!drafts[functionKey]) drafts[functionKey] = { model_id: '' };
+      drafts[functionKey].model_id = modelId || '';
+    }
+
+    async function saveConfig(functionKey) {
+      const row = document.getElementById(`cfg-${functionKey}`);
+      const select = document.getElementById(`model-${functionKey}`);
+      if (!row || !select) return;
+      const btn = row.querySelector('button');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span>';
+      try {
+        const response = await fetch(`/api/admin/model-config/${encodeURIComponent(functionKey)}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ model_id: select.value })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.detail || '保存失败');
+        const index = configs.findIndex(item => item.function_key === functionKey);
+        if (index !== -1) configs[index] = data;
+        ensureDrafts();
+        renderConfigs();
+        showToast('文本模型配置已保存', 'success');
+      } catch (error) {
+        showToast(`保存失败：${error.message}`, 'error');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '保存';
+      }
+    }
+
+    function normalizeImageModelCatalogResponse(data) {
+      const catalog = { providers: [] };
+      const providerMap = {};
+
+      function normalizeText(value) {
+        return String(value || '').trim();
+      }
+
+      function addModel(rawModel, fallbackModelId, fallbackProvider) {
+        if (!rawModel || typeof rawModel !== 'object') return;
+        const modelId = normalizeText(
+          rawModel.value ||
+          rawModel.id ||
+          rawModel.key ||
+          rawModel.model ||
+          rawModel.model_name ||
+          fallbackModelId
+        );
+        if (!modelId) return;
+        const provider = normalizeText(
+          rawModel.provider ||
+          rawModel.provider_id ||
+          rawModel.vendor ||
+          rawModel.route ||
+          fallbackProvider
+        );
+        if (!provider) return;
+        const modelName = normalizeText(rawModel.label || rawModel.display_name || rawModel.name || modelId);
+        const providerLabel = normalizeText(
+          rawModel.provider_label ||
+          rawModel.provider_name ||
+          rawModel.vendor_label ||
+          provider
+        );
+        if (!providerMap[provider]) {
+          providerMap[provider] = { value: provider, label: providerLabel, models: [] };
+          catalog.providers.push(providerMap[provider]);
+        }
+        providerMap[provider].models.push({
+          value: modelId,
+          label: modelName
+        });
+      }
+
+      const modelsData = data && data.models;
+      if (Array.isArray(modelsData)) {
+        modelsData.forEach(item => {
+          if (item && Array.isArray(item.models)) {
+            const provider = String(item.provider || item.provider_id || item.vendor || item.route || item.value || '').trim();
+            item.models.forEach(model => addModel({
+              ...model,
+              provider: model.provider || provider,
+              provider_label: model.provider_label || item.provider_label || item.provider_name || item.label || item.name
+            }, null, provider));
+          } else if (item && Array.isArray(item.providers)) {
+            const modelValue = String(item.value || item.id || item.key || item.model || '').trim();
+            const modelLabel = String(item.label || item.display_name || item.name || item.model || modelValue).trim();
+            item.providers.forEach(route => {
+              if (!route || route.enabled === false) return;
+              addModel({
+                ...item,
+                ...route,
+                value: modelValue,
+                label: modelLabel,
+                provider: route.provider || item.default_provider,
+                provider_label: route.provider_label || route.provider_name || route.provider || item.provider_label || item.provider_name
+              }, modelValue, route.provider || item.default_provider);
+            });
+          } else {
+            addModel(item);
+          }
+        });
+      } else if (modelsData && typeof modelsData === 'object') {
+        Object.entries(modelsData).forEach(([modelId, modelInfo]) => addModel(modelInfo, modelId));
+      }
+      return catalog;
+    }
+
+    function getImageProviders(catalog) {
+      if (!catalog || !Array.isArray(catalog.providers)) return [];
+      return catalog.providers
+        .filter(provider => provider && provider.value && Array.isArray(provider.models) && provider.models.length > 0)
+        .map(provider => ({ value: provider.value, label: provider.label || provider.value }));
+    }
+
+    function getImageModelsForProvider(catalog, provider) {
+      if (!catalog || !Array.isArray(catalog.providers)) return [];
+      const target = catalog.providers.find(item => item && item.value === provider);
+      if (!target || !Array.isArray(target.models)) return [];
+      return target.models.map(model => ({ value: model.value, label: model.label || model.value }));
+    }
+
+    function getDefaultImageSelection(catalog, preferredProvider, preferredModel) {
+      const providers = getImageProviders(catalog);
+      const defaultModelPriority = ['seedream-4.0', 'jimeng-4.0'];
+      if (!providers.length) {
+        return { provider: null, model: null };
+      }
+      let provider = preferredProvider && providers.some(item => item.value === preferredProvider)
+        ? preferredProvider
+        : null;
+      if (!provider && preferredModel) {
+        const matchedProvider = providers.find(item => {
+          return getImageModelsForProvider(catalog, item.value).some(model => model.value === preferredModel);
+        });
+        provider = matchedProvider ? matchedProvider.value : null;
+      }
+      if (!provider) {
+        const defaultProvider = providers.find(item => {
+          return getImageModelsForProvider(catalog, item.value).some(model => defaultModelPriority.includes(model.value));
+        });
+        provider = defaultProvider ? defaultProvider.value : providers[0].value;
+      }
+      const providerModels = getImageModelsForProvider(catalog, provider);
+      let model = preferredModel && providerModels.some(item => item.value === preferredModel)
+        ? preferredModel
+        : null;
+      if (!model) {
+        model = defaultModelPriority.find(defaultModel => providerModels.some(item => item.value === defaultModel))
+          || (providerModels[0] ? providerModels[0].value : null);
+      }
+      return { provider, model };
+    }
+
+    function buildSelectOptions(options, selectedValue, placeholder) {
+      const placeholderOption = placeholder ? `<option value="">${escHtml(placeholder)}</option>` : '';
+      return placeholderOption + options.map(option => {
+        const selected = option.value === selectedValue ? ' selected' : '';
+        return `<option value="${escHtml(option.value)}"${selected}>${escHtml(option.label || option.value)}</option>`;
+      }).join('');
+    }
+
+    function getStoryboardVideoModelOptionsHtml(selectedModel) {
+      return STORYBOARD_VIDEO_MODEL_OPTIONS.map(option => {
+        const selected = option.value === selectedModel ? ' selected' : '';
+        return `<option value="${escHtml(option.value)}"${selected}>${escHtml(option.label)}</option>`;
+      }).join('');
+    }
+
+    function renderStoryboardDefaults() {
+      const providerSelect = document.getElementById('defaultStoryboardImageProviderSelect');
+      const modelSelect = document.getElementById('defaultStoryboardImageModelSelect');
+      const videoSelect = document.getElementById('defaultStoryboardVideoModelSelect');
+      if (!providerSelect || !modelSelect || !videoSelect) return;
+
+      const selection = getDefaultImageSelection(
+        imageModelCatalog,
+        storyboardDefaults.detail_images_provider,
+        storyboardDefaults.detail_images_model
+      );
+
+      providerSelect.innerHTML = buildSelectOptions(
+        getImageProviders(imageModelCatalog),
+        selection.provider,
+        '选择服务商'
+      );
+      providerSelect.value = selection.provider || '';
+
+      modelSelect.innerHTML = buildSelectOptions(
+        getImageModelsForProvider(imageModelCatalog, selection.provider),
+        selection.model,
+        '选择模型'
+      );
+      modelSelect.value = selection.model || '';
+
+      const currentVideoModel = storyboardDefaults.storyboard_video_model || 'Seedance 2.0 VIP';
+      videoSelect.innerHTML = getStoryboardVideoModelOptionsHtml(currentVideoModel);
+      videoSelect.value = currentVideoModel;
+    }
+
+    function updateStoryboardDefaultImageModels() {
+      const providerSelect = document.getElementById('defaultStoryboardImageProviderSelect');
+      const modelSelect = document.getElementById('defaultStoryboardImageModelSelect');
+      if (!providerSelect || !modelSelect) return;
+      const selection = getDefaultImageSelection(
+        imageModelCatalog,
+        providerSelect.value,
+        modelSelect.value
+      );
+      providerSelect.value = selection.provider || '';
+      modelSelect.innerHTML = buildSelectOptions(
+        getImageModelsForProvider(imageModelCatalog, selection.provider),
+        selection.model,
+        '选择模型'
+      );
+      modelSelect.value = selection.model || '';
+    }
+
+    async function loadImageModelCatalog() {
+      const response = await fetch('/api/image-generation/models');
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.detail || '加载镜头图模型失败');
+      }
+      imageModelCatalog = normalizeImageModelCatalogResponse(data);
+    }
+
+    async function saveStoryboardDefaults() {
+      const providerSelect = document.getElementById('defaultStoryboardImageProviderSelect');
+      const modelSelect = document.getElementById('defaultStoryboardImageModelSelect');
+      const videoSelect = document.getElementById('defaultStoryboardVideoModelSelect');
+      const btn = document.getElementById('saveStoryboardDefaultsBtn');
+      if (!providerSelect || !modelSelect || !videoSelect || !btn) return;
+
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span>';
+      try {
+        const response = await fetch('/api/admin/storyboard-defaults', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            detail_images_provider: providerSelect.value,
+            detail_images_model: modelSelect.value,
+            storyboard_video_model: videoSelect.value
+          })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(data.detail || '保存失败');
+        }
+        storyboardDefaults = {
+          detail_images_provider: data.detail_images_provider || providerSelect.value,
+          detail_images_model: data.detail_images_model || modelSelect.value,
+          storyboard_video_model: data.storyboard_video_model || videoSelect.value
+        };
+        renderStoryboardDefaults();
+        showToast('故事板默认值已保存', 'success');
+      } catch (error) {
+        showToast(`保存失败：${error.message}`, 'error');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '保存默认值';
+      }
+    }
+
+    async function loadPageData() {
+      const [modelConfigResponse] = await Promise.all([
+        fetch('/api/admin/model-configs'),
+        loadImageModelCatalog()
+      ]);
+      const data = await modelConfigResponse.json().catch(() => ({}));
+      if (!modelConfigResponse.ok) {
+        throw new Error(data.detail || '加载模型配置失败');
+      }
+      models = data.models || [];
+      configs = data.configs || [];
+      lastSyncedAt = data.last_synced_at || null;
+      storyboardDefaults = data.storyboard_defaults || storyboardDefaults;
+      ensureDrafts();
+      updateSyncMeta();
+      renderConfigs();
+      renderStoryboardDefaults();
+    }
+
+    async function syncModels() {
+      const btn = document.getElementById('syncBtn');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span>';
+      try {
+        const response = await fetch('/api/admin/model-configs/sync-models', { method: 'POST' });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.detail || '同步失败');
+        models = data.models || [];
+        lastSyncedAt = data.last_synced_at || null;
+        updateSyncMeta();
+        renderConfigs();
+        showToast(`已同步 ${models.length} 个模型`, 'success');
+      } catch (error) {
+        showToast(`同步失败：${error.message}`, 'error');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '同步模型';
+      }
+    }
+
+    loadPageData().catch(error => {
+      showToast(`加载失败：${error.message}`, 'error');
+      document.getElementById('configTbody').innerHTML = '<tr><td colspan="3" class="empty">加载失败。</td></tr>';
+      document.getElementById('syncMeta').textContent = '加载失败';
+    });
   </script>
 </body>
 </html>

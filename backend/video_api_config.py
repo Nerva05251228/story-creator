@@ -7,7 +7,7 @@ VIDEO_API_BASE_URL = ""
 VIDEO_API_TOKEN = (
     os.getenv("SORA_VIDEO_API_TOKEN")
     or os.getenv("VIDEO_API_TOKEN")
-    or "sk-Zv2THcS1J7KDZkQ-griUI6UlRSNcgQhvTXu70tuvRBw"
+    or "sk-qCNrumMNRRMkFdSzKOEOWeZ7fhxR0dBYH7enjQsYr3k"
 )
 
 

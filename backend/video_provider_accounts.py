@@ -7,11 +7,12 @@ import requests
 from video_api_config import get_video_api_headers, get_video_provider_accounts_url
 
 
-def _empty_accounts_payload(provider: str, error: str = "") -> Dict[str, Any]:
+def _empty_accounts_payload(provider: str, error: str = "", loaded: bool = False) -> Dict[str, Any]:
     payload: Dict[str, Any] = {
         "provider": str(provider or "").strip().lower(),
         "total": 0,
         "records": [],
+        "loaded": bool(loaded),
     }
     if error:
         payload["error"] = error
@@ -41,6 +42,7 @@ def _normalize_accounts_payload(provider: str, payload: Any) -> Dict[str, Any]:
         "provider": str(provider or "").strip().lower(),
         "total": total,
         "records": normalized_records,
+        "loaded": True,
     }
 
 
@@ -67,7 +69,7 @@ def resolve_video_provider_account_robot_id(payload: Any, account_value: Any) ->
 
 
 class VideoProviderAccountsCache:
-    def __init__(self, fetcher=None, timeout: int = 30):
+    def __init__(self, fetcher=None, timeout: int = 180):
         self._fetcher = fetcher or requests
         self._timeout = timeout
         self._lock = Lock()
@@ -78,17 +80,36 @@ class VideoProviderAccountsCache:
         if not normalized_provider:
             normalized_provider = "moti"
 
+        request_headers = get_video_api_headers()
+        auth_prefix = str(request_headers.get("Authorization") or "")[:24]
+        target_url = get_video_provider_accounts_url(normalized_provider)
+        print(
+            f"[video-provider-accounts] refresh start provider={normalized_provider} "
+            f"url={target_url} timeout={self._timeout}s auth_prefix={auth_prefix}..."
+        )
+
         try:
             response = self._fetcher.get(
-                get_video_provider_accounts_url(normalized_provider),
-                headers=get_video_api_headers(),
+                target_url,
+                headers=request_headers,
                 timeout=self._timeout,
             )
+            print(
+                f"[video-provider-accounts] upstream status={getattr(response, 'status_code', 0)} "
+                f"content_type={getattr(response, 'headers', {}).get('Content-Type', '')}"
+            )
             if getattr(response, "status_code", 0) != 200:
+                body_preview = str(getattr(response, "text", "") or "")[:500]
+                print(f"[video-provider-accounts] upstream error body={body_preview}")
                 raise RuntimeError(f"HTTP {getattr(response, 'status_code', 0)}")
             payload = _normalize_accounts_payload(normalized_provider, response.json())
+            print(
+                f"[video-provider-accounts] refresh success provider={normalized_provider} "
+                f"total={payload.get('total', 0)} loaded={payload.get('loaded')}"
+            )
         except Exception as exc:
-            payload = _empty_accounts_payload(normalized_provider, str(exc))
+            print(f"[video-provider-accounts] refresh failed provider={normalized_provider} error={exc}")
+            payload = _empty_accounts_payload(normalized_provider, str(exc), loaded=True)
 
         with self._lock:
             self._payloads[normalized_provider] = payload
@@ -100,7 +121,7 @@ class VideoProviderAccountsCache:
         with self._lock:
             payload = self._payloads.get(normalized_provider)
             if payload is None:
-                payload = _empty_accounts_payload(normalized_provider)
+                payload = _empty_accounts_payload(normalized_provider, loaded=False)
                 self._payloads[normalized_provider] = payload
             return deepcopy(payload)
 

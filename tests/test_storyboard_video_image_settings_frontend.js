@@ -18,6 +18,10 @@ const openSettingsSource = extractFunction('openStoryboardVideoSettingModal');
 const saveSettingsSource = extractFunction('saveStoryboardVideoSettings');
 
 assert(
+  source.includes("const DEFAULT_STORYBOARD_VIDEO_MODEL = 'Seedance 2.0 VIP';"),
+  'storyboard video settings frontend default model should be Seedance 2.0 VIP'
+);
+assert(
   openSettingsSource.includes('ensureImageModelCatalogLoaded'),
   'storyboard video settings modal should load the dynamic image model catalog before rendering'
 );

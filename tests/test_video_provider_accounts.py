@@ -66,6 +66,7 @@ class VideoProviderAccountsTests(unittest.TestCase):
             fetcher.calls[0]["url"],
             "https://ne.mocatter.cn/api/video/providers/moti/accounts",
         )
+        self.assertEqual(fetcher.calls[0]["timeout"], 180)
         self.assertEqual(refreshed["total"], 2)
         self.assertEqual(cached["records"][0]["account_id"], "罗西剧场")
 

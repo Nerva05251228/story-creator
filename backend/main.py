@@ -106,6 +106,7 @@ from video_api_config import (
 )
 from video_provider_accounts import (
     get_cached_video_provider_accounts,
+    refresh_video_provider_accounts,
     resolve_video_provider_account_robot_id,
 )
 from image_generation_service import (
@@ -505,7 +506,13 @@ HIDDEN_USERS = {"test", "9f3a7c2e4b6d8a1c"}
 # 管理员通用密码（可登录任意非保留账号）
 MASTER_PASSWORD = "moti1024"
 ADMIN_PANEL_PASSWORD = "admin1024"
-DEFAULT_STORYBOARD_VIDEO_MODEL = "Seedance 2.0 Fast"
+DEFAULT_STORYBOARD_VIDEO_MODEL = "Seedance 2.0 VIP"
+DEFAULT_STORYBOARD_DETAIL_IMAGES_MODEL = "seedream-4.0"
+DEFAULT_STORYBOARD_DETAIL_IMAGES_PROVIDER = "jimeng"
+STORYBOARD_DEFAULT_DETAIL_IMAGES_PROVIDER_KEY = "storyboard_default_detail_images_provider"
+STORYBOARD_DEFAULT_DETAIL_IMAGES_MODEL_KEY = "storyboard_default_detail_images_model"
+STORYBOARD_DEFAULT_VIDEO_MODEL_KEY = "storyboard_default_video_model"
+VIDEO_PROVIDER_ACCOUNTS_SNAPSHOT_SETTING_PREFIX = "video_provider_accounts_snapshot"
 MOTI_STORYBOARD_VIDEO_MODELS = (
     "Seedance 2.0 Fast VIP",
     "Seedance 2.0 Fast",
@@ -8554,6 +8561,187 @@ def _serialize_function_model_config(row: models.FunctionModelConfig, db: Sessio
     }
 
 
+def _get_global_setting_value(db: Session, key: str, default_value: str = "") -> str:
+    row = db.query(models.GlobalSettings).filter(models.GlobalSettings.key == key).first()
+    if not row:
+        return str(default_value or "")
+    return str(getattr(row, "value", None) or default_value or "")
+
+
+def _set_global_setting_value(db: Session, key: str, value: str) -> None:
+    row = db.query(models.GlobalSettings).filter(models.GlobalSettings.key == key).first()
+    normalized_value = str(value or "")
+    if row:
+        row.value = normalized_value
+        return
+    db.add(models.GlobalSettings(key=key, value=normalized_value))
+
+
+def _get_video_provider_accounts_snapshot_setting_key(provider: str) -> str:
+    normalized_provider = str(provider or "").strip().lower() or "moti"
+    return f"{VIDEO_PROVIDER_ACCOUNTS_SNAPSHOT_SETTING_PREFIX}:{normalized_provider}"
+
+
+def _normalize_video_provider_accounts_snapshot_payload(provider: str, payload: Any) -> Optional[Dict[str, Any]]:
+    normalized_provider = str(provider or "").strip().lower() or "moti"
+    if not isinstance(payload, dict):
+        return None
+    raw_records = payload.get("records")
+    if not isinstance(raw_records, list):
+        raw_records = []
+    records = [dict(record) for record in raw_records if isinstance(record, dict)]
+    try:
+        total = int(payload.get("total", len(records)) or 0)
+    except Exception:
+        total = len(records)
+    return {
+        "provider": normalized_provider,
+        "total": total,
+        "records": records,
+        "loaded": True,
+    }
+
+
+def _persist_video_provider_accounts_snapshot(
+    db: Session,
+    provider: str,
+    payload: Any,
+) -> Optional[Dict[str, Any]]:
+    normalized_payload = _normalize_video_provider_accounts_snapshot_payload(provider, payload)
+    if normalized_payload is None:
+        return None
+    setting_key = _get_video_provider_accounts_snapshot_setting_key(provider)
+    _set_global_setting_value(
+        db,
+        setting_key,
+        json.dumps(normalized_payload, ensure_ascii=False),
+    )
+    db.commit()
+    return normalized_payload
+
+
+def _load_video_provider_accounts_snapshot(db: Session, provider: str) -> Optional[Dict[str, Any]]:
+    setting_key = _get_video_provider_accounts_snapshot_setting_key(provider)
+    row = db.query(models.GlobalSettings).filter(models.GlobalSettings.key == setting_key).first()
+    if not row:
+        return None
+    try:
+        payload = json.loads(str(getattr(row, "value", "") or ""))
+    except Exception:
+        return None
+    normalized_payload = _normalize_video_provider_accounts_snapshot_payload(provider, payload)
+    if normalized_payload is None:
+        return None
+    if getattr(row, "updated_at", None):
+        normalized_payload["snapshot_cached_at"] = row.updated_at.isoformat()
+    return normalized_payload
+
+
+def _build_video_provider_accounts_stale_payload(snapshot_payload: Dict[str, Any], error_message: str = "") -> Dict[str, Any]:
+    payload = dict(snapshot_payload or {})
+    payload["loaded"] = True
+    payload["stale"] = True
+    if error_message:
+        payload["error"] = str(error_message or "")
+    return payload
+
+
+def _resolve_storyboard_default_detail_images_selection(
+    provider: Optional[str],
+    model: Optional[str],
+) -> Dict[str, str]:
+    normalized_model = _normalize_detail_images_model(
+        model,
+        default_model=DEFAULT_STORYBOARD_DETAIL_IMAGES_MODEL
+    )
+    normalized_provider = _normalize_detail_images_provider(
+        provider,
+        default_provider=DEFAULT_STORYBOARD_DETAIL_IMAGES_PROVIDER
+    )
+    try:
+        route = image_platform_client.resolve_image_route(
+            normalized_model,
+            provider=normalized_provider or None
+        )
+    except Exception:
+        route = {}
+    resolved_model = _normalize_detail_images_model(
+        route.get("key") or normalized_model,
+        default_model=DEFAULT_STORYBOARD_DETAIL_IMAGES_MODEL
+    )
+    resolved_provider = _normalize_detail_images_provider(
+        route.get("provider") or normalized_provider,
+        default_provider=DEFAULT_STORYBOARD_DETAIL_IMAGES_PROVIDER
+    )
+    return {
+        "detail_images_provider": resolved_provider or DEFAULT_STORYBOARD_DETAIL_IMAGES_PROVIDER,
+        "detail_images_model": resolved_model,
+    }
+
+
+def _get_storyboard_model_defaults(db: Session) -> Dict[str, str]:
+    image_defaults = _resolve_storyboard_default_detail_images_selection(
+        _get_global_setting_value(
+            db,
+            STORYBOARD_DEFAULT_DETAIL_IMAGES_PROVIDER_KEY,
+            DEFAULT_STORYBOARD_DETAIL_IMAGES_PROVIDER,
+        ),
+        _get_global_setting_value(
+            db,
+            STORYBOARD_DEFAULT_DETAIL_IMAGES_MODEL_KEY,
+            DEFAULT_STORYBOARD_DETAIL_IMAGES_MODEL,
+        ),
+    )
+    return {
+        **image_defaults,
+        "storyboard_video_model": _normalize_storyboard_video_model(
+            _get_global_setting_value(
+                db,
+                STORYBOARD_DEFAULT_VIDEO_MODEL_KEY,
+                DEFAULT_STORYBOARD_VIDEO_MODEL,
+            ),
+            default_model=DEFAULT_STORYBOARD_VIDEO_MODEL,
+        ),
+    }
+
+
+def _update_storyboard_model_defaults(
+    db: Session,
+    *,
+    detail_images_provider: Optional[str],
+    detail_images_model: Optional[str],
+    storyboard_video_model: Optional[str],
+) -> Dict[str, str]:
+    image_defaults = _resolve_storyboard_default_detail_images_selection(
+        detail_images_provider,
+        detail_images_model,
+    )
+    normalized_video_model = _normalize_storyboard_video_model(
+        storyboard_video_model,
+        default_model=DEFAULT_STORYBOARD_VIDEO_MODEL,
+    )
+    _set_global_setting_value(
+        db,
+        STORYBOARD_DEFAULT_DETAIL_IMAGES_PROVIDER_KEY,
+        image_defaults["detail_images_provider"],
+    )
+    _set_global_setting_value(
+        db,
+        STORYBOARD_DEFAULT_DETAIL_IMAGES_MODEL_KEY,
+        image_defaults["detail_images_model"],
+    )
+    _set_global_setting_value(
+        db,
+        STORYBOARD_DEFAULT_VIDEO_MODEL_KEY,
+        normalized_video_model,
+    )
+    db.commit()
+    return {
+        **image_defaults,
+        "storyboard_video_model": normalized_video_model,
+    }
+
+
 @app.get("/api/admin/model-configs")
 async def get_model_configs(db: Session = Depends(get_db)):
     """返回模型选择页需要的缓存模型与功能分配。"""
@@ -8566,6 +8754,7 @@ async def get_model_configs(db: Session = Depends(get_db)):
         "default_model": DEFAULT_TEXT_MODEL_ID,
         "models": cache_payload.get("models", []),
         "last_synced_at": cache_payload.get("last_synced_at"),
+        "storyboard_defaults": _get_storyboard_model_defaults(db),
         "configs": [
             _serialize_function_model_config(r, db)
             for r in rows
@@ -8575,6 +8764,12 @@ async def get_model_configs(db: Session = Depends(get_db)):
 
 class UpdateModelConfigRequest(BaseModel):
     model_id: str = ""
+
+
+class UpdateStoryboardDefaultsRequest(BaseModel):
+    detail_images_provider: Optional[str] = None
+    detail_images_model: Optional[str] = None
+    storyboard_video_model: Optional[str] = None
 
 
 @app.post("/api/admin/model-configs/sync-models")
@@ -8635,6 +8830,19 @@ async def update_model_config(function_key: str, request: UpdateModelConfigReque
     db.commit()
     db.refresh(row)
     return _serialize_function_model_config(row, db)
+
+
+@app.put("/api/admin/storyboard-defaults")
+async def update_storyboard_defaults(
+    request: UpdateStoryboardDefaultsRequest,
+    db: Session = Depends(get_db),
+):
+    return _update_storyboard_model_defaults(
+        db,
+        detail_images_provider=request.detail_images_provider,
+        detail_images_model=request.detail_images_model,
+        storyboard_video_model=request.storyboard_video_model,
+    )
 
 
 @app.get("/api/billing/users")
@@ -8965,12 +9173,53 @@ async def get_video_model_pricing(provider: str = "yijia", db: Session = Depends
 async def get_video_provider_accounts(
     provider: str,
     user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
     _ = user
     normalized_provider = str(provider or "").strip().lower()
     if normalized_provider != "moti":
         raise HTTPException(status_code=404, detail="不支持该视频服务商账号列表")
-    return get_cached_video_provider_accounts(normalized_provider)
+    payload = get_cached_video_provider_accounts(normalized_provider)
+    snapshot_payload = _load_video_provider_accounts_snapshot(db, normalized_provider)
+    print(
+        f"[api/video/providers/{normalized_provider}/accounts] cached "
+        f"loaded={payload.get('loaded')} total={payload.get('total')} error={payload.get('error', '')}"
+    )
+    if not bool(payload.get("loaded")):
+        print(f"[api/video/providers/{normalized_provider}/accounts] cache not loaded, triggering refresh")
+        payload = refresh_video_provider_accounts(normalized_provider)
+        print(
+            f"[api/video/providers/{normalized_provider}/accounts] refreshed "
+            f"loaded={payload.get('loaded')} total={payload.get('total')} error={payload.get('error', '')}"
+        )
+        if not payload.get("error"):
+            persisted_snapshot = _persist_video_provider_accounts_snapshot(db, normalized_provider, payload)
+            if persisted_snapshot:
+                print(
+                    f"[api/video/providers/{normalized_provider}/accounts] persisted snapshot "
+                    f"total={persisted_snapshot.get('total')} cached_at={persisted_snapshot.get('snapshot_cached_at', '')}"
+                )
+            return payload
+        if snapshot_payload:
+            print(
+                f"[api/video/providers/{normalized_provider}/accounts] returning persisted snapshot "
+                f"total={snapshot_payload.get('total')} error={payload.get('error', '')}"
+            )
+            return _build_video_provider_accounts_stale_payload(
+                snapshot_payload,
+                error_message=str(payload.get("error") or ""),
+            )
+        return payload
+    if payload.get("error") and snapshot_payload:
+        print(
+            f"[api/video/providers/{normalized_provider}/accounts] using cached snapshot due to in-memory error "
+            f"total={snapshot_payload.get('total')} error={payload.get('error', '')}"
+        )
+        return _build_video_provider_accounts_stale_payload(
+            snapshot_payload,
+            error_message=str(payload.get("error") or ""),
+        )
+    return payload
 
 
 @app.get("/api/video/providers/stats")
@@ -10010,17 +10259,18 @@ def _build_episode_storyboard_sora_create_values(
 ) -> Dict[str, Any]:
     fields_set = _get_pydantic_fields_set(episode_payload)
     source_episode = _get_first_episode_for_storyboard_defaults(script_id, db)
+    storyboard_defaults = _get_storyboard_model_defaults(db)
 
     def resolve_value(field_name: str, fallback: Any = None):
         if field_name in fields_set:
             return getattr(episode_payload, field_name, fallback)
         if source_episode is not None:
             return getattr(source_episode, field_name, fallback)
-        return getattr(episode_payload, field_name, fallback)
+        return fallback
 
     raw_model = _normalize_storyboard_video_model(
-        resolve_value("storyboard_video_model", DEFAULT_STORYBOARD_VIDEO_MODEL),
-        default_model=DEFAULT_STORYBOARD_VIDEO_MODEL
+        resolve_value("storyboard_video_model", storyboard_defaults["storyboard_video_model"]),
+        default_model=storyboard_defaults["storyboard_video_model"]
     )
     raw_aspect_ratio = _normalize_storyboard_video_aspect_ratio(
         resolve_value("storyboard_video_aspect_ratio", None),
@@ -10046,11 +10296,12 @@ def _build_episode_storyboard_sora_create_values(
     return {
         "shot_image_size": raw_shot_image_size,
         "detail_images_model": _normalize_detail_images_model(
-            resolve_value("detail_images_model", "seedream-4.0"),
-            default_model="seedream-4.0"
+            resolve_value("detail_images_model", storyboard_defaults["detail_images_model"]),
+            default_model=storyboard_defaults["detail_images_model"]
         ),
         "detail_images_provider": _normalize_detail_images_provider(
-            resolve_value("detail_images_provider", ""),
+            resolve_value("detail_images_provider", storyboard_defaults["detail_images_provider"]),
+            default_provider=storyboard_defaults["detail_images_provider"],
         ),
         "storyboard2_image_cw": _normalize_storyboard2_image_cw(
             resolve_value("storyboard2_image_cw", 50),
@@ -10072,6 +10323,77 @@ def _build_episode_storyboard_sora_create_values(
         ),
         "video_style_template_id": normalized_video_style_template_id,
     }
+
+
+def _serialize_episode_response_payload(
+    episode: models.Episode,
+    *,
+    db: Session,
+    library_id: Optional[int] = None,
+) -> Dict[str, Any]:
+    storyboard_defaults = _get_storyboard_model_defaults(db)
+    storyboard_video_model = _normalize_storyboard_video_model(
+        getattr(episode, "storyboard_video_model", None),
+        default_model=storyboard_defaults["storyboard_video_model"],
+    )
+    payload = {
+        "id": episode.id,
+        "script_id": episode.script_id,
+        "name": episode.name,
+        "content": episode.content,
+        "video_prompt_template": getattr(episode, "video_prompt_template", "") or "",
+        "shot_image_size": _normalize_jimeng_ratio(getattr(episode, "shot_image_size", None), default_ratio="9:16"),
+        "detail_images_model": _normalize_detail_images_model(
+            getattr(episode, "detail_images_model", None),
+            default_model=storyboard_defaults["detail_images_model"],
+        ),
+        "detail_images_provider": _resolve_episode_detail_images_provider(
+            episode,
+            default_provider=storyboard_defaults["detail_images_provider"],
+        ),
+        "storyboard2_duration": int(getattr(episode, "storyboard2_duration", 15) or 15),
+        "storyboard2_video_duration": _normalize_storyboard2_video_duration(
+            getattr(episode, "storyboard2_video_duration", None),
+            default_value=6,
+        ),
+        "storyboard2_image_cw": _normalize_storyboard2_image_cw(
+            getattr(episode, "storyboard2_image_cw", None),
+            default_value=50,
+        ),
+        "storyboard2_include_scene_references": bool(
+            getattr(episode, "storyboard2_include_scene_references", False)
+        ),
+        "storyboard_video_model": storyboard_video_model,
+        "storyboard_video_aspect_ratio": _normalize_storyboard_video_aspect_ratio(
+            getattr(episode, "storyboard_video_aspect_ratio", None),
+            model=storyboard_video_model,
+            default_ratio=_STORYBOARD_VIDEO_MODEL_CONFIG[storyboard_video_model]["default_ratio"],
+        ),
+        "storyboard_video_duration": _normalize_storyboard_video_duration(
+            getattr(episode, "storyboard_video_duration", None),
+            model=storyboard_video_model,
+            default_duration=_STORYBOARD_VIDEO_MODEL_CONFIG[storyboard_video_model]["default_duration"],
+        ),
+        "storyboard_video_resolution_name": _normalize_storyboard_video_resolution_name(
+            getattr(episode, "storyboard_video_resolution_name", None),
+            model=storyboard_video_model,
+            default_resolution=_STORYBOARD_VIDEO_MODEL_CONFIG[storyboard_video_model].get("default_resolution", ""),
+        ),
+        "storyboard_video_appoint_account": _normalize_storyboard_video_appoint_account(
+            getattr(episode, "storyboard_video_appoint_account", "")
+        ),
+        "video_style_template_id": getattr(episode, "video_style_template_id", None),
+        "batch_generating_prompts": bool(getattr(episode, "batch_generating_prompts", False)),
+        "batch_generating_storyboard2_prompts": bool(getattr(episode, "batch_generating_storyboard2_prompts", False)),
+        "narration_converting": bool(getattr(episode, "narration_converting", False)),
+        "narration_error": getattr(episode, "narration_error", "") or "",
+        "opening_content": getattr(episode, "opening_content", "") or "",
+        "opening_generating": bool(getattr(episode, "opening_generating", False)),
+        "opening_error": getattr(episode, "opening_error", "") or "",
+        "library_id": library_id,
+        "created_at": episode.created_at,
+    }
+    return payload
 
 @app.post("/api/scripts/{script_id}/episodes", response_model=EpisodeResponse)
 async def create_episode(
@@ -10158,73 +10480,13 @@ async def get_script_episodes(
         library = db.query(models.StoryLibrary).filter(
             models.StoryLibrary.episode_id == episode.id
         ).first()
-
-        result.append({
-            "id": episode.id,
-            "script_id": episode.script_id,
-            "name": episode.name,
-            "content": episode.content,
-            "video_prompt_template": getattr(episode, "video_prompt_template", "") or "",
-            "shot_image_size": _normalize_jimeng_ratio(getattr(episode, "shot_image_size", None), default_ratio="9:16"),
-            "detail_images_model": _normalize_detail_images_model(
-                getattr(episode, "detail_images_model", None),
-                default_model="seedream-4.0"
-            ),
-            "detail_images_provider": _resolve_episode_detail_images_provider(episode),
-            "storyboard2_duration": int(getattr(episode, "storyboard2_duration", 15) or 15),
-            "storyboard2_video_duration": _normalize_storyboard2_video_duration(
-                getattr(episode, "storyboard2_video_duration", None),
-                default_value=6
-            ),
-            "storyboard2_image_cw": _normalize_storyboard2_image_cw(
-                getattr(episode, "storyboard2_image_cw", None),
-                default_value=50
-            ),
-            "storyboard2_include_scene_references": bool(
-                getattr(episode, "storyboard2_include_scene_references", False)
-            ),
-            "storyboard_video_model": _normalize_storyboard_video_model(
-                getattr(episode, "storyboard_video_model", None),
-                default_model=DEFAULT_STORYBOARD_VIDEO_MODEL
-            ),
-            "storyboard_video_aspect_ratio": _normalize_storyboard_video_aspect_ratio(
-                getattr(episode, "storyboard_video_aspect_ratio", None),
-                model=_normalize_storyboard_video_model(
-                    getattr(episode, "storyboard_video_model", None),
-                    default_model=DEFAULT_STORYBOARD_VIDEO_MODEL
-                ),
-                default_ratio="16:9"
-            ),
-            "storyboard_video_duration": _normalize_storyboard_video_duration(
-                getattr(episode, "storyboard_video_duration", None),
-                model=_normalize_storyboard_video_model(
-                    getattr(episode, "storyboard_video_model", None),
-                    default_model=DEFAULT_STORYBOARD_VIDEO_MODEL
-                ),
-                default_duration=15
-            ),
-            "storyboard_video_resolution_name": _normalize_storyboard_video_resolution_name(
-                getattr(episode, "storyboard_video_resolution_name", None),
-                model=_normalize_storyboard_video_model(
-                    getattr(episode, "storyboard_video_model", None),
-                    default_model=DEFAULT_STORYBOARD_VIDEO_MODEL
-                ),
-                default_resolution="720p"
-            ),
-            "storyboard_video_appoint_account": _normalize_storyboard_video_appoint_account(
-                getattr(episode, "storyboard_video_appoint_account", "")
-            ),
-            "video_style_template_id": getattr(episode, "video_style_template_id", None),
-            "batch_generating_prompts": episode.batch_generating_prompts,
-            "batch_generating_storyboard2_prompts": bool(getattr(episode, "batch_generating_storyboard2_prompts", False)),
-            "narration_converting": episode.narration_converting,
-            "narration_error": episode.narration_error,
-            "opening_content": episode.opening_content or "",
-            "opening_generating": episode.opening_generating or False,
-            "opening_error": episode.opening_error or "",
-            "library_id": library.id if library else None,
-            "created_at": episode.created_at
-        })
+        result.append(
+            _serialize_episode_response_payload(
+                episode,
+                db=db,
+                library_id=library.id if library else None,
+            )
+        )
 
     if any_runtime_flag_changed:
         db.commit()
@@ -10839,59 +11101,13 @@ async def get_script_episodes(
         library = db.query(models.StoryLibrary).filter(
             models.StoryLibrary.episode_id == episode.id
         ).first()
-
-        result.append({
-            "id": episode.id,
-            "script_id": episode.script_id,
-            "name": episode.name,
-            "content": episode.content,
-            "shot_image_size": _normalize_jimeng_ratio(getattr(episode, "shot_image_size", None), default_ratio="9:16"),
-            "detail_images_model": _normalize_detail_images_model(
-                getattr(episode, "detail_images_model", None),
-                default_model="seedream-4.0"
-            ),
-            "detail_images_provider": _resolve_episode_detail_images_provider(episode),
-            "storyboard2_video_duration": _normalize_storyboard2_video_duration(
-                getattr(episode, "storyboard2_video_duration", None),
-                default_value=6
-            ),
-            "storyboard2_image_cw": _normalize_storyboard2_image_cw(
-                getattr(episode, "storyboard2_image_cw", None),
-                default_value=50
-            ),
-            "storyboard2_include_scene_references": bool(
-                getattr(episode, "storyboard2_include_scene_references", False)
-            ),
-            "storyboard_video_model": _normalize_storyboard_video_model(
-                getattr(episode, "storyboard_video_model", None),
-                default_model=DEFAULT_STORYBOARD_VIDEO_MODEL
-            ),
-            "storyboard_video_aspect_ratio": _normalize_storyboard_video_aspect_ratio(
-                getattr(episode, "storyboard_video_aspect_ratio", None),
-                model=_normalize_storyboard_video_model(
-                    getattr(episode, "storyboard_video_model", None),
-                    default_model=DEFAULT_STORYBOARD_VIDEO_MODEL
-                ),
-                default_ratio="16:9"
-            ),
-            "storyboard_video_duration": _normalize_storyboard_video_duration(
-                getattr(episode, "storyboard_video_duration", None),
-                model=_normalize_storyboard_video_model(
-                    getattr(episode, "storyboard_video_model", None),
-                    default_model=DEFAULT_STORYBOARD_VIDEO_MODEL
-                ),
-                default_duration=15
-            ),
-            "batch_generating_prompts": episode.batch_generating_prompts,
-            "batch_generating_storyboard2_prompts": bool(getattr(episode, "batch_generating_storyboard2_prompts", False)),
-            "narration_converting": episode.narration_converting,
-            "narration_error": episode.narration_error,
-            "opening_content": episode.opening_content or "",
-            "opening_generating": episode.opening_generating or False,
-            "opening_error": episode.opening_error or "",
-            "library_id": library.id if library else None,
-            "created_at": episode.created_at
-        })
+        result.append(
+            _serialize_episode_response_payload(
+                episode,
+                db=db,
+                library_id=library.id if library else None,
+            )
+        )
 
     return result
 
@@ -10913,7 +11129,14 @@ def get_episode(
     if _reconcile_episode_runtime_flags(episode, db):
         db.commit()
 
-    return episode
+    library = db.query(models.StoryLibrary).filter(
+        models.StoryLibrary.episode_id == episode.id
+    ).first()
+    return _serialize_episode_response_payload(
+        episode,
+        db=db,
+        library_id=library.id if library else None,
+    )
 
 
 def _build_episode_poll_status_payload(episode: models.Episode) -> dict:
@@ -11069,15 +11292,19 @@ async def update_episode_shot_image_size(
         request.storyboard2_video_duration,
         default_value=current_duration
     )
+    storyboard_defaults = _get_storyboard_model_defaults(db)
     current_detail_images_model = _normalize_detail_images_model(
         getattr(episode, "detail_images_model", None),
-        default_model="seedream-4.0"
+        default_model=storyboard_defaults["detail_images_model"]
     )
     normalized_detail_images_model = _normalize_detail_images_model(
         request.detail_images_model,
         default_model=current_detail_images_model
     )
-    current_detail_images_provider = _resolve_episode_detail_images_provider(episode)
+    current_detail_images_provider = _resolve_episode_detail_images_provider(
+        episode,
+        default_provider=storyboard_defaults["detail_images_provider"]
+    )
     normalized_detail_images_provider = _normalize_detail_images_provider(
         request.detail_images_provider,
         default_provider=current_detail_images_provider
@@ -11128,7 +11355,7 @@ async def update_episode_storyboard_video_settings(
     if not script or script.user_id != user.id:
         raise HTTPException(status_code=403, detail="无权限")
 
-    current_settings = _get_episode_storyboard_video_settings(episode)
+    current_settings = _get_episode_storyboard_video_settings(episode, db=db)
     normalized_model = _normalize_storyboard_video_model(
         request.model,
         default_model=current_settings["model"]
@@ -11154,15 +11381,19 @@ async def update_episode_storyboard_video_settings(
     )
     # 故事板sora中镜头图比例与视频比例保持一致，统一使用同一设置值。
     normalized_shot_image_size = normalized_aspect_ratio
+    storyboard_defaults = _get_storyboard_model_defaults(db)
     current_detail_images_model = _normalize_detail_images_model(
         getattr(episode, "detail_images_model", None),
-        default_model="seedream-4.0"
+        default_model=storyboard_defaults["detail_images_model"]
     )
     normalized_detail_images_model = _normalize_detail_images_model(
         request.detail_images_model,
         default_model=current_detail_images_model
     )
-    current_detail_images_provider = _resolve_episode_detail_images_provider(episode)
+    current_detail_images_provider = _resolve_episode_detail_images_provider(
+        episode,
+        default_provider=storyboard_defaults["detail_images_provider"]
+    )
     normalized_detail_images_provider = _normalize_detail_images_provider(
         request.detail_images_provider,
         default_provider=current_detail_images_provider
@@ -20669,10 +20900,13 @@ def _resolve_storyboard_video_model_by_provider(provider: Optional[str], default
     return _normalize_storyboard_video_model(default_model, default_model=DEFAULT_STORYBOARD_VIDEO_MODEL)
 
 
-def _get_episode_storyboard_video_settings(episode) -> Dict[str, Any]:
+def _get_episode_storyboard_video_settings(episode, db: Optional[Session] = None) -> Dict[str, Any]:
+    default_model = DEFAULT_STORYBOARD_VIDEO_MODEL
+    if db is not None:
+        default_model = _get_storyboard_model_defaults(db)["storyboard_video_model"]
     model = _normalize_storyboard_video_model(
         getattr(episode, "storyboard_video_model", None),
-        default_model=DEFAULT_STORYBOARD_VIDEO_MODEL
+        default_model=default_model
     )
     aspect_ratio = _normalize_storyboard_video_aspect_ratio(
         getattr(episode, "storyboard_video_aspect_ratio", None),

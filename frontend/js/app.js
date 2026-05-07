@@ -134,7 +134,7 @@ const APP_STATE = {
 
     videoModelPricing: {},  // Store video model pricing from API
 
-    motiVideoProviderAccounts: { total: 0, records: [] },
+    motiVideoProviderAccounts: { total: 0, records: [], loaded: false },
 
     videoGenerationSubmittingByShot: {},
 
@@ -12856,19 +12856,53 @@ async function loadMotiVideoProviderAccounts() {
 
         const response = await apiRequest('/api/video/providers/moti/accounts');
 
-        if (!response || !response.ok) {
+        if (!response) {
+
+            console.error('[moti-accounts] empty response object from apiRequest');
 
             throw new Error('Moti账号列表加载失败');
 
         }
 
-        const payload = await response.json();
+        const rawText = await response.text();
+        let payload = null;
+
+        try {
+
+            payload = rawText ? JSON.parse(rawText) : {};
+
+        } catch (parseError) {
+
+            console.error('[moti-accounts] failed to parse response json:', parseError, rawText);
+
+            payload = null;
+
+        }
+
+        if (!response.ok) {
+
+            console.error('[moti-accounts] request failed:', {
+                status: response.status,
+                body: rawText
+            });
+
+            throw new Error('Moti账号列表加载失败');
+
+        }
 
         APP_STATE.motiVideoProviderAccounts = payload && typeof payload === 'object'
 
             ? payload
 
-            : { total: 0, records: [] };
+            : { total: 0, records: [], loaded: false };
+
+        console.log('[moti-accounts] loaded payload:', {
+            status: response.status,
+            total: APP_STATE.motiVideoProviderAccounts?.total,
+            loaded: APP_STATE.motiVideoProviderAccounts?.loaded,
+            error: APP_STATE.motiVideoProviderAccounts?.error || '',
+            sample_accounts: getMotiVideoAccountRecords().slice(0, 5).map(item => item.account_id)
+        });
 
         return APP_STATE.motiVideoProviderAccounts;
 
@@ -12876,7 +12910,7 @@ async function loadMotiVideoProviderAccounts() {
 
         console.error('Failed to load Moti video accounts:', error);
 
-        APP_STATE.motiVideoProviderAccounts = APP_STATE.motiVideoProviderAccounts || { total: 0, records: [] };
+        APP_STATE.motiVideoProviderAccounts = APP_STATE.motiVideoProviderAccounts || { total: 0, records: [], loaded: false };
 
         return APP_STATE.motiVideoProviderAccounts;
 
@@ -12967,7 +13001,7 @@ function getDefaultVideoModelPricing() {
 
 
 
-const DEFAULT_STORYBOARD_VIDEO_MODEL = 'Seedance 2.0 Fast';
+const DEFAULT_STORYBOARD_VIDEO_MODEL = 'Seedance 2.0 VIP';
 
 
 
@@ -19797,7 +19831,17 @@ function renderStoryboardSidebar() {
     const shotVideoAccount = getShotStoryboardVideoAppointAccount(APP_STATE.currentShot);
     const isShotAccountSelectable = effectiveVideoSettings.provider === 'moti';
     const shotAccountBlankLabel = `跟随全局账号（${globalVideoAccount || '不指定账号'}）`;
-    const hasLoadedMotiVideoAccounts = Array.isArray(APP_STATE.motiVideoProviderAccounts?.records);
+    const hasLoadedMotiVideoAccounts = APP_STATE.motiVideoProviderAccounts?.loaded === true && Array.isArray(APP_STATE.motiVideoProviderAccounts?.records);
+    if (isShotAccountSelectable) {
+        console.log('[moti-accounts] sidebar state:', {
+            hasLoadedMotiVideoAccounts,
+            total: APP_STATE.motiVideoProviderAccounts?.total || 0,
+            loaded: APP_STATE.motiVideoProviderAccounts?.loaded,
+            error: APP_STATE.motiVideoProviderAccounts?.error || '',
+            globalVideoAccount,
+            shotVideoAccount
+        });
+    }
     if (isShotAccountSelectable && !hasLoadedMotiVideoAccounts) {
         loadMotiVideoProviderAccounts().then(() => {
             if (APP_STATE.currentShot && APP_STATE.currentShot.id === shotIdForSidebarRefresh) {

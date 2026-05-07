@@ -24,6 +24,21 @@ const helperSource = [
   extractFunction('buildStoryboardVideoGenerationRequestBody'),
 ].join('\n\n');
 
+assert.ok(
+  source.includes('motiVideoProviderAccounts: { total: 0, records: [], loaded: false }'),
+  'app state should mark moti accounts as not yet loaded by default'
+);
+assert.ok(
+  source.includes('APP_STATE.motiVideoProviderAccounts?.loaded === true && Array.isArray(APP_STATE.motiVideoProviderAccounts?.records)'),
+  'storyboard sidebar should only treat moti accounts as loaded after a successful fetch'
+);
+assert.ok(
+  source.includes("[moti-accounts] request failed:") &&
+    source.includes("[moti-accounts] loaded payload:") &&
+    source.includes("[moti-accounts] sidebar state:"),
+  'frontend should log moti account request, payload, and sidebar debug information'
+);
+
 const sandbox = {
   APP_STATE: {
     currentEpisodeInfo: {

@@ -49,3 +49,17 @@ This changelog records legacy-branch-only changes completed on 2026-05-06 so the
 
 - Frontend JS regression tests updated and passing for multi-scene selection, reasoning prompt buttons, shot settings UI, provider stats polling, subject preview behavior, clone payload sync, and rule-segment duration mode.
 - Backend Python regression tests updated and passing for scene reference ordering, Moti account mapping, startup scripts, provider account helpers, managed generation, storyboard image flow, reasoning prompt request/result handling, and rule-segment simple storyboard parsing.
+
+## Storyboard Default Models
+
+- Changed the frontend storyboard video default model from `Seedance 2.0 Fast` to `Seedance 2.0 VIP`.
+- Extended `/model-select` with a storyboard defaults panel for default storyboard image provider, default storyboard image model, and default storyboard video model.
+- Added backend storage and API support for storyboard default model settings and wired them into new episode default resolution so unconfigured episodes follow the configured storyboard defaults instead of hardcoded fallbacks.
+
+## Moti Accounts Resilience
+
+- Updated the default upstream video API token used by the legacy branch to the current Moti key while still preserving environment-variable override priority.
+- Increased Moti account list fetch timeout to `180s` because the upstream account endpoint is slow.
+- Added backend debug logging for Moti account cache refreshes, upstream status codes, and upstream error payload previews.
+- Added frontend debug logging for the Moti account dropdown request payload and storyboard sidebar account state.
+- Added postgres-backed fallback snapshots for Moti account lists so the last successful account payload is returned when upstream account queries fail after a restart.
