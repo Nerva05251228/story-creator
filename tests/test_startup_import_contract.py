@@ -1334,6 +1334,34 @@ class StartupImportContractTests(unittest.TestCase):
                 source,
             )
 
+    def test_voiceover_shared_state_routes_live_in_service_module(self):
+        main_source = MAIN_PATH.read_text(encoding="utf-8-sig")
+        voiceover_source = (BACKEND_DIR / "api" / "routers" / "voiceover.py").read_text(encoding="utf-8-sig")
+        episodes_source = (BACKEND_DIR / "api" / "routers" / "episodes.py").read_text(encoding="utf-8-sig")
+        service_path = BACKEND_DIR / "api" / "services" / "voiceover_shared_state.py"
+        voiceover_route_names = {
+            "update_voiceover_data",
+            "get_voiceover_shared_data",
+        }
+        episode_route_names = {"get_detailed_storyboard"}
+        delegated_names = voiceover_route_names | episode_route_names
+
+        self.assertTrue(service_path.exists())
+        service_source = service_path.read_text(encoding="utf-8-sig")
+
+        self.assertIn("from api.services import voiceover_shared_state", main_source)
+        self.assertIn("from api.services import voiceover_shared_state", voiceover_source)
+        self.assertIn("from api.services import voiceover_shared_state", episodes_source)
+        self.assertEqual(_top_level_definition_names(main_source) & delegated_names, set())
+        self.assertEqual(_top_level_definition_names(service_source) & delegated_names, delegated_names)
+        for name in delegated_names:
+            self.assertIn(f"{name} = voiceover_shared_state.{name}", main_source)
+            self.assertIn(f"def {name}", service_source)
+        for name in voiceover_route_names:
+            self.assertIn(f"voiceover_shared_state.{name}", voiceover_source)
+        for name in episode_route_names:
+            self.assertIn(f"voiceover_shared_state.{name}", episodes_source)
+
     def test_voiceover_shared_resource_helpers_live_in_service_module(self):
         main_source = MAIN_PATH.read_text(encoding="utf-8-sig")
         router_source = (BACKEND_DIR / "api" / "routers" / "voiceover.py").read_text(encoding="utf-8-sig")

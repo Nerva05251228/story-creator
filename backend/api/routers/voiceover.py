@@ -15,6 +15,7 @@ import models
 from api.services import voiceover_data
 from api.services import voiceover_generation
 from api.services import voiceover_resources
+from api.services import voiceover_shared_state
 from api.services.card_media import save_and_upload_to_cdn
 from auth import get_current_user
 from dashboard_service import sync_voiceover_tts_task_to_dashboard
@@ -137,8 +138,7 @@ _clear_tts_field_for_script_episodes = voiceover_resources.clear_tts_field_for_s
 _resolve_voiceover_audio_source = voiceover_resources.resolve_voiceover_audio_source
 
 
-@router.put("/api/episodes/{episode_id}/voiceover")
-async def update_voiceover_data(
+async def _legacy_update_voiceover_data(
     episode_id: int,
     request: dict,
     user: models.User = Depends(get_current_user),
@@ -168,8 +168,7 @@ async def update_voiceover_data(
     return {"message": "配音表已保存", "success": True, "shots": normalized_shots}
 
 
-@router.get("/api/episodes/{episode_id}/voiceover/shared")
-async def get_voiceover_shared_data(
+async def _legacy_get_voiceover_shared_data(
     episode_id: int,
     user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -177,6 +176,34 @@ async def get_voiceover_shared_data(
     _, script = _ensure_voiceover_permission(episode_id, user, db)
     shared = _load_script_voiceover_shared_data(script)
     return {"success": True, "shared": shared}
+
+
+@router.put("/api/episodes/{episode_id}/voiceover")
+async def update_voiceover_data(
+    episode_id: int,
+    request: dict,
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return voiceover_shared_state.update_voiceover_data(
+        episode_id,
+        request,
+        user,
+        db,
+    )
+
+
+@router.get("/api/episodes/{episode_id}/voiceover/shared")
+async def get_voiceover_shared_data(
+    episode_id: int,
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return voiceover_shared_state.get_voiceover_shared_data(
+        episode_id,
+        user,
+        db,
+    )
 
 
 @router.post("/api/episodes/{episode_id}/voiceover/shared/voice-references")

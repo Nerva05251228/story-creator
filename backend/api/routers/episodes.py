@@ -42,6 +42,7 @@ from api.services import db_commit_retry
 from api.services import episode_text_generation
 from api.services import episode_runtime_state
 from api.services import episode_storyboard_prompt_generation
+from api.services import voiceover_shared_state
 from api.services import storyboard2_image_task_state
 from api.services import storyboard_defaults
 from api.services import storyboard2_board
@@ -894,9 +895,7 @@ async def analyze_episode_for_storyboard(
         "generating": bool(payload.get("generating", True)),
     }
 
-@router.get("/api/episodes/{episode_id}/detailed-storyboard")
-
-def get_detailed_storyboard(
+def _legacy_get_detailed_storyboard(
     episode_id: int,
     user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -974,6 +973,19 @@ def get_detailed_storyboard(
         "subjects": subjects,
         "tts_shared": shared_data
     }
+
+@router.get("/api/episodes/{episode_id}/detailed-storyboard")
+
+def get_detailed_storyboard(
+    episode_id: int,
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    return voiceover_shared_state.get_detailed_storyboard(
+        episode_id,
+        user,
+        db,
+    )
 
 @router.get("/api/episodes/{episode_id}/storyboard")
 

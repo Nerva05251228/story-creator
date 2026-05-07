@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 This project uses a lightweight `Added`, `Changed`, `Fixed`, `Security`, and `Migration` structure.
 
+## 2026-05-07 - Voiceover Shared State Service Extraction
+
+### Added
+
+- Added `backend/api/services/voiceover_shared_state.py` for shared voiceover data update/read behavior and detailed storyboard voiceover-state payload assembly.
+- Added focused voiceover shared-state service coverage, route delegation coverage, and import-contract checks for the extraction.
+
+### Changed
+
+- Updated `backend/api/routers/voiceover.py` to delegate shared-state routes through the new service while keeping route ownership unchanged.
+- Updated `backend/api/routers/episodes.py` and `backend/main.py` to reuse the shared detailed storyboard / shared-state logic instead of keeping separate live implementations.
+
 ## 2026-05-07 - Voiceover Generation Service Extraction
 
 ### Added

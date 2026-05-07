@@ -81,8 +81,9 @@ from api.services import storyboard_video_prompt_builder
 from api.services import storyboard_video_settings
 from api.services import storyboard_video_payload
 from api.services import voiceover_data
-from api.services import voiceover_resources
 from api.services import voiceover_generation
+from api.services import voiceover_resources
+from api.services import voiceover_shared_state
 from api.schemas import episodes as episode_schemas
 from api.schemas import shots as shot_schemas
 from api.schemas.shots import GenerateStoryboardImageRequest, GenerateDetailImagesRequest, SetDetailImageCoverRequest
@@ -5905,7 +5906,7 @@ async def analyze_episode_for_storyboard(
 
 
 # 新增：获取详细分镜的原始JSON数据（包含完整的voice_type、narration、dialogue）
-def get_detailed_storyboard(
+def _legacy_get_detailed_storyboard(
     episode_id: int,
     user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -5986,7 +5987,7 @@ def get_detailed_storyboard(
 
 
 # 保存配音表数据（只更新voiceover_data字段）
-async def update_voiceover_data(
+async def _legacy_update_voiceover_data(
     episode_id: int,
     request: dict,
     user: models.User = Depends(get_current_user),
@@ -6017,7 +6018,7 @@ async def update_voiceover_data(
     return {"message": "配音表已保存", "success": True, "shots": normalized_shots}
 
 
-async def get_voiceover_shared_data(
+async def _legacy_get_voiceover_shared_data(
     episode_id: int,
     user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -6415,6 +6416,9 @@ create_voiceover_emotion_audio_preset = voiceover_resources.create_voiceover_emo
 delete_voiceover_emotion_audio_preset = voiceover_resources.delete_voiceover_emotion_audio_preset
 upsert_voiceover_setting_template = voiceover_resources.upsert_voiceover_setting_template
 delete_voiceover_setting_template = voiceover_resources.delete_voiceover_setting_template
+update_voiceover_data = voiceover_shared_state.update_voiceover_data
+get_voiceover_shared_data = voiceover_shared_state.get_voiceover_shared_data
+get_detailed_storyboard = voiceover_shared_state.get_detailed_storyboard
 
 
 async def _legacy_enqueue_voiceover_line_generate(
