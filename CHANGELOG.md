@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 This project uses a lightweight `Added`, `Changed`, `Fixed`, `Security`, and `Migration` structure.
 
+## 2026-05-07 - Voiceover Generation Service Extraction
+
+### Added
+
+- Added `backend/api/services/voiceover_generation.py` for shared line-generate enqueue, generate-all enqueue, and TTS status payload logic.
+- Added focused voiceover generation service coverage, route delegation coverage, and import-contract checks for the extraction.
+
+### Changed
+
+- Updated `backend/api/routers/voiceover.py` to delegate generation/status routes through the new voiceover generation service while keeping route ownership unchanged.
+- Updated `backend/main.py` to expose the shared voiceover generation callables through service aliases instead of keeping a second live implementation.
+
 ## 2026-05-06 - Voiceover Shared Resources Service Extraction
 
 ### Added

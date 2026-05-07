@@ -1382,6 +1382,27 @@ class StartupImportContractTests(unittest.TestCase):
             self.assertNotIn(f"def {helper_name}", main_source)
             self.assertNotIn(f"def {helper_name}", router_source)
 
+    def test_voiceover_generation_helpers_live_in_service_module(self):
+        main_source = MAIN_PATH.read_text(encoding="utf-8-sig")
+        router_source = (BACKEND_DIR / "api" / "routers" / "voiceover.py").read_text(encoding="utf-8-sig")
+        service_path = BACKEND_DIR / "api" / "services" / "voiceover_generation.py"
+
+        self.assertTrue(service_path.exists())
+        service_source = service_path.read_text(encoding="utf-8-sig")
+        route_names = {
+            "enqueue_voiceover_line_generate",
+            "enqueue_voiceover_generate_all",
+            "get_voiceover_tts_status",
+        }
+
+        self.assertIn("from api.services import voiceover_generation", main_source)
+        self.assertIn("from api.services import voiceover_generation", router_source)
+        self.assertEqual(_top_level_definition_names(main_source) & route_names, set())
+        for route_name in route_names:
+            self.assertIn(f"def {route_name}", service_source)
+            self.assertIn(f"{route_name} = voiceover_generation.{route_name}", main_source)
+            self.assertIn(f"voiceover_generation.{route_name}", router_source)
+
     def test_voiceover_route_module_owns_voiceover_routes(self):
         main_source = MAIN_PATH.read_text(encoding="utf-8-sig")
         episodes_source = (BACKEND_DIR / "api" / "routers" / "episodes.py").read_text(encoding="utf-8-sig")

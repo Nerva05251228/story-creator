@@ -82,6 +82,7 @@ from api.services import storyboard_video_settings
 from api.services import storyboard_video_payload
 from api.services import voiceover_data
 from api.services import voiceover_resources
+from api.services import voiceover_generation
 from api.schemas import episodes as episode_schemas
 from api.schemas import shots as shot_schemas
 from api.schemas.shots import GenerateStoryboardImageRequest, GenerateDetailImagesRequest, SetDetailImageCoverRequest
@@ -6416,7 +6417,7 @@ upsert_voiceover_setting_template = voiceover_resources.upsert_voiceover_setting
 delete_voiceover_setting_template = voiceover_resources.delete_voiceover_setting_template
 
 
-async def enqueue_voiceover_line_generate(
+async def _legacy_enqueue_voiceover_line_generate(
     episode_id: int,
     line_id: str,
     request: dict,
@@ -6549,7 +6550,7 @@ async def enqueue_voiceover_line_generate(
     }
 
 
-async def enqueue_voiceover_generate_all(
+async def _legacy_enqueue_voiceover_generate_all(
     episode_id: int,
     user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -6705,7 +6706,11 @@ async def enqueue_voiceover_generate_all(
     }
 
 
-def get_voiceover_tts_status(
+enqueue_voiceover_line_generate = voiceover_generation.enqueue_voiceover_line_generate
+enqueue_voiceover_generate_all = voiceover_generation.enqueue_voiceover_generate_all
+
+
+def _legacy_get_voiceover_tts_status(
     episode_id: int,
     user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -6737,6 +6742,9 @@ def get_voiceover_tts_status(
             "processing": int(processing_count)
         }
     }
+
+
+get_voiceover_tts_status = voiceover_generation.get_voiceover_tts_status
 
 
 def get_episode_storyboard(
